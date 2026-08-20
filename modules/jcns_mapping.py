@@ -65,10 +65,7 @@ def is_two_point(update_timing):
     """Does this source use the two-point (straight line A -> C) curve mode?
 
     The per-source byte at +24 — stored under the file-format name
-    `UpdateTiming` — is really the curve-mode selector.  Measured in-game
-    2026-08-21 over five degenerate and two non-degenerate geometries:
-    0 means two-point, every other observed value (2 and 3) means three-point,
-    and 2 and 3 are bit-identical in every case tested.
+    `UpdateTiming` — is really the curve-mode selector.
 
     Measured: 0 and 1 are two-point, 2 and 3 are three-point.  That split is
     exactly bit 1 (0x02), which is probably the real encoding, but 4 and 5 (9
@@ -78,11 +75,37 @@ def is_two_point(update_timing):
     return update_timing in (0, 1)
 
 
+def source_two_point(source):
+    """Curve mode of a source, read from whichever field name it exposes.
+
+    Parser dicts carry the raw file-format key `UpdateTiming`; the Blender
+    PropertyGroup exposes it as `update_timing`.
+    """
+    if isinstance(source, dict):
+        v = source.get('UpdateTiming', source.get('update_timing'))
+    else:
+        v = getattr(source, 'update_timing', None)
+    return is_two_point(v)
+
+
+def is_folded(from_start, from_kink, from_end):
+    """Does the polyline double back on itself along x?
+
+    True when the kink lies strictly outside the [start, end] span, so the two
+    segments overlap in x and the same input maps to two different outputs —
+    a '<' or '>' shape rather than a '^' or 'v'.  In three-point mode the engine
+    refuses such a source outright and its output is a flat 0; in two-point mode
+    the kink is ignored, so the shape is harmless.
+    """
+    lo, hi = (from_start, from_end) if from_start <= from_end else (from_end, from_start)
+    return from_kink < lo - 1e-9 or from_kink > hi + 1e-9
+
+
 def eval_piecewise(from_start, from_kink, from_end,
                    to_start, to_kink, to_end, x, two_point=False):
     """Output of the transfer function for a source value of `x`.
 
-    `two_point=True` selects the +24 == 0 curve mode (straight line A -> C).
+    `two_point=True` selects the +24 in (0, 1) curve mode (straight line A -> C).
     """
     span1 = from_kink - from_start
     span2 = from_end - from_kink
@@ -102,8 +125,7 @@ def eval_piecewise(from_start, from_kink, from_end,
     # whole source — measured over three such geometries (kink past the end, kink
     # before the start, and the same with a wildly different to_start), all of
     # which produced a flat 0 while neighbouring slots evaluated normally.
-    lo, hi = (from_start, from_end) if from_start <= from_end else (from_end, from_start)
-    if from_kink < lo - 1e-9 or from_kink > hi + 1e-9:
+    if is_folded(from_start, from_kink, from_end):
         return 0.0
 
     # Degenerate handling below was measured in-game (Round 12) and matches the
@@ -161,13 +183,18 @@ def describe(source):
     fs, fk, fe = g('from_start'), g('from_kink'), g('from_end')
     ts, tk, te = g('to_start'), g('to_kink'), g('to_end')
 
-    at_rest = eval_piecewise(fs, fk, fe, ts, tk, te, 0.0)
+    tp = source_two_point(source)
+    at_rest = eval_piecewise(fs, fk, fe, ts, tk, te, 0.0, two_point=tp)
     return {
         'at_rest':    at_rest,
-        'at_start':   eval_piecewise(fs, fk, fe, ts, tk, te, fs),
-        'at_kink':    eval_piecewise(fs, fk, fe, ts, tk, te, fk),
-        'at_end':     eval_piecewise(fs, fk, fe, ts, tk, te, fe),
+        'at_start':   eval_piecewise(fs, fk, fe, ts, tk, te, fs, two_point=tp),
+        'at_kink':    eval_piecewise(fs, fk, fe, ts, tk, te, fk, two_point=tp),
+        'at_end':     eval_piecewise(fs, fk, fe, ts, tk, te, fe, two_point=tp),
         'rest_pos':   rest_position(fs, fk, fe),
+        'two_point':  tp,
+        # '<' / '>' shape in three-point mode: the engine discards the whole
+        # source and its output is a flat 0.  Harmless in two-point mode.
+        'folded_dead': (not tp) and is_folded(fs, fk, fe),
         # A non-zero output at rest means the bone is deflected before anything
         # has moved.  Legitimate for some setups, but almost always a mistake
         # when editing by hand, so the UI flags it.
@@ -242,8 +269,9 @@ def plain_description(source, unit="°"):
 
     fs, fk, fe = g('from_start'), g('from_kink'), g('from_end')
     ts, tk, te = g('to_start'), g('to_kink'), g('to_end')
+    tp = source_two_point(source)
 
-    at_rest = eval_piecewise(fs, fk, fe, ts, tk, te, 0.0)
+    at_rest = eval_piecewise(fs, fk, fe, ts, tk, te, 0.0, two_point=tp)
     inert = abs(ts) < 1e-9 and abs(tk) < 1e-9 and abs(te) < 1e-9
 
     # The three anchors do not have to be ordered, and when they double back
@@ -263,7 +291,7 @@ def plain_description(source, unit="°"):
 
     n = 401
     step = (hi - lo) / (n - 1)
-    pts = [(lo + i * step, eval_piecewise(fs, fk, fe, ts, tk, te, lo + i * step))
+    pts = [(lo + i * step, eval_piecewise(fs, fk, fe, ts, tk, te, lo + i * step, two_point=tp))
            for i in range(n)]
 
     # Merge samples into straight runs; a slope change starts a new run.
@@ -291,8 +319,8 @@ def plain_description(source, unit="°"):
         return x
 
     runs = [(snap(x0), snap(x1),
-             eval_piecewise(fs, fk, fe, ts, tk, te, snap(x0)),
-             eval_piecewise(fs, fk, fe, ts, tk, te, snap(x1)))
+             eval_piecewise(fs, fk, fe, ts, tk, te, snap(x0), two_point=tp),
+             eval_piecewise(fs, fk, fe, ts, tk, te, snap(x1), two_point=tp))
             for x0, x1, y0, y1 in runs]
 
     legs = []
@@ -307,7 +335,7 @@ def plain_description(source, unit="°"):
             a = max(a, 0.0) if direction > 0 else min(a, 0.0)
             if abs(b - a) < 1e-6:
                 continue                       # zero-width run at a breakpoint
-            u = eval_piecewise(fs, fk, fe, ts, tk, te, a)
+            u = eval_piecewise(fs, fk, fe, ts, tk, te, a, two_point=tp)
             kind = 'dead' if abs(v - u) < 1e-4 else 'move'
             if steps and steps[-1][4] == kind == 'dead':
                 steps[-1] = (steps[-1][0], b, steps[-1][2], v, 'dead')
@@ -316,18 +344,27 @@ def plain_description(source, unit="°"):
         if steps:
             legs.append({'direction': direction, 'steps': steps})
 
-    # Which anchor, if any, the function never reaches.
+    # A '<' / '>' shape — the kink outside the [start, end] span — makes the two
+    # segments overlap in x, so the same input would map to two outputs.  In
+    # three-point mode the engine throws the whole source away and outputs a flat
+    # 0; in two-point mode the kink is ignored, so the shape is harmless.
+    ordered_anchors = not is_folded(fs, fk, fe)
+    folded_dead = (not tp) and not ordered_anchors
+
+    # Which anchor, if any, the function never reaches.  Pointless to report when
+    # the source is dead outright — "anchor A unreachable" would bury the lede.
     unreachable = None
-    ordered_anchors = (fs <= fk <= fe) or (fs >= fk >= fe)
-    if not ordered_anchors:
+    if not ordered_anchors and not folded_dead:
         for name, ax, ay in (('A', fs, ts), ('B', fk, tk), ('C', fe, te)):
-            if abs(eval_piecewise(fs, fk, fe, ts, tk, te, ax) - ay) > 1e-4:
+            if abs(eval_piecewise(fs, fk, fe, ts, tk, te, ax, two_point=tp) - ay) > 1e-4:
                 unreachable = name
                 break
 
     return {'rest_output': at_rest, 'legs': legs, 'inert': inert,
             'offset_at_rest': abs(at_rest) > 1e-4,
             'anchors_ordered': ordered_anchors,
+            'two_point': tp,
+            'folded_dead': folded_dead,
             'unreachable_anchor': unreachable}
 
 
@@ -340,6 +377,7 @@ def sample(source, n=48):
 
     fs, fk, fe = g('from_start'), g('from_kink'), g('from_end')
     ts, tk, te = g('to_start'), g('to_kink'), g('to_end')
+    tp = source_two_point(source)
 
     lo, hi = min(fs, fe, 0.0), max(fs, fe, 0.0)
     if hi - lo < 1e-9:
@@ -348,5 +386,5 @@ def sample(source, n=48):
     lo, hi = lo - pad, hi + pad
     step = (hi - lo) / float(n - 1)
     return [(lo + i * step,
-             eval_piecewise(fs, fk, fe, ts, tk, te, lo + i * step))
+             eval_piecewise(fs, fk, fe, ts, tk, te, lo + i * step, two_point=tp))
             for i in range(n)]

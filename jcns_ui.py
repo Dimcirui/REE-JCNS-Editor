@@ -521,6 +521,18 @@ class JCNS_PT_Constraint(Panel):
         src = sp.source_bone or "驱动骨"
         tgt = p.target_bone or "目标骨"
 
+        # '<' / '>' shaped anchors in three-point mode: the engine discards the
+        # whole source.  Louder than the unreachable-anchor notice below, because
+        # the symptom is "nothing happens at all" with no hint as to why.
+        if d.get('folded_dead'):
+            warn = col.column(align=True)
+            warn.alert = True
+            warn.label(text="折点越出 [起点, 终点] 区间，引擎会整条丢弃", icon='ERROR')
+            warn.label(text="锚点连成 < 或 > 形，同一输入对应两个输出 —— 输出恒为 0")
+            warn.operator("jcns.sort_anchors", text="按源角度排序锚点",
+                          icon='SORTSIZE')
+            col.separator()
+
         if d.get('unreachable_anchor'):
             warn = col.column(align=True)
             warn.alert = True
