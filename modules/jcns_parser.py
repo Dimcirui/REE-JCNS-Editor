@@ -260,6 +260,9 @@ class JCNSParser:
             c['target_axis'] = rec[axis_key]
             c['TargetBoneName'] = self._read_wstring(data, rec['TargetBoneNameOffset'])
             c['_orig_target_name'] = c['TargetBoneName']
+            # Property of the target (e.g. 'Blend_A' of material 'face'); empty for bones.
+            c['PropertyName'] = (self._read_wstring(data, rec['PropertyOffset'])
+                                 if rec.get('PropertyOffset') else '')
 
             # ObjectName can be an RSZ object or property target (e.g. 'via.motion.Chain'
             # with TransformType=11 and a non-zero PropertyHash) whose ObjectHash is not

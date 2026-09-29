@@ -67,9 +67,11 @@ class JCNSWriter:
             new_hash_list = list(p.hash_list)
 
         def _get_or_add(name):
-            """Return (hash32, index) for a bone name, adding to list if missing."""
-            if not name:
-                return 0, 0
+            """Return (hash32, index) for a bone name, adding to list if missing.
+
+            The empty name is a real name here: 52 shipped v102 sources (the *_UVT
+            files) have an empty name string and store murmur("") = 0x81F16F39.
+            """
             h = hashUTF16(name) & 0xFFFFFFFF
             for i, v in enumerate(new_hash_list):
                 if v == h:
@@ -109,9 +111,7 @@ class JCNSWriter:
         # Rebuild hashes for all source and target bones (Range constraints)
         for c in p.constraints:
             for s in c.get('sources', []):
-                if s.get('SourceName'):
-                    _, src_idx = _get_or_add(s['SourceName'])
-                    s['SourceHashIndex'] = src_idx
+                _, s['SourceHashIndex'] = _get_or_add(s.get('SourceName', ''))
 
             # Only bone targets go into the hash table; BlendShape/property targets
             # use direct ObjectHash (TgtIdx=0xFFFFFFFF) and must not pollute the list.
@@ -121,7 +121,7 @@ class JCNSWriter:
 
         # Add Aim constraint hashes and update their indices
         for ac in getattr(p, 'aim_constraints', []):
-            for idx_key in ('JointHashIndex', 'TargetHashIndex'):
+            for idx_key in ('JointHashIndex', 'UnkJointHashIndex', 'TargetHashIndex'):
                 old_idx = ac.get(idx_key, -1)
                 if 0 <= old_idx < len(p.hash_list):
                     ac[idx_key] = _get_or_add_hash(p.hash_list[old_idx])
@@ -138,6 +138,21 @@ class JCNSWriter:
             old_idx = mc.get('JointHashIndex', -1)
             if 0 <= old_idx < len(p.hash_list):
                 mc['JointHashIndex'] = _get_or_add_hash(p.hash_list[old_idx])
+
+        def _dep_key(c, tgt_h):
+            """Object hash the dependency table files a constraint under.
+
+            A bone / blendshape target is filed under its own hash.  A target with
+            a property is filed under the hash of "object<sep>property": '.' for
+            materials ('face.Blend_A', TransformType 7-10) and ':' for RSZ component
+            properties ('via.motion.Chain:BlendRate', TransformType 11).  Checked
+            against every constraint in the shipped v102 corpus (22839).
+            """
+            prop = c.get('PropertyName', '')
+            if not prop:
+                return tgt_h
+            sep = ':' if c.get('TransformType') == 11 else '.'
+            return hashUTF16(c.get('TargetBoneName', '') + sep + prop) & 0xFFFFFFFF
 
         # ── Phase 2: layout constants ───────────────────────────────────
         N = len(p.constraints)
@@ -217,8 +232,7 @@ class JCNSWriter:
         tgt_pool_blob       = bytearray()
         tgt_name_to_offset  = {}   # name → absolute file offset
 
-        for c in p.constraints:
-            name = c.get('TargetBoneName', '')
+        def _pool(name):
             if name not in tgt_name_to_offset:
                 abs_off = TGT_POOL_START + len(tgt_pool_blob)
                 tgt_name_to_offset[name] = abs_off
@@ -227,6 +241,14 @@ class JCNSWriter:
                 # Pad to 2-byte alignment so the next string is word-aligned
                 if (TGT_POOL_START + len(tgt_pool_blob)) % 2:
                     tgt_pool_blob.extend(b'\x00')
+
+        for c in p.constraints:
+            _pool(c.get('TargetBoneName', ''))
+        # Property names ('Blend_A', 'BlendRate', ...) — the original PropertyOffset
+        # points into the old file, so the string has to be re-emitted.
+        for c in p.constraints:
+            if c.get('PropertyName'):
+                _pool(c['PropertyName'])
 
         # Pad pool to 8-byte boundary
         rem = (TGT_POOL_START + len(tgt_pool_blob)) % 8
@@ -253,6 +275,7 @@ class JCNSWriter:
                 tgt_h = _target_hash(c)
             else:
                 tgt_h, _ = _get_or_add(tgt_name)
+            tgt_h = _dep_key(c, tgt_h)
             if tgt_h not in dep_sources:
                 dep_sources[tgt_h] = []
                 dep_order.append(tgt_h)
@@ -315,6 +338,8 @@ class JCNSWriter:
                 'TargetBoneNameOffset': tgt_name_off,
                 'TargetHashIndex':      tgt_idx,
                 'ObjectHash':           tgt_h,
+                'PropertyOffset':       (tgt_name_to_offset[c['PropertyName']]
+                                         if c.get('PropertyName') else 0),
                 # Derived from the source list, never copied — a stale SourceCount is
                 # exactly what made multi-source constraints read past their own data.
                 'SourceCount_parent':   len(c.get('sources', [])),
