@@ -166,6 +166,45 @@ class JCNS_UL_Sources(bpy.types.UIList):
             row.label(text="%s°" % _fmt(info['at_rest']), icon='ERROR')
 
 
+class JCNS_UL_SkinSources(bpy.types.UIList):
+    """SkinConstraint 条目的源骨骼与权重。"""
+    bl_idname = "JCNS_UL_skin_sources"
+
+    def draw_item(self, context, layout, data, item, icon, active_data, active_prop, index):
+        row = layout.row(align=True)
+        row.prop(item, "bone", text="", emboss=False, icon='BONE_DATA')
+        row.prop(item, "weight", text="")
+
+
+class JCNS_UL_CMKeys(bpy.types.UIList):
+    """ComplexMapping 关键帧：输入 FromX → 输出 ToX。"""
+    bl_idname = "JCNS_UL_cm_keys"
+
+    def draw_item(self, context, layout, data, item, icon, active_data, active_prop, index):
+        row = layout.row(align=True)
+        row.label(text=str(index), icon='KEYFRAME')
+        row.prop(item, "from_x", text="入")
+        row.prop(item, "to_x", text="出")
+
+
+def _sections_editable(root_props):
+    """(editable, reason) for the Skin / Aim / RotExpression / ComplexMapping data
+    of a JCNS root: only v102 rebuilds them, and only a root whose importer
+    cached them has the data in Blender."""
+    if root_props is None:
+        return False, "找不到所属的 JCNS 根节点"
+    from .modules_shim import ensure_path
+    ensure_path()
+    from jcns_parser import write_mode
+    from .jcns_exporter import _root_version
+    v = _root_version(root_props)
+    if write_mode(v) != 'rebuild':
+        return False, f"v{v} 只能就地回写，这部分导出时原样保留"
+    if not root_props.sections_cached:
+        return False, "这个文件是旧版插件导入的，Blender 里没有这部分数据；重新导入后可编辑"
+    return True, ""
+
+
 # ---------------------------------------------------------------------------
 # 常驻提示面板
 # ---------------------------------------------------------------------------
@@ -271,6 +310,11 @@ class JCNS_PT_Root(Panel):
 
         layout.separator()
         layout.operator("jcns.add_constraint", text="新增约束", icon='ADD')
+        editable, _ = _sections_editable(rp)
+        if editable:
+            row = layout.row(align=True)
+            for kind, label in (('Skin', "Skin"), ('Aim', "Aim"), ('RotExpression', "RotExpr")):
+                row.operator("jcns.add_section_entry", text="+" + label).kind = kind
 
 
 class JCNS_PT_RootChannels(Panel):
@@ -387,12 +431,14 @@ class JCNS_PT_Constraint(Panel):
             ])
             return
 
+        if ctype in ('Skin', 'Aim', 'RotExpression'):
+            self._draw_section(layout, obj, p, ctype)
+            return
+
         if ctype != 'Ranges':
-            _NAMES = {'Aim': "Aim 瞄准约束", 'RotExpression': "旋转表达式"}
             row = layout.row()
             row.alert = True
-            row.label(text="类型：%s —— 暂不可编辑" % _NAMES.get(ctype, ctype),
-                      icon='ERROR')
+            row.label(text="类型：%s —— 暂不可编辑" % ctype, icon='ERROR')
             layout.label(text="导出时会原样保留。")
             return
 
@@ -490,6 +536,101 @@ class JCNS_PT_Constraint(Panel):
         danger.alert = True
         danger.operator("jcns.delete_constraint", text="删除此约束", icon='TRASH')
 
+    def _draw_section(self, layout, obj, p, ctype):
+        from . import get_jcns_root_from_constraint
+        _, rp = get_jcns_root_from_constraint(obj)
+        editable, reason = _sections_editable(rp)
+        if not editable:
+            layout.label(text=reason, icon='LOCKED')
+        body = layout.column()
+        body.enabled = editable
+
+        if ctype == 'Skin':
+            box = body.box()
+            box.label(text="SkinConstraint", icon='MOD_VERTEX_WEIGHT')
+            locked = bool(rp and rp.skin_signature_json)
+            _field_row(box.column(align=True), "对象骨骼：", p, "target_bone")
+            if locked:
+                box.label(text="文件带 SkinConstraintHashTable：只能改权重", icon='INFO')
+            hdr = box.row(align=True)
+            hdr.label(text="源骨骼（%d）" % len(p.skin_sources), icon='BONE_DATA')
+            sub = hdr.row(align=True)
+            sub.enabled = not locked
+            sub.operator("jcns.skin_source_add", text="", icon='ADD')
+            sub.operator("jcns.skin_source_remove", text="", icon='REMOVE')
+            box.template_list("JCNS_UL_skin_sources", "", p, "skin_sources",
+                              p, "active_skin_source_index", rows=min(max(len(p.skin_sources), 2), 8))
+            total = sum(w.weight for w in p.skin_sources)
+            row = box.row(align=True)
+            if p.skin_sources and abs(total - 1.0) > 1e-3:
+                row.alert = True
+                row.label(text="权重和 %.3f（原版 1851 条中只有 6 条不为 1）" % total, icon='ERROR')
+            else:
+                row.label(text="权重和 %.3f" % total, icon='CHECKMARK')
+            row.operator("jcns.skin_normalize_weights", text="归一化")
+
+        elif ctype == 'Aim':
+            box = body.box()
+            box.label(text="Aim 瞄准约束", icon='CON_TRACKTO')
+            col = box.column(align=True)
+            _field_row(col, "被瞄准的骨骼：", p, "target_bone")
+            _field_row(col, "瞄准目标：", p, "aim_target_bone")
+            _field_row(col, "辅助骨骼：", p, "aim_up_bone")
+            _field_row(col, "影响：", p, "aim_influence")
+            _draw_raw_group(body, "向量（含义未测定；Vec1 多为轴向，Vec2/Vec3 多为 +Y）", 'ORIENTATION_GIMBAL', [
+                (p, [("aim_vec0", "")]), (p, [("aim_vec1", "")]),
+                (p, [("aim_vec2", "")]), (p, [("aim_vec3", "")]),
+            ])
+            _draw_raw_group(body, "原始字段", 'PREFERENCES', [
+                (p, [("aim_rotation_type", "RotationType")]),
+                (p, [("aim_bytes", "")]),
+                (p, [("aim_tail_hex", "尾部")]), (p, [("aim_target_tail_hex", "目标块尾部")]),
+            ])
+
+        else:
+            box = body.box()
+            box.label(text="RotExpression 旋转表达式", icon='DRIVER_ROTATIONAL_DIFFERENCE')
+            col = box.column(align=True)
+            _field_row(col, "被驱动的骨骼：", p, "target_bone")
+            _field_row(col, "源骨骼：", p, "rot_source_bone")
+            _draw_raw_group(body, "原始字段（Rotation/Scale 在原版里恒为 0,0,0,1）", 'PREFERENCES', [
+                (p, [("rot_rotation", "")]), (p, [("rot_scale", "")]),
+                (p, [("rot_bytes", "")]), (p, [("rot_floats", "")]),
+            ])
+
+        layout.separator()
+        layout.operator("jcns.delete_constraint", text="删除此条目", icon='TRASH')
+
+    def _draw_complex_mapping(self, layout, sp):
+        from . import get_jcns_root_from_constraint
+        obj = bpy.context.active_object
+        _, rp = get_jcns_root_from_constraint(obj) if obj else (None, None)
+        editable, reason = _sections_editable(rp)
+        if not len(sp.cm_keys) and not editable:
+            return
+        box = layout.box()
+        hdr = box.row(align=True)
+        hdr.label(text="ComplexMapping 关键帧（%d）" % len(sp.cm_keys), icon='IPO_BEZIER')
+        sub = hdr.row(align=True)
+        sub.enabled = editable
+        sub.operator("jcns.cm_key_add", text="", icon='ADD')
+        sub.operator("jcns.cm_key_remove", text="", icon='REMOVE')
+        if not len(sp.cm_keys):
+            return
+        if not editable:
+            box.label(text=reason, icon='LOCKED')
+        box.label(text="有关键帧时上面的三点映射在原版里恒为 0（78/78）", icon='INFO')
+        body = box.column()
+        body.enabled = editable
+        body.template_list("JCNS_UL_cm_keys", "", sp, "cm_keys", sp, "active_cm_index",
+                           rows=min(max(len(sp.cm_keys), 2), 8))
+        k = sp.cm_keys[min(sp.active_cm_index, len(sp.cm_keys) - 1)]
+        col = body.column(align=True)
+        r = col.row(align=True); r.prop(k, "from_x"); r.prop(k, "to_x")
+        r = col.row(align=True); r.prop(k, "from_y"); r.prop(k, "to_y")
+        r = col.row(align=True); r.prop(k, "from_z"); r.prop(k, "to_z")
+        col.prop(k, "flag")
+
     def _draw_source(self, layout, p, sp, m, label=None):
         col = layout.column(align=True)
         if label:
@@ -499,6 +640,7 @@ class JCNS_PT_Constraint(Panel):
 
         self._draw_plain(layout, p, sp, m)
         self._draw_curve(layout, p, sp)
+        self._draw_complex_mapping(layout, sp)
 
         col2 = layout.column(align=True)
         col2.separator()
@@ -691,6 +833,8 @@ class JCNS_PT_ConstraintAdvanced(Panel):
 
 _classes = [
     JCNS_UL_Sources,
+    JCNS_UL_SkinSources,
+    JCNS_UL_CMKeys,
     JCNS_PT_Status,
     JCNS_PT_Root,
     JCNS_PT_RootChannels,

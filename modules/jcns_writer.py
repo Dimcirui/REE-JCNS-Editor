@@ -120,19 +120,23 @@ class JCNSWriter:
             if tgt and not _is_direct_hash(c):
                 _get_or_add(tgt)
 
-        # Add Aim constraint hashes and update their indices
+        # Aim / RotExpression: every hash-list index is re-derived from the hash
+        # it stands for (the parser resolves them, and edited entries carry only
+        # hashes).  A negative index means "unused" (Aim's up-joint) and stays so.
         for ac in getattr(p, 'aim_constraints', []):
-            for idx_key in ('JointHashIndex', 'UnkJointHashIndex', 'TargetHashIndex'):
-                old_idx = ac.get(idx_key, -1)
-                if 0 <= old_idx < len(p.hash_list):
-                    ac[idx_key] = _get_or_add_hash(p.hash_list[old_idx])
+            for idx_key, hash_key in (('JointHashIndex', 'JointHash'),
+                                      ('UnkJointHashIndex', 'UnkJointHash'),
+                                      ('TargetHashIndex', 'TargetHash')):
+                if ac.get(idx_key, -1) >= 0:
+                    ac[idx_key] = _get_or_add_hash(ac[hash_key])
 
-        # Add RotExpression hash indices (two index arrays per entry) and update them
+        # RotExpression's two index arrays point at the record's own inline
+        # SourceJointHash / JointHash (57/57 shipped entries).
         for re in getattr(p, 'rot_expressions', []):
-            for idx_key in ('SrcJointHashIndex', 'JntHashIndex'):
-                old_idx = re.get(idx_key, -1)
-                if 0 <= old_idx < len(p.hash_list):
-                    re[idx_key] = _get_or_add_hash(p.hash_list[old_idx])
+            for idx_key, hash_key in (('SrcJointHashIndex', 'SourceJointHash'),
+                                      ('JntHashIndex', 'JointHash')):
+                if re.get(idx_key, -1) >= 0:
+                    re[idx_key] = _get_or_add_hash(re[hash_key])
 
         # Add Material constraint JointHash indices and update them
         for mc in getattr(p, 'material_cns', []):
@@ -249,6 +253,12 @@ class JCNSWriter:
                 rec.update({k: v for k, v in s.items() if not k.startswith('_')})
                 rec['SourceName_Offset'] = abs_name
                 rec['ComplexMappingInfoOffset'] = cm_off
+                # Byte +29 is 1 exactly when the source has ComplexMapping (78/78);
+                # it also takes the value 2 in 39 sources without, so only a 1 is
+                # cleared when the keyframes go away.
+                flag = (rec['UnknownUInt32_2'] >> 8) & 0xFF
+                flag = 1 if cm_off else (0 if flag == 1 else flag)
+                rec['UnknownUInt32_2'] = (rec['UnknownUInt32_2'] & ~0xFF00) | (flag << 8)
                 src_blob.extend(SOURCE_V2.pack(rec, version))
 
             src_blob.extend(name_blob)
@@ -535,6 +545,12 @@ class JCNSWriter:
         obj_setting_count = N_OBJSET
         patch['ObjectSettingCount'] = N_OBJSET
         patch['ObjectSettingEntry'] = OBJSET_START if N_OBJSET else SEC_TABLE_START
+        # Counts of every list the writer re-emits.  Copying them from the source
+        # file would leave a stale count after an entry was added or deleted.
+        patch['AimConstraintCount'] = N_AIM
+        patch['RotExpressionInfoCount'] = N_ROT
+        patch['RotExpressionMapCount'] = len(rot_map)
+        patch['MaterialConstraintInfoCount'] = N_MAT
         if N_AIM > 0:
             patch['AimConstraintTableEntry'] = AIM_SECTION_START
         if N_ROT > 0:

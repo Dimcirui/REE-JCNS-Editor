@@ -70,6 +70,14 @@ def _build_hash_dict(armature_obj):
     return hash_dict
 
 
+def _hash_name(name):
+    hashing_dir = os.path.join(os.path.dirname(__file__), "modules", "hashing")
+    if hashing_dir not in sys.path:
+        sys.path.insert(0, hashing_dir)
+    from mmh3.pymmh3 import hashUTF16
+    return hashUTF16(name) & 0xFFFFFFFF
+
+
 def _strip_ext(filename):
     """Strip JCNS version suffixes: 'foo.jcns.102' → 'foo'."""
     for v in _SCHEMA.SUPPORTED_VERSIONS:
@@ -218,6 +226,13 @@ def do_import(filepath, context, armature_obj=None):
             sp.complex_mapping_info_count = s.get('ComplexMappingInfoCount', 0)
             sp.unknown_uint16   = s.get('UnknownUInt16', 0)
             sp.unknown_uint32_2 = s.get('UnknownUInt32_2', 0)
+            sp.cm_keys.clear()
+            for r in s.get('ComplexMapping', []):
+                k = sp.cm_keys.add()
+                k.from_x, k.to_x = r['FromX'], r['ToX']
+                k.from_y, k.to_y = r['FromY'], r['ToY']
+                k.from_z, k.to_z = r['FromZ'], r['ToZ']
+                k.flag = r['UnknownUInt32']
 
         # ConstraintInfo raw fields — set cns_flags (update callback syncs the 8 bits)
         p.cns_flags = c.get('Flags', 0x30)
@@ -234,33 +249,76 @@ def do_import(filepath, context, armature_obj=None):
         p.parent_tail_3, p.parent_tail_4, p.parent_tail_5 = tail[3], tail[4], tail[5]
 
 
-    # --- Non-Range read-only Empties (Aim, RotExpression, Material, JointExportGraph) ---
+    # --- Non-Range sections: SkinConstraint, Aim, RotExpression, Material, JXG ---
+    # These store hashes only.  Resolve them through the armature, then through the
+    # bone names this file's range constraints spell out, else show the raw hash
+    # (the exporter reads a "0x1234ABCD" name back as that hash).
+    import json
+    from jcns_sections import skin_editable, skin_signature, aim_editable, rot_editable
+    from . import section_empty_name
+    names = {}
+    for c in constraints:
+        for nm in [c.get('ObjectName', '')] + [s_.get('SourceName', '') for s_ in c.get('sources', [])]:
+            if nm:
+                names[_hash_name(nm)] = nm
+    names.update(hash_dict)
 
-    for idx, ac in enumerate(parser.aim_constraints):
-        src_name = hash_dict.get(ac['JointHash'],  f"0x{ac['JointHash']:08X}")
-        tgt_name = hash_dict.get(ac['TargetHash'], f"0x{ac['TargetHash']:08X}")
-        obj = bpy.data.objects.new(f"[Aim{idx:02d}] {src_name} → {tgt_name}", None)
-        obj.empty_display_type = 'SPHERE'
-        obj.empty_display_size = 0.03
+    def _nm(h):
+        return names.get(h, f"0x{h:08X}")
+
+    def _section_empty(kind, idx, display, size):
+        obj = bpy.data.objects.new(f"[{kind}{idx:02d}]", None)
+        obj.empty_display_type = display
+        obj.empty_display_size = size
         obj.parent = root
         coll.objects.link(obj)
         p2 = obj.jcns_cns_props
         p2.is_jcns_constraint = True
+        return obj, p2
+
+    rp = root.jcns_root_props
+    sk_recs, sk_meta = skin_editable(parser)
+    for idx, r in enumerate(sk_recs):
+        obj, p2 = _section_empty('Skin', idx, 'SINGLE_ARROW', 0.03)
+        p2.constraint_type = 'Skin'
+        p2.target_bone = _nm(r['object'])
+        for src in r['sources']:
+            w = p2.skin_sources.add()
+            w.bone, w.weight = _nm(src['hash']), src['weight']
+        obj.name = section_empty_name('Skin', idx, p2)
+    rp.skin_constant = sk_meta['constant']
+    rp.skin_hash_table_hex = b''.join(h.to_bytes(4, 'little') for h in sk_meta['hash_table']).hex()
+    rp.skin_signature_json = json.dumps(skin_signature(sk_recs)) if sk_meta['hash_table'] else ''
+
+    for idx, a in enumerate(aim_editable(parser)):
+        obj, p2 = _section_empty('Aim', idx, 'SPHERE', 0.03)
         p2.constraint_type = 'Aim'
-        p2.target_bone = tgt_name
+        p2.target_bone = _nm(a['joint'])
+        p2.aim_target_bone = _nm(a['target'])
+        p2.aim_up_bone = _nm(a['up']) if a['up'] is not None else ''
+        p2.aim_influence = a['influence']
+        p2.aim_vec0, p2.aim_vec1, p2.aim_vec2, p2.aim_vec3 = a['vectors']
+        p2.aim_rotation_type = a['rotation_type']
+        p2.aim_bytes = a['bytes']
+        p2.aim_tail_hex = a['tail'].hex()
+        p2.aim_target_tail_hex = a['target_tail'].hex()
+        obj.name = section_empty_name('Aim', idx, p2)
 
-    for idx, re in enumerate(parser.rot_expressions):
-        src_name = hash_dict.get(re['SourceJointHash'], f"0x{re['SourceJointHash']:08X}")
-        tgt_name = hash_dict.get(re['JointHash'],       f"0x{re['JointHash']:08X}")
-        obj = bpy.data.objects.new(f"[RotExpr{idx:02d}] {src_name} → {tgt_name}", None)
-        obj.empty_display_type = 'CIRCLE'
-        obj.empty_display_size = 0.03
-        obj.parent = root
-        coll.objects.link(obj)
-        p2 = obj.jcns_cns_props
-        p2.is_jcns_constraint = True
+    rot_recs, rot_meta = rot_editable(parser)
+    for idx, r in enumerate(rot_recs):
+        obj, p2 = _section_empty('RotExpr', idx, 'CIRCLE', 0.03)
         p2.constraint_type = 'RotExpression'
-        p2.target_bone = tgt_name
+        p2.target_bone = _nm(r['joint'])
+        p2.rot_source_bone = _nm(r['source'])
+        p2.rot_rotation, p2.rot_scale = r['rotation'], r['scale']
+        p2.rot_bytes, p2.rot_floats = r['bytes'], r['floats']
+        obj.name = section_empty_name('RotExpression', idx, p2)
+    rp.rot_map_hex = bytes(rot_meta['map']).hex()
+
+    rp.object_settings_json = json.dumps([
+        {'UnkBytes': o['UnkBytes'].hex(), 'UnknownDWORD': o['UnknownDWORD'],
+         'ObjectNameHash': o['ObjectNameHash']} for o in parser.object_settings])
+    rp.sections_cached = True
 
     for idx, mc in enumerate(parser.material_cns):
         jnt_name = hash_dict.get(mc['JointHash'], f"0x{mc['JointHash']:08X}")
@@ -296,7 +354,6 @@ def do_import(filepath, context, armature_obj=None):
     # Collect every SourceName and ObjectName that was decoded from the file.
     # These are exactly the bones that have entries in the hash_list, and are
     # therefore valid choices for source_bone editing.
-    import json
     all_bone_names = set()
     for c in constraints:
         tgt = c.get('ObjectName', '').strip()

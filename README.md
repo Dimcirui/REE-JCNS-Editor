@@ -50,18 +50,30 @@ on the first data table), and a mismatch refuses the file rather than guessing.
 
 | ID | Section | v102 rebuild |
 | --- | --- | --- |
-| 0 | Ranges (incl. ComplexMapping, ObjectSettings, Dependencies) | ✅️ Editable; ComplexMapping / ObjectSettings carried over. ConeDrivers are not rebuilt (none in the Wilds corpus) |
-| 1 | Rotation Expressions | ✅️ Carried over (read-only) |
-| 2 | Skin Constraints | ✅️ Carried over (read-only) |
-| 3 | Aim Constraints | ✅️ Carried over (read-only) |
+| 0 | Ranges (incl. ComplexMapping, ObjectSettings, Dependencies) | ✅️ Editable, ComplexMapping keyframes included; ObjectSettings carried over. ConeDrivers are not rebuilt (none in the Wilds corpus) |
+| 1 | Rotation Expressions | ✅️ Structurally editable (add / delete / change bones and raw values) |
+| 2 | Skin Constraints | ✅️ Structurally editable; weights only in files with a SkinConstraintHashTable |
+| 3 | Aim Constraints | ✅️ Structurally editable (add / delete / change bones and raw values) |
 | 4 | Material Constraints | ✅️ Editable (raw hashes) |
 | 5 | Joint Export Graph | ✅️ Editable path |
 
-"Carried over" means the section is parsed and re-emitted with its pointers and
-hash indices remapped, but has no editing UI yet. Every v102 file in the shipped
-Wilds corpus (1103) imports and survives a rebuild with identical content. A
-file with ConeDrivers is refused at import — see Export Safety Gate. In-place
-versions keep every section byte for byte.
+"Structurally editable" means entries can be added, deleted and re-pointed, and
+every piece of derived data is regenerated on export: the Skin source-info
+table and per-file constant, RotExpression's index arrays and map, hash-list
+indices, counts and the ComplexMapping flag byte. The rules were read off the
+whole shipped corpus (see `modules/jcns_sections.py`); what the raw values
+*mean* in-game is mostly unmeasured, so they are exposed as numbers.
+
+The one exception is SkinConstraintHashTable (42 files): it holds a subset of
+the sources in a different order, mixed with hashes from outside the file, so it
+cannot be regenerated. It is kept verbatim, and in those files only Skin weights
+can change.
+
+Every v102 file in the shipped Wilds corpus (1103) imports and survives a
+rebuild with identical content. A file with ConeDrivers is refused at import —
+see Export Safety Gate. In-place versions keep every section byte for byte.
+Files imported by an earlier version of the add-on hold none of this data in
+Blender; re-import them to edit these sections.
 
 ## How Constraints Combine
 

@@ -113,6 +113,78 @@ def _build_stub_parser(root_props, empties):
     return parser
 
 
+def _sync_sections_to_parser(root_obj, root_props, parser):
+    """
+    Rebuild parser.skin_* / aim_constraints / rot_expressions (and, for the
+    cached-header stub, object_settings) from the section Empties.  Returns a list
+    of refusals; empty == OK.
+
+    Only for roots whose importer cached the section data (sections_cached) and
+    only in rebuild mode: in-place versions never re-emit these sections, and the
+    Empties of an older import hold no data.
+    """
+    import json
+    from . import section_empties
+    _ensure_modules_path()
+    import jcns_sections as X
+
+    if not root_props.sections_cached or getattr(parser, 'write_mode', 'rebuild') != 'rebuild':
+        return []
+
+    def H(name):
+        return _name_to_hash(name.strip())
+
+    # SkinConstraint
+    records = [{'object': H(o.jcns_cns_props.target_bone),
+                'sources': [{'hash': H(w.bone), 'weight': w.weight} for w in o.jcns_cns_props.skin_sources]}
+               for o in section_empties(root_obj, 'Skin')]
+    table = bytes.fromhex(root_props.skin_hash_table_hex or '')
+    meta = {'constant': root_props.skin_constant,
+            'hash_table': [int.from_bytes(table[i:i + 4], 'little') for i in range(0, len(table), 4)]}
+    locked = json.loads(root_props.skin_signature_json) if root_props.skin_signature_json else []
+    problems = X.skin_lock_problems(records, meta, locked)
+    if problems:
+        return problems
+    for w in X.skin_weight_warnings(records):
+        print('[JCNS EXPORT] warning: ' + w)
+    parser.skin_constraints, parser.skin_source_infos = X.skin_parser_form(records, meta)
+    parser.skin_hash_table = meta['hash_table']
+
+    # Aim
+    aims = []
+    for o in section_empties(root_obj, 'Aim'):
+        p = o.jcns_cns_props
+        aims.append({
+            'joint': H(p.target_bone), 'target': H(p.aim_target_bone),
+            'up': H(p.aim_up_bone) if p.aim_up_bone.strip() else None,
+            'influence': p.aim_influence,
+            'vectors': [tuple(p.aim_vec0), tuple(p.aim_vec1), tuple(p.aim_vec2), tuple(p.aim_vec3)],
+            'rotation_type': p.aim_rotation_type, 'bytes': tuple(p.aim_bytes),
+            'tail': bytes.fromhex(p.aim_tail_hex or '00' * 12).ljust(12, b'\0')[:12],
+            'target_tail': bytes.fromhex(p.aim_target_tail_hex or '00' * 8).ljust(8, b'\0')[:8],
+        })
+    parser.aim_constraints = X.aim_parser_form(aims)
+
+    # RotExpression
+    rots = [{'joint': H(o.jcns_cns_props.target_bone), 'source': H(o.jcns_cns_props.rot_source_bone),
+             'rotation': tuple(o.jcns_cns_props.rot_rotation), 'scale': tuple(o.jcns_cns_props.rot_scale),
+             'bytes': tuple(o.jcns_cns_props.rot_bytes), 'floats': tuple(o.jcns_cns_props.rot_floats)}
+            for o in section_empties(root_obj, 'RotExpression')]
+    try:
+        parser.rot_expressions, parser.rot_expression_map = X.rot_parser_form(
+            rots, {'map': list(bytes.fromhex(root_props.rot_map_hex or ''))}, parser.version)
+    except ValueError as exc:
+        return [str(exc)]
+
+    # ObjectSettings are not editable; the stub gets them back from the cache
+    if getattr(parser, 'is_stub', False) and root_props.object_settings_json:
+        parser.object_settings = [
+            {'UnkBytes': bytes.fromhex(o['UnkBytes']), 'UnknownDWORD': o['UnknownDWORD'],
+             'ObjectNameHash': o['ObjectNameHash']} for o in json.loads(root_props.object_settings_json)]
+    parser.sections_from_blender = True
+    return []
+
+
 def _sync_non_range_to_parser(root_obj, parser):
     """
     Rebuild parser.material_cns / parser.joint_export_graph entirely from the
@@ -206,6 +278,12 @@ def _sync_non_range_to_parser(root_obj, parser):
                                  if jxg_obj else None)
 
 
+def format_problems_early(problems, filename):
+    _ensure_modules_path()
+    from jcns_validate import format_problems
+    return format_problems(problems, filename)
+
+
 def _name_to_hash(name):
     """MurmurHash3 of a bone name, or the value itself for a "0x%08X" placeholder."""
     import re
@@ -261,7 +339,7 @@ def _make_default_constraint_dict(empty_obj):
     }
 
 
-def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list):
+def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached=False):
     """
     Overwrite the editable fields in the parsed constraint dict with
     values from the Empty's JCNSConstraintProperties.
@@ -320,7 +398,14 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list):
         base['UnkByte2']        = sp.unk_byte2
         base['UnknownUInt16']   = sp.unknown_uint16
         base['UnknownUInt32_2'] = sp.unknown_uint32_2
-        base['ComplexMappingInfoCount'] = sp.complex_mapping_info_count
+        if sections_cached:
+            # Keyframes live in Blender: they are the data, the count follows them.
+            base['ComplexMapping'] = [{
+                'FromX': k.from_x, 'ToX': k.to_x, 'FromY': k.from_y, 'ToY': k.to_y,
+                'FromZ': k.from_z, 'ToZ': k.to_z, 'UnknownUInt32': k.flag} for k in sp.cm_keys]
+            base['ComplexMappingInfoCount'] = len(base['ComplexMapping'])
+        else:
+            base['ComplexMappingInfoCount'] = sp.complex_mapping_info_count
         new_sources.append(base)
     parsed_c['sources'] = new_sources
 
@@ -432,6 +517,14 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
             self.report({'WARNING'}, "源文件缺失，将使用导入时缓存的文件头导出。")
             parser = _build_stub_parser(root_props, empties)
 
+        # --- Skin / Aim / RotExpression from Blender (rebuild mode only) ---
+        problems = _sync_sections_to_parser(root_obj, root_props, parser)
+        if problems:
+            msg = format_problems_early(problems, os.path.basename(source_path))
+            print("[JCNS EXPORT] " + msg)
+            self.report({'ERROR'}, msg.replace('\n', '  '))
+            return {'CANCELLED'}
+
         # --- Refuse to write a file the writer cannot faithfully reproduce ---
         from jcns_validate import check_exportable, check_in_place_edits, format_problems
         problems = check_exportable(parser)
@@ -452,7 +545,8 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
             else:
                 parsed_c = _make_default_constraint_dict(empty)
                 print(f"[JCNS EXPORT] New constraint [{i:02d}] '{empty.name}' — using defaults")
-            _patch_constraint_from_empty(parsed_c, empty, parser.hash_list)
+            _patch_constraint_from_empty(parsed_c, empty, parser.hash_list,
+                                         root_props.sections_cached)
             final_constraints.append(parsed_c)
 
         parser.constraints = final_constraints

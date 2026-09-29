@@ -98,14 +98,21 @@ def check_exportable(parser):
     # file is missing leaves them empty. That is correct for a file that never had
     # any, but silent data loss for one that did.  (ComplexMappingInfo is caught by
     # the writer: its count survives in Blender, its data does not.)
+    # A root imported by a section-caching importer carries all of these in
+    # Blender (parser.sections_from_blender), ObjectSettings included.
     if getattr(parser, 'is_stub', False):
-        for field, label in (
-            ('RotExpressionInfoCount', "RotExpression 表"),
-            ('AimConstraintCount',     "Aim 约束表"),
-            ('SkinConstraintCount',    "SkinConstraint 表"),
-            ('ObjectSettingCount',     "ObjectSettings 表"),
+        from_blender = getattr(parser, 'sections_from_blender', False)
+        for field, label, attr in (
+            ('RotExpressionInfoCount', "RotExpression 表", 'rot_expressions'),
+            ('AimConstraintCount',     "Aim 约束表", 'aim_constraints'),
+            ('SkinConstraintCount',    "SkinConstraint 表", 'skin_constraints'),
+            ('ObjectSettingCount',     "ObjectSettings 表", 'object_settings'),
         ):
             count = _header_count(parser, field)
+            if field == 'ObjectSettingCount' and len(getattr(parser, attr, [])) == count:
+                continue
+            if from_blender and field != 'ObjectSettingCount':
+                continue
             if count:
                 problems.append(
                     f"源文件缺失，只能用缓存的文件头导出；但原文件含有 {count} 条 "

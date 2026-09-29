@@ -714,13 +714,17 @@ class JCNS_OT_DeleteConstraint(Operator):
 
         cns_obj, cns_props = get_jcns_constraint(context)
         root_obj, root_props = get_jcns_root_from_constraint(cns_obj)
+        kind = cns_props.constraint_type
 
         # Remove the selected Empty
         bpy.data.objects.remove(cns_obj, do_unlink=True)
 
         # Reindex remaining Empties
         if root_obj:
-            _renumber_in_order(get_constraint_empties(root_obj))
+            if kind in ('Skin', 'Aim', 'RotExpression'):
+                _renumber_sections(root_obj, kind)
+            else:
+                _renumber_in_order(get_constraint_empties(root_obj))
 
         self.report({'INFO'}, "约束已删除，其余已重新编号。")
         return {'FINISHED'}
@@ -744,6 +748,16 @@ def _renumber_in_order(ordered):
         empty.name = "__jcns_reorder_%d" % i
     for i, empty in enumerate(ordered):
         empty.name = constraint_name_from_props(i, empty.jcns_cns_props)
+
+
+def _renumber_sections(root_obj, kind):
+    """Close the gap in '[<Prefix>NN]' after a section entry was removed."""
+    from . import section_empties, section_empty_name
+    ordered = section_empties(root_obj, kind)
+    for i, o in enumerate(ordered):
+        o.name = "__jcns_reorder_%d" % i
+    for i, o in enumerate(ordered):
+        o.name = section_empty_name(kind, i, o.jcns_cns_props)
 
 
 class JCNS_OT_MoveConstraint(Operator):
@@ -1209,6 +1223,186 @@ class JCNS_OT_ClearSingleDriver(Operator):
 
 
 # ---------------------------------------------------------------------------
+# Operators: non-range sections (SkinConstraint / Aim / RotExpression)
+# ---------------------------------------------------------------------------
+
+def _rebuild_root(context):
+    """(root, root_props) when the active JCNS file is rebuilt on export (v102)
+    and its importer cached the section data; (None, None) otherwise."""
+    from . import get_export_root
+    root, rp = get_export_root(context)
+    if root is None or not rp.sections_cached:
+        return None, None
+    from .modules_shim import ensure_path
+    ensure_path()
+    from jcns_parser import write_mode
+    from .jcns_exporter import _root_version
+    return (root, rp) if write_mode(_root_version(rp)) == 'rebuild' else (None, None)
+
+
+class JCNS_OT_AddSectionEntry(Operator):
+    """Add a SkinConstraint / Aim / RotExpression entry to the active JCNS file"""
+    bl_idname = "jcns.add_section_entry"
+    bl_label  = "新增条目"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    kind: EnumProperty(items=[('Skin', "SkinConstraint", ""), ('Aim', "Aim", ""),
+                              ('RotExpression', "RotExpression", "")])
+
+    @classmethod
+    def poll(cls, context):
+        return _rebuild_root(context)[0] is not None
+
+    def execute(self, context):
+        from . import section_empties, section_empty_name
+        root, rp = _rebuild_root(context)
+        coll = next(iter(root.users_collection), None)
+        if coll is None:
+            self.report({'ERROR'}, "根节点不属于任何集合。")
+            return {'CANCELLED'}
+        if self.kind == 'Skin' and rp.skin_signature_json:
+            self.report({'ERROR'}, "这个文件带 SkinConstraintHashTable，SkinConstraint 只能改权重，不能新增条目。")
+            return {'CANCELLED'}
+        if self.kind == 'RotExpression':
+            m = bytes.fromhex(rp.rot_map_hex or '')
+            if len(set(m)) > 1:
+                self.report({'ERROR'}, "RotExpressionMap 不是单一常量，无法推导新条目。")
+                return {'CANCELLED'}
+        idx = len(section_empties(root, self.kind))
+        display = {'Skin': 'SINGLE_ARROW', 'Aim': 'SPHERE', 'RotExpression': 'CIRCLE'}[self.kind]
+        obj = bpy.data.objects.new("__jcns_new_section", None)
+        obj.empty_display_type = display
+        obj.empty_display_size = 0.03
+        obj.parent = root
+        coll.objects.link(obj)
+        p = obj.jcns_cns_props
+        p.is_jcns_constraint = True
+        p.constraint_type = self.kind
+        if self.kind == 'Skin':
+            w = p.skin_sources.add()
+            w.weight = 1.0
+        obj.name = section_empty_name(self.kind, idx, p)
+        for o in context.selected_objects:
+            o.select_set(False)
+        context.view_layer.objects.active = obj
+        obj.select_set(True)
+        self.report({'INFO'}, f"已新增「{obj.name}」。")
+        return {'FINISHED'}
+
+
+def _active_section(context, kind):
+    from . import get_jcns_constraint
+    obj, p = get_jcns_constraint(context)
+    if obj is None or p.constraint_type != kind:
+        return None, None
+    return obj, p
+
+
+class JCNS_OT_SkinSourceAdd(Operator):
+    """Add a source bone to the selected SkinConstraint entry"""
+    bl_idname = "jcns.skin_source_add"
+    bl_label  = "新增源骨骼"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return _active_section(context, 'Skin')[0] is not None
+
+    def execute(self, context):
+        _, p = _active_section(context, 'Skin')
+        w = p.skin_sources.add()
+        w.weight = 0.0
+        p.active_skin_source_index = len(p.skin_sources) - 1
+        return {'FINISHED'}
+
+
+class JCNS_OT_SkinSourceRemove(Operator):
+    """Remove the active source bone from the selected SkinConstraint entry"""
+    bl_idname = "jcns.skin_source_remove"
+    bl_label  = "删除源骨骼"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        obj, p = _active_section(context, 'Skin')
+        return obj is not None and len(p.skin_sources) > 0
+
+    def execute(self, context):
+        _, p = _active_section(context, 'Skin')
+        i = min(p.active_skin_source_index, len(p.skin_sources) - 1)
+        p.skin_sources.remove(i)
+        p.active_skin_source_index = max(0, i - 1)
+        return {'FINISHED'}
+
+
+class JCNS_OT_SkinNormalizeWeights(Operator):
+    """Scale the selected entry's weights so they sum to 1"""
+    bl_idname = "jcns.skin_normalize_weights"
+    bl_label  = "权重归一化"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        obj, p = _active_section(context, 'Skin')
+        return obj is not None and sum(w.weight for w in p.skin_sources) > 0
+
+    def execute(self, context):
+        _, p = _active_section(context, 'Skin')
+        total = sum(w.weight for w in p.skin_sources)
+        for w in p.skin_sources:
+            w.weight /= total
+        return {'FINISHED'}
+
+
+def _active_source_props(context):
+    from . import get_jcns_constraint
+    obj, p = get_jcns_constraint(context)
+    if obj is None or p.constraint_type not in ('Ranges', '') or not len(p.sources):
+        return None
+    return p.sources[min(p.active_source_index, len(p.sources) - 1)]
+
+
+class JCNS_OT_CMKeyAdd(Operator):
+    """Add a ComplexMapping keyframe to the active source"""
+    bl_idname = "jcns.cm_key_add"
+    bl_label  = "新增关键帧"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return _active_source_props(context) is not None and _rebuild_root(context)[0] is not None
+
+    def execute(self, context):
+        sp = _active_source_props(context)
+        k = sp.cm_keys.add()
+        if len(sp.cm_keys) > 1:
+            prev = sp.cm_keys[len(sp.cm_keys) - 2]
+            k.from_x = prev.from_x + 10.0
+            k.from_y, k.to_y, k.from_z, k.to_z = prev.from_y, prev.to_y, prev.from_z, prev.to_z
+        sp.active_cm_index = len(sp.cm_keys) - 1
+        return {'FINISHED'}
+
+
+class JCNS_OT_CMKeyRemove(Operator):
+    """Remove the active ComplexMapping keyframe from the active source"""
+    bl_idname = "jcns.cm_key_remove"
+    bl_label  = "删除关键帧"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        sp = _active_source_props(context)
+        return sp is not None and len(sp.cm_keys) > 0 and _rebuild_root(context)[0] is not None
+
+    def execute(self, context):
+        sp = _active_source_props(context)
+        i = min(sp.active_cm_index, len(sp.cm_keys) - 1)
+        sp.cm_keys.remove(i)
+        sp.active_cm_index = max(0, i - 1)
+        return {'FINISHED'}
+
+
+# ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
 
@@ -1225,6 +1419,12 @@ _classes = [
     JCNS_OT_SortAnchors,
     JCNS_OT_ClearSingleDriver,
     JCNS_OT_MirrorConstraints,
+    JCNS_OT_AddSectionEntry,
+    JCNS_OT_SkinSourceAdd,
+    JCNS_OT_SkinSourceRemove,
+    JCNS_OT_SkinNormalizeWeights,
+    JCNS_OT_CMKeyAdd,
+    JCNS_OT_CMKeyRemove,
 ]
 
 

@@ -7,6 +7,8 @@ from bpy.props import (
     EnumProperty,
     PointerProperty,
     CollectionProperty,
+    FloatVectorProperty,
+    IntVectorProperty,
 )
 from bpy.types import PropertyGroup
 
@@ -159,8 +161,11 @@ def _sync_constraint_name(self):
     p = getattr(obj, 'jcns_cns_props', None)
     if p is None or not p.is_jcns_constraint:
         return
-    # Aim / RotExpression / Material / JXG Empties keep their '[MatNN] …' style
-    # names: the exporter reads the entry order back out of them.
+    # Section Empties keep their '[AimNN] …' style names: the exporter reads the
+    # entry order back out of the prefix.  Material / JXG labels never change.
+    if p.constraint_type in ('Skin', 'Aim', 'RotExpression'):
+        obj.name = section_empty_name(p.constraint_type, section_index(obj), p)
+        return
     if p.constraint_type not in ('Ranges', ''):
         return
     idx = 0
@@ -170,6 +175,49 @@ def _sync_constraint_name(self):
         except (ValueError, IndexError):
             pass
     obj.name = constraint_name_from_props(idx, p)
+
+
+# Non-range section Empties are named "[<Prefix><NN>] <label>".  The exporter
+# reads the entry order back out of the prefix, so keep it stable.
+SECTION_PREFIX = {'Skin': 'Skin', 'Aim': 'Aim', 'RotExpression': 'RotExpr', 'Material': 'Mat'}
+
+
+def section_index(obj):
+    """NN of an Empty named '[<Prefix>NN] ...', or 9999."""
+    name = obj.name
+    if name.startswith('[') and ']' in name:
+        digits = ''.join(ch for ch in name[1:name.index(']')] if ch.isdigit())
+        if digits:
+            return int(digits)
+    return 9999
+
+
+def section_empty_name(kind, idx, p):
+    pre = SECTION_PREFIX.get(kind, kind)
+    if kind == 'Skin':
+        label = p.target_bone or '?'
+    elif kind == 'Aim':
+        label = f"{p.target_bone or '?'} → {p.aim_target_bone or '?'}"
+    elif kind == 'RotExpression':
+        label = f"{p.rot_source_bone or '?'} → {p.target_bone or '?'}"
+    else:
+        label = p.target_bone or '?'
+    return f"[{pre}{idx:02d}] {label}"
+
+
+def section_empties(root_empty, kind):
+    """Section Empties of one kind under a root, in file order."""
+    objs = [o for o in root_empty.children
+            if getattr(o, 'jcns_cns_props', None) and o.jcns_cns_props.constraint_type == kind]
+    return sorted(objs, key=section_index)
+
+
+def _sync_section_name(self, context):
+    obj = self.id_data
+    p = getattr(obj, 'jcns_cns_props', None)
+    if obj is None or p is None or p.constraint_type not in ('Skin', 'Aim', 'RotExpression'):
+        return
+    obj.name = section_empty_name(p.constraint_type, section_index(obj), p)
 
 
 def _refresh_driver(self, context):
@@ -229,6 +277,30 @@ def _search_target_bone(self, context, edit_text):
 # ---------------------------------------------------------------------------
 # Property Group: one ConstraintSource_v2 block
 # ---------------------------------------------------------------------------
+
+class JCNSCMKey(PropertyGroup):
+    """One ComplexMappingInfo record (28 bytes).
+
+    In all 78 shipped v102 sources that have them, the source's own three-point
+    mapping is entirely zero and FromX is monotonic across the records, so they
+    read as keyframes (input FromX -> output ToX) that replace the mapping curve.
+    The Y / Z pairs and the flag are carried as-is; their meaning is unmeasured.
+    """
+    from_x: FloatProperty(name="From X", default=0.0)
+    to_x:   FloatProperty(name="To X",   default=0.0)
+    from_y: FloatProperty(name="From Y", default=0.0)
+    to_y:   FloatProperty(name="To Y",   default=0.0)
+    from_z: FloatProperty(name="From Z", default=0.0)
+    to_z:   FloatProperty(name="To Z",   default=0.0)
+    flag:   IntProperty(name="Flag", description="ComplexSrcMapping.UnknownUInt32 (0/8/5/2 seen)",
+                        default=0, min=0)
+
+
+class JCNSWeightedSource(PropertyGroup):
+    """One source bone of a SkinConstraint record."""
+    bone: StringProperty(name="骨骼", default="", search=lambda self, context, text: _search_bone_names(context, text))
+    weight: FloatProperty(name="权重", default=1.0, precision=4)
+
 
 class JCNSSourceProperties(PropertyGroup):
     """
@@ -342,6 +414,10 @@ class JCNSSourceProperties(PropertyGroup):
         name="未知 UInt32 (+28)", description="ConstraintSource_v2 偏移 +28",
         default=0, min=0,
     )
+    # ComplexMappingInfo keyframes (only filled by importers that cache sections;
+    # see JCNSRootProperties.sections_cached)
+    cm_keys: CollectionProperty(type=JCNSCMKey)
+    active_cm_index: IntProperty(default=0)
 
 
 # ---------------------------------------------------------------------------
@@ -461,6 +537,33 @@ class JCNSConstraintProperties(PropertyGroup):
         default="",
     )
 
+    # --- SkinConstraint (target_bone is the skinned object) ---
+    skin_sources: CollectionProperty(type=JCNSWeightedSource)
+    active_skin_source_index: IntProperty(default=0)
+
+    # --- Aim (target_bone is the aimed joint) ---
+    aim_target_bone: StringProperty(name="瞄准目标", default="", update=_sync_section_name,
+                                    search=_search_target_bone)
+    aim_up_bone: StringProperty(name="辅助骨骼", description="AimVectorPointJoint；留空表示不使用",
+                                default="", search=_search_target_bone)
+    aim_influence: FloatProperty(name="影响", default=1.0)
+    aim_vec0: FloatVectorProperty(name="Vec0", size=3, default=(0.0, 0.0, 0.0))
+    aim_vec1: FloatVectorProperty(name="Vec1", size=3, default=(1.0, 0.0, 0.0))
+    aim_vec2: FloatVectorProperty(name="Vec2", size=3, default=(0.0, 1.0, 0.0))
+    aim_vec3: FloatVectorProperty(name="Vec3", size=3, default=(0.0, 1.0, 0.0))
+    aim_rotation_type: IntProperty(name="RotationType", default=0, min=0, max=255)
+    aim_bytes: IntVectorProperty(name="字节 +57..59", size=3, default=(1, 0, 5), min=0, max=255)
+    aim_tail_hex: StringProperty(name="尾部 12 字节", default="00" * 12)
+    aim_target_tail_hex: StringProperty(name="目标块尾部 8 字节", default="00" * 8)
+
+    # --- RotExpression (target_bone is the driven joint) ---
+    rot_source_bone: StringProperty(name="源骨骼", default="", update=_sync_section_name,
+                                    search=_search_target_bone)
+    rot_rotation: FloatVectorProperty(name="Rotation", size=4, default=(0.0, 0.0, 0.0, 1.0))
+    rot_scale: FloatVectorProperty(name="Scale", size=4, default=(0.0, 0.0, 0.0, 1.0))
+    rot_bytes: IntVectorProperty(name="字节", size=4, default=(0, 0, 0, 0), min=0, max=255)
+    rot_floats: FloatVectorProperty(name="尾部浮点", size=3, default=(1.0, 1.0, 1.0))
+
     # --- Section type (set at import, read-only in UI) ---
     constraint_type: StringProperty(
         name="Constraint Type",
@@ -530,6 +633,15 @@ class JCNSRootProperties(PropertyGroup):
         description="Version number of the imported file (the .jcns.<N> suffix); 0 = imported by an older add-on",
         default=0,
     )
+    # Set by importers that store Skin / Aim / RotExpression / ComplexMapping in
+    # Blender.  Files imported before that keep exporting those sections from the
+    # re-parsed source file, since their Empties hold no data.
+    sections_cached: BoolProperty(default=False)
+    skin_constant: IntProperty(default=5)
+    skin_hash_table_hex: StringProperty(default="")
+    skin_signature_json: StringProperty(default="")
+    rot_map_hex: StringProperty(default="")
+    object_settings_json: StringProperty(default="")
     # Superseded by source_version; kept so files imported by 0.14 still export
     # with the right suffix.
     detected_game: EnumProperty(
@@ -739,7 +851,9 @@ def _poll_jcns_collection(self, collection):
 
 
 _classes = [
-    JCNSSourceProperties,       # must register before the group that references it
+    JCNSCMKey,                  # groups must register before the groups that reference them
+    JCNSWeightedSource,
+    JCNSSourceProperties,
     JCNSConstraintProperties,
     JCNSRootProperties,
 ]
