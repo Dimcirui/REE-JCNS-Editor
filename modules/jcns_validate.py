@@ -4,9 +4,9 @@ jcns_validate.py
 Pre-export safety checks — also used to gate import.
 
 The writer rebuilds a JCNS file from scratch: it emits ConstraintInfo, one
-ConstraintSource_v2 per constraint, the string pools, the dependency table, the
-section table, the hash table, and the RotExpression / Material / JXG / Aim
-sections.  Anything it does *not* emit is silently dropped from the output while
+ConstraintSource_v2 per constraint (with its ComplexMappingInfo), the string
+pools, the dependency table, ObjectSettings, the section table, the hash table,
+and the RotExpression / Material / JXG / Aim / SkinConstraint sections.  Anything it does *not* emit is silently dropped from the output while
 the corresponding header pointer and count are copied verbatim from the source
 file — leaving a dangling pointer into unrelated data.
 
@@ -37,13 +37,6 @@ def _count_truncated_sources(parser):
 def _count_cone_driver_info(parser):
     return sum(1 for c in parser.constraints
                if c.get('ConeDriverInfoCount', 0) or c.get('ConeDriverInfoOffset', 0))
-
-
-def _count_complex_mapping(parser):
-    """ComplexMappingInfo lives on each ConstraintSource_v2, not on the constraint."""
-    return sum(1 for c in parser.constraints
-               for s in c.get('sources', [])
-               if s.get('ComplexMappingInfoCount', 0) or s.get('ComplexMappingInfoOffset', 0))
 
 
 def _header_count(parser, field):
@@ -89,18 +82,8 @@ def check_exportable(parser):
             "却不会搬运它指向的数据。"
         )
 
-    n = _count_complex_mapping(parser)
-    if n:
-        problems.append(
-            f"{n} 个驱动源引用了 ComplexMappingInfo。写入器只会照抄原来的绝对偏移，"
-            "却不会搬运它指向的数据。"
-        )
-
     for field, label in (
         ('ConeDriverCount',           "ConeDriver 表"),
-        ('ObjectSettingCount',        "ObjectSettings 表"),
-        ('SkinConstraintCount',       "SkinConstraint 表"),
-        ('SkinConstraintSourceCount', "SkinConstraintSource 表"),
     ):
         count = _header_count(parser, field)
         if count:
@@ -109,15 +92,18 @@ def check_exportable(parser):
                 "却会原样复制它的头部指针 —— 导出的文件会指向无关数据。"
             )
 
-    # RotExpression / Aim are only reproduced from a freshly re-parsed source file
-    # (parser.rot_expressions / parser.aim_constraints) — nothing in Blender caches
-    # their actual content (only a read-only display Empty), so the stub builder
-    # used when the source file is missing always sets both to empty. That is
-    # correct for a file that never had any, but silent data loss for one that did.
+    # RotExpression / Aim / SkinConstraint / ObjectSettings are only reproduced from
+    # a freshly re-parsed source file — nothing in Blender caches their content
+    # (at most a read-only display Empty), so the stub builder used when the source
+    # file is missing leaves them empty. That is correct for a file that never had
+    # any, but silent data loss for one that did.  (ComplexMappingInfo is caught by
+    # the writer: its count survives in Blender, its data does not.)
     if getattr(parser, 'is_stub', False):
         for field, label in (
             ('RotExpressionInfoCount', "RotExpression 表"),
             ('AimConstraintCount',     "Aim 约束表"),
+            ('SkinConstraintCount',    "SkinConstraint 表"),
+            ('ObjectSettingCount',     "ObjectSettings 表"),
         ):
             count = _header_count(parser, field)
             if count:

@@ -384,3 +384,42 @@ DEPENDENCY = Struct('DependencyInfo', [
     F('Offset',             'Q'),
     F('SourceCount',        'Q'),
 ])
+
+# ComplexMappingInfo[ComplexMappingInfoCount], pointed to by a ConstraintSource_v2.
+# Shipped files always place it 16-aligned right after the source's name strings.
+COMPLEX_MAPPING = Struct('ComplexSrcMapping', [
+    F('FromX', 'f'), F('ToX', 'f'),
+    F('FromY', 'f'), F('ToY', 'f'),
+    F('FromZ', 'f'), F('ToZ', 'f'),
+    F('UnknownUInt32', 'I'),
+])
+
+# Section 0 ObjectSettings: 16-byte record + the hash its first field points to.
+OBJECT_SETTING = Struct('ObjectSettings', [
+    F('HashOffset',    'Q'),
+    F('UnkBytes',      '4s'),
+    F('UnknownDWORD',  'I'),
+])
+
+# Section 2.  One ConstraintSkin per skinned object:
+#   SourceListOffset -> SkinSource[SourceCount]  (8 bytes each)
+# From v35 a SkinSource names a SkinSourceInfo (hash-table index + u32); v29-v34
+# index a plain hash array instead; before v29 the hash is inline.
+SKIN = Struct('ConstraintSkin', [
+    F('SourceListOffset', 'Q'),
+    F('ObjectHashIndex',  'i', since(35)),
+    F('ObjectHash',       'I', before(35)),
+    F('SourceCount',      'B'),
+    F('Tail',             '3s'),
+])
+
+SKIN_SOURCE = Struct('SkinSource', [
+    F('SourceRef', 'I'),        # SkinSourceInfo index (v35+) / source-hash-array index (v29+) / hash
+    F('Weight',    'f'),
+])
+
+SKIN_SOURCE_INFO = Struct('ConstraintSkinSrcInfo', [
+    F('SourceHashIndex', 'i', since(35)),
+    F('UnknownUInt32',   'I', since(35)),
+    F('SourceHash',      'I', between(29, 35)),
+])

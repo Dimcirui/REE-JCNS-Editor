@@ -4,6 +4,7 @@ import sys
 
 from jcns_schema import (
     HEADER, CONSTRAINT_INFO, SOURCE_V2, AIM, AIM_TARGET, MATERIAL,
+    COMPLEX_MAPPING, OBJECT_SETTING, SKIN, SKIN_SOURCE, SKIN_SOURCE_INFO,
     source_struct, transform_axis_key,
 )
 from jcns_parser import header_field_offset
@@ -139,6 +140,13 @@ class JCNSWriter:
             if 0 <= old_idx < len(p.hash_list):
                 mc['JointHashIndex'] = _get_or_add_hash(p.hash_list[old_idx])
 
+        # SkinConstraint: the object and every source-info entry index the global
+        # hash list (carried over verbatim otherwise — see Phase 8f).
+        for sk in getattr(p, 'skin_constraints', []):
+            sk['ObjectHashIndex'] = _get_or_add_hash(sk['ObjectHash'])
+        for si in getattr(p, 'skin_source_infos', []):
+            si['SourceHashIndex'] = _get_or_add_hash(si['SourceHash'])
+
         def _dep_key(c, tgt_h):
             """Object hash the dependency table files a constraint under.
 
@@ -216,13 +224,35 @@ class JCNSWriter:
                 if len(name_blob) % 2:
                     name_blob.extend(b'\x00')
 
-            for s, abs_name in zip(srcs, name_offsets):
+            # ComplexMappingInfo arrays follow the names, each 16-aligned (as in
+            # every shipped file).  The count is taken from the data itself.
+            cm_blob = bytearray()
+            cm_offsets = []
+            cm_base = names_start + len(name_blob)
+            for s in srcs:
+                cm = s.get('ComplexMapping') or []
+                if len(cm) != s.get('ComplexMappingInfoCount', 0):
+                    raise ValueError(
+                        f"驱动源「{s.get('SourceName', '')}」的 ComplexMappingInfoCount="
+                        f"{s.get('ComplexMappingInfoCount', 0)}，但只有 {len(cm)} 条映射数据"
+                        "（复制来的驱动源不会带上原数据）。请把它改回 0 或恢复原驱动源。")
+                if not cm:
+                    cm_offsets.append(0)
+                    continue
+                cm_blob.extend(b'\x00' * (_align(cm_base + len(cm_blob), 16) - (cm_base + len(cm_blob))))
+                cm_offsets.append(cm_base + len(cm_blob))
+                for r in cm:
+                    cm_blob.extend(COMPLEX_MAPPING.pack(r, version))
+
+            for s, abs_name, cm_off in zip(srcs, name_offsets, cm_offsets):
                 rec = dict(_SOURCE_DEFAULTS)
                 rec.update({k: v for k, v in s.items() if not k.startswith('_')})
                 rec['SourceName_Offset'] = abs_name
+                rec['ComplexMappingInfoOffset'] = cm_off
                 src_blob.extend(SOURCE_V2.pack(rec, version))
 
             src_blob.extend(name_blob)
+            src_blob.extend(cm_blob)
             rem = (SRC_START + len(src_blob)) % 8
             if rem:
                 src_blob.extend(b'\x00' * (8 - rem))
@@ -299,8 +329,24 @@ class JCNSWriter:
             for h in srcs_h:
                 dep_data_blob.extend(struct.pack('<I', h))
 
+        # ── Phase 5b: ObjectSettings (last thing in Section 0) ─────────
+        # 16-byte records followed by the hashes they point at, as in the one
+        # shipped file that has any (it6017_0000_0).
+        obj_settings = getattr(p, 'object_settings', [])
+        N_OBJSET = len(obj_settings)
+        OBJSET_START = 0
+        objset_blob = bytearray()
+        if N_OBJSET:
+            OBJSET_START = _align(DEP_DATA_START + len(dep_data_blob), 16)
+            hashes_at = OBJSET_START + N_OBJSET * OBJECT_SETTING.size(version)
+            for i, os_rec in enumerate(obj_settings):
+                objset_blob.extend(OBJECT_SETTING.pack(dict(os_rec, HashOffset=hashes_at + 4 * i), version))
+            for os_rec in obj_settings:
+                objset_blob.extend(struct.pack('<I', os_rec['ObjectNameHash']))
+
         # ── Phase 6: build SectionTable ────────────────────────────────
-        SEC_TABLE_START = DEP_DATA_START + len(dep_data_blob)
+        SEC_TABLE_START = (OBJSET_START + len(objset_blob) if N_OBJSET
+                           else DEP_DATA_START + len(dep_data_blob))
         # Pad to 4-byte alignment
         rem = SEC_TABLE_START % 4
         if rem:
@@ -432,6 +478,47 @@ class JCNSWriter:
                 aim_blob.extend(AIM_TARGET.pack({'TargetHashIndex': ac['TargetHashIndex'],
                                                  'Body': ac['target_body']}, version))
 
+        # ── Phase 8f: build SkinConstraint section ──────────────────────
+        # Four tables, all carried over as parsed: the records, their weighted
+        # source lists, the shared source-info table, and (v36+) the raw-hash
+        # SkinConstraintHashTable.  Only the hash-list indices were remapped.
+        skins = getattr(p, 'skin_constraints', [])
+        skin_infos = getattr(p, 'skin_source_infos', [])
+        skin_hashes = getattr(p, 'skin_hash_table', [])
+        N_SKIN = len(skins)
+        SKIN_START = SKIN_INFO_START = SKIN_HASH_START = 0
+        skin_blob = bytearray()
+        if N_SKIN:
+            if N_AIM > 0:
+                _prev_end = AIM_SECTION_START + len(aim_blob)
+            elif jxg is not None:
+                _prev_end = JXG_START + len(jxg_blob)
+            elif N_MAT > 0:
+                _prev_end = MAT_START + len(mat_blob)
+            elif N_ROT > 0:
+                _prev_end = ROT_INFO_START + len(rot_blob)
+            else:
+                _prev_end = HASH_TABLE_START + len(hash_blob)
+            SKIN_START = _align(_prev_end, 16)
+            lists_at = SKIN_START + N_SKIN * SKIN.size(version)
+            lists = bytearray()
+            recs = bytearray()
+            for sk in skins:
+                recs.extend(SKIN.pack(dict(sk, SourceListOffset=lists_at + len(lists),
+                                           SourceCount=len(sk['sources'])), version))
+                for src in sk['sources']:
+                    lists.extend(SKIN_SOURCE.pack(src, version))
+            skin_blob.extend(recs + lists)
+            if skin_infos:
+                SKIN_INFO_START = _align(SKIN_START + len(skin_blob), 16)
+                skin_blob.extend(b'\x00' * (SKIN_INFO_START - SKIN_START - len(skin_blob)))
+                for si in skin_infos:
+                    skin_blob.extend(SKIN_SOURCE_INFO.pack(si, version))
+            if skin_hashes:
+                SKIN_HASH_START = _align(SKIN_START + len(skin_blob), 16)
+                skin_blob.extend(b'\x00' * (SKIN_HASH_START - SKIN_START - len(skin_blob)))
+                skin_blob.extend(struct.pack(f'<{len(skin_hashes)}I', *skin_hashes))
+
         # ── Phase 9: patch header ───────────────────────────────────────
         header = bytearray(orig[:CNS_INFO_START])
 
@@ -445,9 +532,9 @@ class JCNSWriter:
             'DependencyCount':      M,
         }
         # ObjectSettingEntry: when the count is 0 it marks Section 0's end boundary
-        obj_setting_count = hdr['ObjectSettingCount']
-        if obj_setting_count == 0:
-            patch['ObjectSettingEntry'] = SEC_TABLE_START
+        obj_setting_count = N_OBJSET
+        patch['ObjectSettingCount'] = N_OBJSET
+        patch['ObjectSettingEntry'] = OBJSET_START if N_OBJSET else SEC_TABLE_START
         if N_AIM > 0:
             patch['AimConstraintTableEntry'] = AIM_SECTION_START
         if N_ROT > 0:
@@ -461,6 +548,16 @@ class JCNSWriter:
             patch['MaterialConstraintInfoEntry'] = MAT_START
         if jxg is not None:
             patch['JointExportGraphInfoEntry'] = JXG_START
+        if N_SKIN:
+            patch['SkinConstraintTableEntry'] = SKIN_START
+            patch['SkinConstraintCount'] = N_SKIN
+            patch['SkinConstraintSourceCount'] = len(skin_infos)
+            if skin_infos:
+                patch['SkinConstraintSourceTableEntry'] = SKIN_INFO_START
+            if HEADER.has('SkinConstraintHashTableItemCount', version):
+                patch['SkinConstraintHashTableItemCount'] = len(skin_hashes)
+                if skin_hashes:
+                    patch['SkinConstraintHashTableEntry'] = SKIN_HASH_START
         HEADER.pack_into(header, hdr['DataEntry'], patch, version)
 
         # ── Phase 10: assemble ──────────────────────────────────────────
@@ -474,6 +571,9 @@ class JCNSWriter:
         out.extend(b'\x00' * DEP_PAD_SIZE)
         out.extend(dep_table_blob)                     # Dependency table
         out.extend(dep_data_blob)                      # Dependency hash pairs
+        if N_OBJSET:
+            _pad_to(out, OBJSET_START)
+            out.extend(objset_blob)                    # ObjectSettings + their hashes
         _pad_to(out, SEC_TABLE_START)
         out.extend(section_blob)                       # SectionTable
         _pad_to(out, HASH_TABLE_START)
@@ -490,12 +590,16 @@ class JCNSWriter:
         if N_AIM > 0:
             _pad_to(out, AIM_SECTION_START)
             out.extend(aim_blob)                       # Aim section
+        if N_SKIN:
+            _pad_to(out, SKIN_START)
+            out.extend(skin_blob)                      # SkinConstraint tables
 
         with open(self.filepath, 'wb') as f:
             f.write(out)
 
         print(f'[JCNS] Written {len(out)} bytes → {self.filepath}')
         parts = [f'Cns={N}', f'Aim={N_AIM}', f'RotExpr={N_ROT}', f'Mat={N_MAT}',
+                 f'Skin={N_SKIN}', f'ObjSet={N_OBJSET}',
                  f'JXG={1 if jxg else 0}', f'Dep={M}', f'Hash={len(new_hash_list)}']
         print(f'  {", ".join(parts)}')
         print(f'  SecTbl=0x{SEC_TABLE_START:X} DepTbl=0x{DEP_TABLE_START:X} HashTbl=0x{HASH_TABLE_START:X}')

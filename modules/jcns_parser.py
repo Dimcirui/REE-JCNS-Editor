@@ -5,6 +5,7 @@ import sys
 import jcns_schema as S
 from jcns_schema import (
     HEADER, CONSTRAINT_INFO, AIM, AIM_TARGET, MATERIAL, ROT_EXPRESSION,
+    COMPLEX_MAPPING, OBJECT_SETTING, SKIN, SKIN_SOURCE, SKIN_SOURCE_INFO,
     SUPPORTED_VERSIONS, VERSION_GAMES, source_struct, transform_axis_key,
     check_header_layout,
 )
@@ -220,6 +221,10 @@ class JCNSParser:
         self.rot_expression_map = b''
         self.material_cns       = []
         self.joint_export_graph = None
+        self.object_settings    = []
+        self.skin_constraints   = []
+        self.skin_source_infos  = []
+        self.skin_hash_table    = []
         self.header = read_header(data)
         print(f"Version: {self.version} ({VERSION_GAMES.get(self.version, '?')}), "
               f"write mode: {self.write_mode}")
@@ -229,6 +234,8 @@ class JCNSParser:
         self._parse_rot_expressions(data)
         self._parse_material_cns(data)
         self._parse_joint_export_graph(data)
+        self._parse_object_settings(data)
+        self._parse_skin_constraints(data)
         return self.constraints
 
     def _parse_hash_list(self, data):
@@ -314,7 +321,65 @@ class JCNSParser:
         s.setdefault('UnknownUInt16', 0)
         if v >= 35:
             s['SourceHash'] = self._hash_at(rec['SourceHashIndex'])
+        # ComplexMappingInfo[count]; the bt template aligns the pointer up to 16
+        # before reading, and every shipped pointer is already aligned.
+        s['ComplexMapping'] = []
+        n, cm_off = s['ComplexMappingInfoCount'], s['ComplexMappingInfoOffset']
+        if n and cm_off:
+            cm_off += (-cm_off) % 16
+            size = COMPLEX_MAPPING.size(v)
+            s['ComplexMapping'] = [COMPLEX_MAPPING.read(data, cm_off + k * size, v) for k in range(n)]
         return s
+
+    def _parse_object_settings(self, data):
+        """Section 0 ObjectSettings: 16-byte records, each pointing at one hash."""
+        v, h = self.version, self.header
+        n = h.get('ObjectSettingCount', 0)
+        self.object_settings = []
+        base = h.get('ObjectSettingEntry', 0)
+        if not n or not base:
+            return
+        size = OBJECT_SETTING.size(v)
+        for i in range(n):
+            rec = OBJECT_SETTING.read(data, base + i * size, v)
+            rec['ObjectNameHash'] = struct.unpack_from('<I', data, rec['HashOffset'])[0]
+            self.object_settings.append(rec)
+        print(f"Parsed {n} ObjectSetting(s)")
+
+    def _parse_skin_constraints(self, data):
+        """Section 2: SkinConstraint records, their weighted source lists, and (v29+)
+        the shared source table; from v36 also a raw-hash SkinConstraintHashTable."""
+        v, h = self.version, self.header
+        n = h.get('SkinConstraintCount', 0)
+        self.skin_constraints, self.skin_source_infos, self.skin_hash_table = [], [], []
+        if not n:
+            return
+        base, size = h['SkinConstraintTableEntry'], SKIN.size(v)
+        src_size = SKIN_SOURCE.size(v)
+        for i in range(n):
+            rec = SKIN.read(data, base + i * size, v)
+            rec['ObjectHash'] = (self._hash_at(rec['ObjectHashIndex']) if v >= 35
+                                 else rec['ObjectHash'])
+            rec['sources'] = [SKIN_SOURCE.read(data, rec['SourceListOffset'] + k * src_size, v)
+                              for k in range(rec['SourceCount'])]
+            self.skin_constraints.append(rec)
+
+        ns = h.get('SkinConstraintSourceCount', 0)
+        info_base = h.get('SkinConstraintSourceTableEntry', 0)
+        if ns and info_base and SKIN_SOURCE_INFO.size(v):
+            isz = SKIN_SOURCE_INFO.size(v)
+            for i in range(ns):
+                rec = SKIN_SOURCE_INFO.read(data, info_base + i * isz, v)
+                if v >= 35:
+                    rec['SourceHash'] = self._hash_at(rec['SourceHashIndex'])
+                self.skin_source_infos.append(rec)
+
+        k = h.get('SkinConstraintHashTableItemCount', 0)
+        if k and h.get('SkinConstraintHashTableEntry'):
+            self.skin_hash_table = list(struct.unpack_from(
+                f'<{k}I', data, h['SkinConstraintHashTableEntry']))
+        print(f"Parsed {n} SkinConstraint(s), {len(self.skin_source_infos)} source info, "
+              f"{len(self.skin_hash_table)} skin hash(es)")
 
     def _parse_rot_expressions(self, data):
         """Section 1.  From v35 two int32 hash-index arrays follow the info records."""

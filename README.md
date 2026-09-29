@@ -48,16 +48,20 @@ on the first data table), and a mismatch refuses the file rather than guessing.
 
 ## Supported Sections
 
-| ID | Section | Supported |
+| ID | Section | v102 rebuild |
 | --- | --- | --- |
-| 0 | Ranges | Yes (without ConeDrivers, which never appeared in armor jcns) |
-| 1 | Rotation Expressions | ❌️ |
-| 2 | Skin Constraints | ❌️  |
-| 3 | Aim Constraints | ❌️  |
-| 4 | Material Constraints | ❌️  |
-| 5 | Joint Export Graph | ❌️  |
+| 0 | Ranges (incl. ComplexMapping, ObjectSettings, Dependencies) | ✅️ Editable; ComplexMapping / ObjectSettings carried over. ConeDrivers are not rebuilt (none in the Wilds corpus) |
+| 1 | Rotation Expressions | ✅️ Carried over (read-only) |
+| 2 | Skin Constraints | ✅️ Carried over (read-only) |
+| 3 | Aim Constraints | ✅️ Carried over (read-only) |
+| 4 | Material Constraints | ✅️ Editable (raw hashes) |
+| 5 | Joint Export Graph | ✅️ Editable path |
 
-All unsupported sections will prevent the whole file from importing — see Export Safety Gate.
+"Carried over" means the section is parsed and re-emitted with its pointers and
+hash indices remapped, but has no editing UI yet. Every v102 file in the shipped
+Wilds corpus (1103) imports and survives a rebuild with identical content. A
+file with ConeDrivers is refused at import — see Export Safety Gate. In-place
+versions keep every section byte for byte.
 
 ## How Constraints Combine
 

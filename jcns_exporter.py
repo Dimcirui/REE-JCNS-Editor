@@ -102,6 +102,10 @@ def _build_stub_parser(root_props, empties):
     parser.is_stub = True
     # Non-Range sections are not cached — they will be absent from stub exports
     parser.aim_constraints    = []
+    parser.object_settings    = []
+    parser.skin_constraints   = []
+    parser.skin_source_infos  = []
+    parser.skin_hash_table    = []
     parser.rot_expressions    = []
     parser.rot_expression_map = b''
     parser.material_cns       = []
