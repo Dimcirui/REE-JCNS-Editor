@@ -52,8 +52,8 @@ on the first data table), and a mismatch refuses the file rather than guessing.
 | --- | --- | --- |
 | 0 | Ranges (incl. ComplexMapping, ObjectSettings, Dependencies) | ✅️ Editable, ComplexMapping keyframes included; ObjectSettings carried over. ConeDrivers are not rebuilt (none in the Wilds corpus) |
 | 1 | Rotation Expressions | ✅️ Structurally editable (add / delete / change bones and raw values) |
-| 2 | Skin Constraints | ✅️ Structurally editable; weights only in files with a SkinConstraintHashTable |
-| 3 | Aim Constraints | ✅️ Structurally editable (add / delete / change bones and raw values) |
+| 2 | Skin Constraints | ✅️ Structurally editable; files with a SkinConstraintHashTable need the target armature for bone changes |
+| 3 | Aim Constraints | ✅️ Structurally editable (add / delete / change bones and raw values); same armature rule as Skin |
 | 4 | Material Constraints | ✅️ Editable (raw hashes) |
 | 5 | Joint Export Graph | ✅️ Editable path |
 
@@ -64,10 +64,14 @@ indices, counts and the ComplexMapping flag byte. The rules were read off the
 whole shipped corpus (see `modules/jcns_sections.py`); what the raw values
 *mean* in-game is mostly unmeasured, so they are exposed as numbers.
 
-The one exception is SkinConstraintHashTable (42 files): it holds a subset of
-the sources in a different order, mixed with hashes from outside the file, so it
-cannot be regenerated. It is kept verbatim, and in those files only Skin weights
-can change.
+SkinConstraintHashTable (42 monster files; player and NPC files leave it empty)
+is shared by Skin and Aim and depends on the skeleton: it lists the joints whose
+world matrices those sections read — every Skin source and the parent of every
+joint they write — minus the written joints and minus any joint that is an
+ancestor of another one, sorted by hierarchy depth. That reproduces all 42
+shipped tables as sets. While the Skin/Aim bones are unchanged the table is kept
+verbatim; after a bone change it is re-derived from the root's target armature,
+and without one the export is refused (weights and Aim settings stay editable).
 
 Every v102 file in the shipped Wilds corpus (1103) imports and survives a
 rebuild with identical content. A file with ConeDrivers is refused at import —

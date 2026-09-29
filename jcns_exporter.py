@@ -142,13 +142,23 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
     meta = {'constant': root_props.skin_constant,
             'hash_table': [int.from_bytes(table[i:i + 4], 'little') for i in range(0, len(table), 4)]}
     locked = json.loads(root_props.skin_signature_json) if root_props.skin_signature_json else []
-    problems = X.skin_lock_problems(records, meta, locked)
+    # The table also covers the Aim joints, so it is resolved against both.
+    aim_joints = [H(o.jcns_cns_props.target_bone) for o in section_empties(root_obj, 'Aim')]
+    arm = root_props.target_armature
+    parent = names = None
+    if arm is not None and arm.type == 'ARMATURE':
+        parent = {H(b.name): (H(b.parent.name) if b.parent else None) for b in arm.data.bones}
+        names = {H(b.name): b.name for b in arm.data.bones}
+    table, problems = X.resolve_skin_hash_table(records, aim_joints, meta, locked, parent, names)
     if problems:
         return problems
     for w in X.skin_weight_warnings(records):
         print('[JCNS EXPORT] warning: ' + w)
     parser.skin_constraints, parser.skin_source_infos = X.skin_parser_form(records, meta)
-    parser.skin_hash_table = meta['hash_table']
+    if table != meta['hash_table']:
+        print('[JCNS EXPORT] SkinConstraintHashTable re-derived from the armature: %d -> %d joint(s)'
+              % (len(meta['hash_table']), len(table)))
+    parser.skin_hash_table = table
 
     # Aim
     aims = []

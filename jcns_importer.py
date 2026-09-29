@@ -288,9 +288,11 @@ def do_import(filepath, context, armature_obj=None):
         obj.name = section_empty_name('Skin', idx, p2)
     rp.skin_constant = sk_meta['constant']
     rp.skin_hash_table_hex = b''.join(h.to_bytes(4, 'little') for h in sk_meta['hash_table']).hex()
-    rp.skin_signature_json = json.dumps(skin_signature(sk_recs)) if sk_meta['hash_table'] else ''
+    aim_recs = aim_editable(parser)
+    rp.skin_signature_json = (json.dumps(skin_signature(sk_recs, [a['joint'] for a in aim_recs]))
+                              if sk_meta['hash_table'] else '')
 
-    for idx, a in enumerate(aim_editable(parser)):
+    for idx, a in enumerate(aim_recs):
         obj, p2 = _section_empty('Aim', idx, 'SPHERE', 0.03)
         p2.constraint_type = 'Aim'
         p2.target_bone = _nm(a['joint'])

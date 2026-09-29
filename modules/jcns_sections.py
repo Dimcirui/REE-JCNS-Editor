@@ -15,10 +15,19 @@ Derived data and the evidence for each rule (1103 shipped v102 files):
       with no repeated hash                                      (90/90 files)
     * the record tail byte and the source-info u32 are one per-file constant,
       usually 5                                                  (90/90)
-    * SkinConstraintHashTable is NOT derivable: in 31 of 42 files it holds a
-      subset of the sources in another order, interleaved with hashes that come
-      from outside the file.  It is kept verbatim, and a file that has one only
-      allows weight edits (see skin_lock_problems).
+    * SkinConstraintHashTable (shared with Aim despite its name) lists the
+      joints whose world matrices the Skin and Aim sections read: every skin
+      source, and the parent of every joint they write (a result computed in
+      world space has to be brought back into its parent's space).  Written
+      joints themselves are left out, and so is any joint that is an ancestor
+      of another listed one — walking up from the deepest ones covers it.  The
+      list is sorted by hierarchy depth.  Aim targets and up joints are not in
+      it.  Set 42/42, depth order 42/42; ties within a depth follow first use
+      in 23/42, the rest look like the authoring tool's container order, which
+      cannot matter since no two entries are related.  It needs the skeleton
+      (see derive_skin_hash_table).  Only monster rigs carry one: player and NPC
+      files with Skin or Aim sections leave it empty (0 of 65), so an empty
+      table stays empty.
   Aim
     * no derived data besides the target block; an unused up-joint is -1
       (180/277); the 12 tail bytes and the target block's 8 tail bytes are
@@ -80,20 +89,82 @@ def skin_parser_form(records, meta):
     return skins, infos
 
 
-def skin_signature(records):
-    """The structure that a SkinConstraintHashTable pins down: objects and their
-    source bones, in order — everything except the weights."""
-    return [[r['object'], [s['hash'] for s in r['sources']]] for r in records]
+def skin_signature(records, aim_joints=None):
+    """The structure a SkinConstraintHashTable depends on: skin objects and their
+    source bones in order, and the Aim joints — everything except weights and
+    the Aim's own settings.
+
+    Without `aim_joints` this is the older skin-only form, which .blend files
+    saved by earlier builds still hold.
+    """
+    skin = [[r['object'], [s['hash'] for s in r['sources']]] for r in records]
+    if aim_joints is None:
+        return skin
+    return {'skin': skin, 'aim': list(aim_joints)}
 
 
-def skin_lock_problems(records, meta, locked_signature):
-    """Refusals for a file whose SkinConstraintHashTable pins the structure."""
-    if not meta.get('hash_table'):
-        return []
-    if skin_signature(records) == locked_signature:
-        return []
-    return ["这个文件带 SkinConstraintHashTable（内容无法从其余数据推导），"
-            "只能修改 SkinConstraint 的权重；骨骼、条目和驱动源的增删与替换都会使它失效。"]
+def _structure_unchanged(locked, records, aim_joints):
+    if isinstance(locked, dict):
+        return locked == skin_signature(records, aim_joints)
+    # skin-only signature from an older import: Aim joints were never recorded
+    return locked == skin_signature(records)
+
+
+def derive_skin_hash_table(records, aim_joints, parent):
+    """(table, missing) from the Skin records, the Aim joints and the skeleton.
+
+    `parent` maps a joint hash to its parent's hash (None for a root).  Joints
+    the skeleton does not know are returned in `missing`, and the table is then
+    not trustworthy.  See the module docstring for the rule.
+    """
+    missing = []
+
+    def up(h):
+        if h not in parent:
+            if h not in missing:
+                missing.append(h)
+            return None
+        return parent[h]
+
+    written = {r['object'] for r in records}
+    wanted = [s['hash'] for r in records for s in r['sources']]
+    wanted += [up(r['object']) for r in records]
+    wanted += [up(j) for j in aim_joints]
+    need = []
+    for h in wanted:
+        if h is not None and h not in written and h not in need:
+            need.append(h)
+
+    ancestors, depth = set(), {}
+    for h in need:
+        d, q = 0, up(h)
+        while q is not None:
+            ancestors.add(q)
+            d += 1
+            q = up(q)
+        depth[h] = d
+    return sorted((h for h in need if h not in ancestors), key=depth.get), missing
+
+
+def resolve_skin_hash_table(records, aim_joints, meta, locked, parent=None, names=None):
+    """(table, problems) to export with.
+
+    A file without a table keeps none.  An unchanged structure keeps the shipped
+    table verbatim, including its order.  A changed one is re-derived when the
+    skeleton is available and refused when it is not.
+    """
+    orig = list(meta.get('hash_table') or [])
+    if not orig or _structure_unchanged(locked, records, aim_joints):
+        return orig, []
+    if parent is None:
+        return orig, ["这个文件带 SkinConstraintHashTable，它由 Skin/Aim 的骨骼按骨架层级推出；"
+                      "改动了 Skin 对象、源骨骼或 Aim 骨骼，需要先在根节点设置目标骨架才能重算。"]
+    table, missing = derive_skin_hash_table(records, aim_joints, parent)
+    if missing:
+        label = lambda h: (names or {}).get(h, f"0x{h:08X}")
+        return orig, ["重算 SkinConstraintHashTable 时目标骨架里找不到这些骨骼：%s"
+                      % "、".join(label(h) for h in missing[:8])]
+    return table, []
 
 
 def skin_weight_warnings(records, names=None):
