@@ -332,7 +332,7 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list):
                                        p.parent_vec4_z, p.parent_vec4_w)
     parsed_c['ParentFloat2']        = (p.parent_float2_x, p.parent_float2_y)
     parsed_c['ParentUInt8_72']      = p.parent_uint8_72
-    parsed_c['PropertyHash']        = p.property_hash
+    parsed_c['PropertyHash']        = p.property_hash & 0xFFFFFFFF
     parsed_c['ConeDriverInfoCount'] = p.cone_driver_info_count
     parsed_c['ParentTailBytes']     = bytes([
         p.parent_tail_0, p.parent_tail_1, p.parent_tail_2,

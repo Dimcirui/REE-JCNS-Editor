@@ -159,6 +159,10 @@ def _sync_constraint_name(self):
     p = getattr(obj, 'jcns_cns_props', None)
     if p is None or not p.is_jcns_constraint:
         return
+    # Aim / RotExpression / Material / JXG Empties keep their '[MatNN] …' style
+    # names: the exporter reads the entry order back out of them.
+    if p.constraint_type not in ('Ranges', ''):
+        return
     idx = 0
     if obj.name.startswith('['):
         try:
@@ -409,9 +413,11 @@ class JCNSConstraintProperties(PropertyGroup):
         name="UnknownUInt8 (+72)", description="ConstraintInfo byte at offset +72",
         default=0, min=0, max=255,
     )
+    # A uint32 hash in a signed IntProperty: values >= 2**31 are stored as their
+    # two's-complement negative (importer), and masked back on export.
     property_hash: IntProperty(
-        name="PropertyHash", description="bt: PropertyHash — usually 0",
-        default=0, min=0,
+        name="PropertyHash", description="bt: PropertyHash — usually 0 (uint32, shown signed)",
+        default=0,
     )
     cone_driver_info_count: IntProperty(
         name="ConeDriverInfoCount", description="bt: ConeDriverInfoCount — usually 0",

@@ -226,7 +226,8 @@ def do_import(filepath, context, armature_obj=None):
         f2                      = c.get('ParentFloat2', (0.0, 0.0))
         p.parent_float2_x, p.parent_float2_y = f2
         p.parent_uint8_72       = c.get('ParentUInt8_72', 0)
-        p.property_hash         = c.get('PropertyHash', 0)
+        ph                      = c.get('PropertyHash', 0) & 0xFFFFFFFF
+        p.property_hash         = ph - (1 << 32) if ph >= (1 << 31) else ph
         p.cone_driver_info_count = c.get('ConeDriverInfoCount', 0)
         tail = c.get('ParentTailBytes', b'\x00' * 6)
         p.parent_tail_0, p.parent_tail_1, p.parent_tail_2 = tail[0], tail[1], tail[2]
