@@ -17,8 +17,9 @@ bl_info = {
     "blender": (3, 6, 0),
     "location": "View3D > Sidebar > JCNS Editor | File > Import/Export",
     "description": (
-        "Import, edit, and export JCNS joint constraint files for Monster "
-        "Hunter Wilds (v102). Each imported file creates a green collection "
+        "Import, edit, and export RE Engine JCNS joint constraint files "
+        "(Monster Hunter Wilds v102 and every other JCNS version, older "
+        "versions editable in place). Each imported file creates a green collection "
         "with one Empty per constraint, each carrying its full list of "
         "driving sources."
     ),
@@ -501,7 +502,7 @@ class JCNSRootProperties(PropertyGroup):
     )
     cached_file_header: StringProperty(
         name="Cached File Header",
-        description="Base64 of first 0xF0 bytes of source file — allows export without the source file present",
+        description="Base64 of the source file's Tags block + DataInfo header — allows export without the source file present",
         default="",
     )
     cached_section_table: StringProperty(
@@ -518,6 +519,13 @@ class JCNSRootProperties(PropertyGroup):
     #
     # Both are fixed behaviour, so there is nothing left for the user to choose,
     # and leaving the enum in place would only invite mis-configuration.
+    source_version: IntProperty(
+        name="JCNS 版本",
+        description="Version number of the imported file (the .jcns.<N> suffix); 0 = imported by an older add-on",
+        default=0,
+    )
+    # Superseded by source_version; kept so files imported by 0.14 still export
+    # with the right suffix.
     detected_game: EnumProperty(
         name="游戏",
         description="Game this JCNS file belongs to (detected at import)",

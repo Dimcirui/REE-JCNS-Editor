@@ -44,6 +44,13 @@ def get_mirror():
     return _mirror
 
 
+def get_schema():
+    """modules/jcns_schema.py (version table, record layouts)."""
+    ensure_path()
+    import jcns_schema
+    return jcns_schema
+
+
 def get_flags():
     """modules/jcns_flags.py, imported once and cached."""
     global _flags

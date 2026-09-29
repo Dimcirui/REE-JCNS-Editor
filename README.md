@@ -15,13 +15,36 @@ so you can pose the rig and watch them work, and writes the file back.
 
 ## Supported Versions
 
-| JCNS Version | Game | Supported |
-| --- | --- | --- |
-| 102 | Monster Hunter Wilds (post-TU4) | ✅️ Yes |
-| 11–35 | RE2R/DMC5, RE3R, RE8, MHRise SB, RE4R/SF6, DD2, MH Wilds pre-TU4, RE9 | ❌️ No |
+| JCNS Version | Game | Export | Checked against real files |
+| --- | --- | --- | --- |
+| 102 | Monster Hunter Wilds (post-TU4) | ✅️ Full rebuild | ✅️ |
+| 36 | Onimusha: Way of the Sword | ✏️ In place | ✅️ |
+| 35 | RE9 / PRAGMATA / MH Stories 3 | ✏️ In place | ✅️ |
+| 29 | Monster Hunter Wilds (pre-TU4) | ✏️ In place | ✅️ |
+| 24 | Dragon's Dogma 2 | ✏️ In place | ⚠️ template only |
+| 22 | RE4R / SF6 | ✏️ In place | ✅️ |
+| 21 | MH Rise | ✏️ In place | ⚠️ template only |
+| 19 | RE2/RE3/RE7 ray-tracing updates | ✏️ In place | ⚠️ template only |
+| 16 | RE8 | ✏️ In place | ⚠️ template only |
+| 12 | RE3R | ✏️ In place | ⚠️ template only |
+| 11 | RE2R / DMC5 | ✏️ In place | ⚠️ template only |
 
-The parser has a v35 layout table and much of the code is version-aware, but only
-v102 is exercised and supported.
+Every record layout is declared once, per version, in `modules/jcns_schema.py`.
+
+**Full rebuild** (v102): add, delete and rename constraints and sources freely.
+
+**In place** (every other version): the original file is copied and each
+constraint / source / material record is re-packed at its own offset. Mapping
+values, axes, flags and the other per-record fields can be edited; the file's
+structure cannot (no adding or deleting constraints or sources, no renaming
+bones). Because nothing moves, sections the editor does not model — ConeDrivers,
+Skin Constraints, ObjectSettings, ComplexMapping — survive byte for byte, so
+these files never need to be refused at import. Export refuses structural edits
+with a list of what changed.
+
+Versions marked *template only* are parsed from RE_Engine_JCNS.bt and ReeLib's
+JcnsFile.cs alone. The header layout is self-checked on import (its end must land
+on the first data table), and a mismatch refuses the file rather than guessing.
 
 ## Supported Sections
 

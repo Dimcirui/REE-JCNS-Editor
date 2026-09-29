@@ -1,7 +1,7 @@
 """
 jcns_exporter.py
 ----------------
-Export operator for RE Engine JCNS v102 files.
+Export operator for RE Engine JCNS files (v102 rebuilt, other versions in place).
 
 Strategy:
   1. Detect the JCNS root Empty from the active object.
@@ -18,6 +18,10 @@ import bpy
 from bpy.props import StringProperty, BoolProperty
 from bpy.types import Operator
 from bpy_extras.io_utils import ExportHelper
+
+from .modules_shim import get_schema
+
+_SCHEMA = get_schema()
 
 
 # ---------------------------------------------------------------------------
@@ -65,33 +69,24 @@ def _build_stub_parser(root_props, empties):
         for s in p.sources:
             _add_name(s.source_bone)
 
-    # Reconstruct original_bytes stub: header block + section table at its offset
+    # Reconstruct original_bytes stub: header block + section table at its offset.
+    # The cached header is the Tags block plus the whole DataInfo table, so the
+    # real header reader works on it; check_exportable() then still sees e.g.
+    # SkinConstraintCount / AimConstraintCount without the source file.
+    from jcns_parser import read_header, write_mode
     tags = base64.b64decode(root_props.cached_file_header)
     sec_data = base64.b64decode(root_props.cached_section_table)
-    orig_sec_off = struct.unpack_from('<Q', tags, 0xB0)[0]
-    stub_size = max(0xF0, orig_sec_off + len(sec_data)) if orig_sec_off > 0 else 0xF0
+    try:
+        header = read_header(tags)
+    except (ValueError, struct.error):
+        header = {}   # cached header from an older add-on version — counts unknown
+    orig_sec_off = header.get('SectionTableEntry', 0)
+    head_len = max(len(tags), header.get('HeaderEnd', 0))
+    stub_size = max(head_len, orig_sec_off + len(sec_data)) if orig_sec_off > 0 else head_len
     stub = bytearray(stub_size)
     stub[:len(tags)] = tags
     if orig_sec_off > 0:
         stub[orig_sec_off : orig_sec_off + len(sec_data)] = sec_data
-
-    # Decode just the counts region of the cached header (Version + the
-    # version-specific counts_fields table) so check_exportable() can still see
-    # e.g. SkinConstraintCount/AimConstraintCount even without the source file.
-    # The DataEntry pointer chase that the real parser does isn't needed here —
-    # only skip it, don't guess at it.
-    from jcns_parser import LAYOUTS
-    header = {}
-    try:
-        version = struct.unpack_from('<I', tags, 0)[0]
-        layout = LAYOUTS.get(version)
-        if layout is not None:
-            header['Version'] = version
-            cb = layout['counts_base']
-            for field, (off, fmt) in layout['counts_fields'].items():
-                header[field] = struct.unpack_from(fmt, tags, cb + off)[0]
-    except struct.error:
-        header = {}   # cached header shorter than expected — leave counts unknown
 
     class _StubParser:
         pass
@@ -102,6 +97,8 @@ def _build_stub_parser(root_props, empties):
     parser.original_bytes = bytes(stub)
     parser.filepath = root_props.source_filepath
     parser.header = header
+    parser.version = header.get('Version', 102)
+    parser.write_mode = write_mode(parser.version)
     parser.is_stub = True
     # Non-Range sections are not cached — they will be absent from stub exports
     parser.aim_constraints    = []
@@ -133,8 +130,12 @@ def _sync_non_range_to_parser(root_obj, parser):
     from mmh3.pymmh3 import hashUTF16
 
     def _ensure_hash(name, hash_list):
-        """Return index of name's MurmurHash3 in hash_list, appending if missing."""
-        h = hashUTF16(name) & 0xFFFFFFFF
+        """Return index of name's MurmurHash3 in hash_list, appending if missing.
+
+        A bone the importer could not resolve is shown as its raw hash
+        ("0x1234ABCD"); that string is the hash itself, not a name to hash.
+        """
+        h = _name_to_hash(name)
         for i, v in enumerate(hash_list):
             if v == h:
                 return i
@@ -157,8 +158,12 @@ def _sync_non_range_to_parser(root_obj, parser):
          and o.jcns_cns_props.constraint_type == 'Material'),
         key=_mat_index)
 
+    # In-place versions write each entry back over its original record, so carry
+    # the original offset across by position.
+    orig_mats = list(getattr(parser, 'material_cns', []))
+
     mat_entries = []
-    for obj in mat_empties:
+    for i, obj in enumerate(mat_empties):
         p = obj.jcns_cns_props
         bone_name = p.target_bone.strip()
         joint_idx = _ensure_hash(bone_name, parser.hash_list) if bone_name else 0
@@ -177,17 +182,43 @@ def _sync_non_range_to_parser(root_obj, parser):
         raw[10] = p.mat_tail_1 & 0xFF
         raw[11] = p.mat_tail_2 & 0xFF
 
-        mat_entries.append({
+        entry = {
             'JointHashIndex': joint_idx,
             'JointHash':      parser.hash_list[joint_idx],
             'raw_body':       bytes(raw),
-        })
+        }
+        if i < len(orig_mats) and '_offset' in orig_mats[i]:
+            entry['_offset'] = orig_mats[i]['_offset']
+            entry['_orig_joint_hash'] = orig_mats[i]['_orig_joint_hash']
+        mat_entries.append(entry)
     parser.material_cns = mat_entries
 
     jxg_obj = next((o for o in root_obj.children
                      if getattr(o, 'jcns_cns_props', None)
                      and o.jcns_cns_props.constraint_type == 'JointExportGraph'), None)
-    parser.joint_export_graph = {'path': jxg_obj.jcns_cns_props.jxg_path} if jxg_obj else None
+    orig_jxg = getattr(parser, 'joint_export_graph', None) or {}
+    parser.joint_export_graph = ({'path': jxg_obj.jcns_cns_props.jxg_path,
+                                  '_orig_path': orig_jxg.get('_orig_path')}
+                                 if jxg_obj else None)
+
+
+def _name_to_hash(name):
+    """MurmurHash3 of a bone name, or the value itself for a "0x%08X" placeholder."""
+    import re
+    if re.fullmatch(r'0x[0-9A-Fa-f]{8}', name):
+        return int(name, 16)
+    hashing_dir = os.path.join(os.path.dirname(__file__), "modules", "hashing")
+    if hashing_dir not in sys.path:
+        sys.path.insert(0, hashing_dir)
+    from mmh3.pymmh3 import hashUTF16
+    return hashUTF16(name) & 0xFFFFFFFF
+
+
+def _root_version(rp):
+    """JCNS version of a root, falling back to the pre-0.15 detected_game enum."""
+    if rp.source_version:
+        return rp.source_version
+    return 35 if rp.detected_game == 'RE9' else 102
 
 
 _TRANSFORM_STR_TO_INT = {
@@ -321,7 +352,7 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
 
     filename_ext = ""
     filter_glob: StringProperty(
-        default="*.jcns.102;*.jcns.29;*.jcns.35",
+        default=_SCHEMA.FILE_GLOB,
         options={'HIDDEN'},
     )
     clean_hashes: BoolProperty(
@@ -338,11 +369,8 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
     def invoke(self, context, event):
         _, rp = _get_active_root(context)
         if rp:
-            # Dynamically set the auto-append extension based on detected game version
-            if rp.detected_game == 'RE9':
-                self.filename_ext = ".jcns.35"
-            else:
-                self.filename_ext = ".jcns.102"
+            # Auto-append the source file's own version suffix
+            self.filename_ext = f".jcns.{_root_version(rp)}"
 
             if rp.source_filepath:
                 self.filepath = bpy.path.abspath(rp.source_filepath)
@@ -401,7 +429,7 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
             parser = _build_stub_parser(root_props, empties)
 
         # --- Refuse to write a file the writer cannot faithfully reproduce ---
-        from jcns_validate import check_exportable, format_problems
+        from jcns_validate import check_exportable, check_in_place_edits, format_problems
         problems = check_exportable(parser)
         if problems:
             msg = format_problems(problems, os.path.basename(source_path))
@@ -427,6 +455,16 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
 
         # Sync editable JXG / Material empty values back into parser
         _sync_non_range_to_parser(root_obj, parser)
+
+        # In-place versions: values only — refuse structural edits up front, with
+        # the full list, instead of as a one-line write failure.
+        if parser.write_mode == 'inplace':
+            problems = check_in_place_edits(parser)
+            if problems:
+                msg = format_problems(problems, os.path.basename(source_path))
+                print("[JCNS EXPORT] " + msg)
+                self.report({'ERROR'}, msg.replace('\n', '  '))
+                return {'CANCELLED'}
 
         # --- MD5 before write (only if source file exists) ---
         md5_before = None

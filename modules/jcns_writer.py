@@ -1,7 +1,25 @@
 import struct
 import os
 import sys
-from jcns_parser import LAYOUTS
+
+from jcns_schema import (
+    HEADER, CONSTRAINT_INFO, SOURCE_V2, AIM, AIM_TARGET, MATERIAL,
+    source_struct, transform_axis_key,
+)
+from jcns_parser import header_field_offset
+
+
+# ConstraintInfo / ConstraintSource fields the in-place writer takes from the
+# edited dicts.  Everything else — pointers, hashes, hash indices, counts — is
+# re-packed from the original record, because in place the surrounding data
+# (strings, source arrays, hash table) does not move.
+INPLACE_CNS_FIELDS = ('Flags', 'TransformType', 'ParentVec4', 'ParentFloat2',
+                      'ParentUInt8_72', 'PropertyHash', 'ParentTailBytes')
+INPLACE_SRC_FIELDS = ('UpdateTiming', 'SrcTransformID', 'source_axis', 'UnkByte2',
+                      'UnknownUInt16', 'UnknownUInt32_2',
+                      'from_start', 'from_kink', 'from_end',
+                      'to_start', 'to_kink', 'to_end',
+                      'rest_quat_x', 'rest_quat_y', 'rest_quat_z', 'rest_quat_w')
 
 
 class JCNSWriter:
@@ -15,14 +33,17 @@ class JCNSWriter:
 
     def build_lossless(self, clean_hashes=False):
         """
-        Fully rebuild the JCNS v102 file, supporting:
-          - Changed source/target bone names (with hash lookup)
-          - Changed mapping values, axes, rest quaternion
-          - Added or deleted constraint blocks
-        All sections are rebuilt from scratch; only the 80-byte Tags block
-        (0x00..0x4F) and the static per-constraint fields are preserved
-        from the original.
+        Write the parser's (edited) constraints back to self.filepath.
+
+        v102 is fully rebuilt, supporting renamed bones, added/deleted
+        constraints and sources, and changed values; only the Tags block and the
+        static per-constraint fields are carried over from the original.
+
+        Every other version is written in place (see _build_in_place): values
+        change, structure does not.  clean_hashes has no effect there.
         """
+        if getattr(self.parser, 'write_mode', 'rebuild') == 'inplace':
+            return self._build_in_place()
         return self._build_full(clean_hashes)
 
     # ------------------------------------------------------------------
@@ -122,26 +143,19 @@ class JCNSWriter:
         N = len(p.constraints)
 
         version = struct.unpack_from('<I', orig, 0)[0]
-        layout  = LAYOUTS[version]
-        cb = layout['counts_base']
-        cf = layout['counts_fields']
+        hdr = p.header
+        if not hdr.get('DataEntry'):
+            # A parser-like object without a parsed header (the cached-header stub,
+            # scripts that assemble a skeleton): re-read it from the bytes.  The
+            # skeleton's pointers are not final yet, so skip the layout check.
+            from jcns_parser import read_header
+            hdr = read_header(orig, check_layout=False)
 
-        # ConstraintInfo start: fixed for v102, pointer-driven for v35
-        CNS_INFO_START = (layout['cns_info_start']
-                          if layout['cns_info_start'] is not None
-                          else p.header['ConstraintSetsStart'])
-        CNS_INFO_SIZE  = N * 80
-
-        # v35 passthrough: preserve inline blob verbatim (patching only editable fields)
-        if getattr(p, 'inline_blob', b''):
-            return self._build_inline_blob(orig, p, CNS_INFO_START, N)
-
-        # v35 with no Range constraints (e.g. Aim-only files): nothing editable, write orig
-        if version == 35 and N == 0:
-            with open(self.filepath, 'wb') as f:
-                f.write(orig)
-            print(f'[JCNS] Written {len(orig)} bytes → {self.filepath} (v35 pure passthrough, no Range constraints)')
-            return True
+        # ConstraintInfo starts right after the header, which ends 16-aligned.
+        CNS_INFO_START = hdr['HeaderEnd']
+        SRC_SIZE       = SOURCE_V2.size(version)
+        CNS_INFO_SIZE  = N * CONSTRAINT_INFO.size(version)
+        axis_key       = transform_axis_key(version)
 
         # ConstraintSource_v2 section starts right after ConstraintInfo,
         # padded to 16-byte boundary (80 is a multiple of 16, so no pad needed
@@ -178,7 +192,7 @@ class JCNSWriter:
             src_offsets.append(abs_base)
 
             # Name strings live after all the structs; compute their offsets first.
-            names_start = abs_base + 72 * len(srcs)
+            names_start = abs_base + SRC_SIZE * len(srcs)
             name_blob = bytearray()
             name_offsets = []
             for s in srcs:
@@ -188,28 +202,10 @@ class JCNSWriter:
                     name_blob.extend(b'\x00')
 
             for s, abs_name in zip(srcs, name_offsets):
-                block = bytearray(72)
-                struct.pack_into('<Q', block,  0, s.get('ComplexMappingInfoOffset', 0))
-                struct.pack_into('<Q', block,  8, abs_name)
-                struct.pack_into('<I', block, 16, s.get('SourceHashIndex', 0))
-                struct.pack_into('<H', block, 20, s.get('ComplexMappingInfoCount', 0))
-                struct.pack_into('<H', block, 22, s.get('UnknownUInt16', 0))
-                block[24] = s.get('UpdateTiming', 3)
-                block[25] = s.get('SrcTransformID', 3)
-                block[26] = s.get('source_axis', 0)   # bt: SourceAxis
-                block[27] = s.get('UnkByte2', 0)
-                struct.pack_into('<I', block, 28, s.get('UnknownUInt32_2', 0))
-                struct.pack_into('<f', block, 32, s.get('from_start',  0.0))
-                struct.pack_into('<f', block, 36, s.get('from_kink',   0.0))
-                struct.pack_into('<f', block, 40, s.get('from_end',    0.0))
-                struct.pack_into('<f', block, 44, s.get('to_start',    0.0))
-                struct.pack_into('<f', block, 48, s.get('to_kink',     0.0))
-                struct.pack_into('<f', block, 52, s.get('to_end',      0.0))
-                struct.pack_into('<f', block, 56, s.get('rest_quat_x', 0.0))
-                struct.pack_into('<f', block, 60, s.get('rest_quat_y', 0.0))
-                struct.pack_into('<f', block, 64, s.get('rest_quat_z', 0.0))
-                struct.pack_into('<f', block, 68, s.get('rest_quat_w', 1.0))
-                src_blob.extend(block)
+                rec = dict(_SOURCE_DEFAULTS)
+                rec.update({k: v for k, v in s.items() if not k.startswith('_')})
+                rec['SourceName_Offset'] = abs_name
+                src_blob.extend(SOURCE_V2.pack(rec, version))
 
             src_blob.extend(name_blob)
             rem = (SRC_START + len(src_blob)) % 8
@@ -287,9 +283,8 @@ class JCNSWriter:
         if rem:
             SEC_TABLE_START += (4 - rem)
 
-        sc_off, sc_fmt  = cf['SectionCount']
-        sec_count       = struct.unpack_from(sc_fmt, orig, cb + sc_off)[0]
-        orig_sec_off    = struct.unpack_from('<Q', orig, 0xB0)[0]  # original SectionTableEntry
+        sec_count       = hdr['SectionTableItemCount']
+        orig_sec_off    = hdr['SectionTableEntry']
         section_blob    = bytearray()
         for i in range(sec_count):
             st = struct.unpack_from('<I', orig, orig_sec_off + i * 4)[0]
@@ -304,8 +299,6 @@ class JCNSWriter:
         # ── Phase 8: build ConstraintInfo array ────────────────────────
         cns_info_blob = bytearray()
         for i, c in enumerate(p.constraints):
-            block = bytearray(80)
-
             tgt_name    = c.get('TargetBoneName', '')
             tgt_name_off = tgt_name_to_offset.get(tgt_name, 0)
             if _is_direct_hash(c):
@@ -315,28 +308,20 @@ class JCNSWriter:
                 tgt_h, tgt_idx = _get_or_add(tgt_name)
             src_v2_off   = src_offsets[i]
 
-            struct.pack_into('<Q', block,  0, c.get('ConeDriverInfoOffset', 0))
-            struct.pack_into('<Q', block,  8, src_v2_off)
-            struct.pack_into('<Q', block, 16, tgt_name_off)
-            struct.pack_into('<Q', block, 24, c.get('PropertyOffset', 0))
-            struct.pack_into('<I', block, 32, tgt_idx)          # TargetHashIndex
-            struct.pack_into('<I', block, 36, tgt_h)            # ObjectHash
-            struct.pack_into('<I', block, 40, c.get('PropertyHash', 0))
-            block[44] = c.get('ConeDriverInfoCount', 0)
-            # Derived from the source list, never copied — a stale SourceCount is
-            # exactly what made multi-source constraints read past their own data.
-            block[45] = len(c.get('sources', []))
-            block[46] = c.get('Flags', 0x30)
-            block[47] = c.get('TransformType', 1)
-            vec4 = c.get('ParentVec4', (0.0, 0.0, 0.0, 1.0))
-            struct.pack_into('<4f', block, 48, *vec4)
-            f2 = c.get('ParentFloat2', (0.0, 0.0))
-            struct.pack_into('<2f', block, 64, *f2)
-            block[72] = c.get('ParentUInt8_72', 0)
-            block[73] = c.get('TransformAxis_parent', 0)
-            block[74:80] = bytes(c.get('ParentTailBytes', b'\x00' * 6))
-
-            cns_info_blob.extend(block)
+            rec = dict(_CNS_DEFAULTS)
+            rec.update({k: v for k, v in c.items() if not k.startswith('_')})
+            rec.update({
+                'LimitsPointer':        src_v2_off,
+                'TargetBoneNameOffset': tgt_name_off,
+                'TargetHashIndex':      tgt_idx,
+                'ObjectHash':           tgt_h,
+                # Derived from the source list, never copied — a stale SourceCount is
+                # exactly what made multi-source constraints read past their own data.
+                'SourceCount_parent':   len(c.get('sources', [])),
+                axis_key:               c.get('TransformAxis_parent', 0),
+            })
+            rec['ParentTailBytes'] = bytes(rec['ParentTailBytes'])
+            cns_info_blob.extend(CONSTRAINT_INFO.pack(rec, version))
 
         # ── Phase 8b: build RotExpression section ───────────────────────
         rot_list = getattr(p, 'rot_expressions', [])
@@ -407,58 +392,55 @@ class JCNSWriter:
             else:
                 _prev_end = HASH_TABLE_START + len(hash_blob)
             AIM_SECTION_START = _align(_prev_end, 16)
-            aim_target_base = AIM_SECTION_START + N_AIM * 80
+            aim_size, tgt_size = AIM.size(version), AIM_TARGET.size(version)
+            aim_target_base = AIM_SECTION_START + N_AIM * aim_size
             for i, ac in enumerate(aim_list):
-                tgt_abs = aim_target_base + i * 16
-                aim_blob.extend(struct.pack('<Q', tgt_abs))  # offset pointer (8 bytes)
-                aim_blob.extend(ac['inline_body'])            # 72 bytes
+                # inline_body is the original record minus its pointer; the two
+                # hash indices at its head were remapped in Phase 1, so pack them
+                # over it rather than copying the stale ones.
+                body = bytearray(struct.pack('<Q', aim_target_base + i * tgt_size)
+                                 + ac['inline_body'])
+                AIM.pack_into(body, 0, {'JointHashIndex':    ac['JointHashIndex'],
+                                        'UnkJointHashIndex': ac['UnkJointHashIndex']}, version)
+                aim_blob.extend(body)
             for ac in aim_list:
-                aim_blob.extend(struct.pack('<i', ac['TargetHashIndex']))  # 4 bytes
-                aim_blob.extend(ac['target_body'])                         # 12 bytes
+                aim_blob.extend(AIM_TARGET.pack({'TargetHashIndex': ac['TargetHashIndex'],
+                                                 'Body': ac['target_body']}, version))
 
         # ── Phase 9: patch header ───────────────────────────────────────
         header = bytearray(orig[:CNS_INFO_START])
 
-        def _patch_count(name, value):
-            off, fmt = cf[name]
-            struct.pack_into(fmt, header, cb + off, value)
-
-        # DataEntry pointers (same absolute offsets for all supported versions)
-        struct.pack_into('<Q', header, 0xB8, DEP_TABLE_START)
-        struct.pack_into('<Q', header, 0xB0, SEC_TABLE_START)
-        struct.pack_into('<Q', header, 0xC0, HASH_TABLE_START)
-        struct.pack_into('<Q', header, 0x58, CNS_INFO_START)  # ConstraintInfoEntry
-
-        # ObjectSettingEntry (0x60): when count==0 it marks Section 0 end boundary
-        os_off, os_fmt    = cf['ObjectSettingCount']
-        obj_setting_count = struct.unpack_from(os_fmt, orig, cb + os_off)[0]
+        patch = {
+            'DependencyTableEntry': DEP_TABLE_START,
+            'SectionTableEntry':    SEC_TABLE_START,
+            'HashListOffset':       HASH_TABLE_START,
+            'ConstraintInfoEntry':  CNS_INFO_START,
+            'HashCount':            len(new_hash_list),
+            'ConstraintCount':      N,
+            'DependencyCount':      M,
+        }
+        # ObjectSettingEntry: when the count is 0 it marks Section 0's end boundary
+        obj_setting_count = hdr['ObjectSettingCount']
         if obj_setting_count == 0:
-            struct.pack_into('<Q', header, 0x60, SEC_TABLE_START)
-
-        # Counts — version-aware via layout dict
-        _patch_count('HashCount',       len(new_hash_list))
-        _patch_count('ConstraintCount', N)
-        _patch_count('DependencyCount', M)
-
-        # AimConstraintTableEntry (0x98)
+            patch['ObjectSettingEntry'] = SEC_TABLE_START
         if N_AIM > 0:
-            struct.pack_into('<Q', header, 0x98, AIM_SECTION_START)
-        # RotExpression sub-section offsets (0x68, 0x70, 0x78, 0x80)
+            patch['AimConstraintTableEntry'] = AIM_SECTION_START
         if N_ROT > 0:
-            struct.pack_into('<Q', header, 0x68, ROT_INFO_START)
-            struct.pack_into('<Q', header, 0x70, ROT_MAP_START)
-            struct.pack_into('<Q', header, 0x78, ROT_SRC_IDX_START)
-            struct.pack_into('<Q', header, 0x80, ROT_JNT_IDX_START)
-        # MaterialConstraintInfoEntry (0xA0)
+            patch.update({
+                'RotExpressionInfoEntry':              ROT_INFO_START,
+                'RotExpressionMapEntry':               ROT_MAP_START,
+                'RotExpressionSourceHashIndicesEntry': ROT_SRC_IDX_START,
+                'RotExpressionHashIndicesEntry':       ROT_JNT_IDX_START,
+            })
         if N_MAT > 0:
-            struct.pack_into('<Q', header, 0xA0, MAT_START)
-        # JointExportGraphInfoEntry (0xA8)
+            patch['MaterialConstraintInfoEntry'] = MAT_START
         if jxg is not None:
-            struct.pack_into('<Q', header, 0xA8, JXG_START)
+            patch['JointExportGraphInfoEntry'] = JXG_START
+        HEADER.pack_into(header, hdr['DataEntry'], patch, version)
 
         # ── Phase 10: assemble ──────────────────────────────────────────
         out = bytearray()
-        out.extend(header)                             # 0x00..0xEF
+        out.extend(header)                             # Tags + DataInfo header
         out.extend(cns_info_blob)                      # ConstraintInfo[]
         _pad_to(out, SRC_START)
         out.extend(src_blob)                           # Source_v2 + source WStrings
@@ -497,86 +479,65 @@ class JCNSWriter:
         return True
 
 
-    def _build_inline_blob(self, orig, p, CNS_INFO_START, N):
+    def _build_in_place(self):
         """
-        v35 passthrough: preserve the inline blob (ConeDriverInfo + Source_v2 structs +
-        embedded WStrings + gap data) verbatim, patching only the editable Source_v2 fields
-        (mapping floats, axes, rest_quat, raw source bytes).  Hash list and all pointers are
-        kept from the original file, so the output is byte-identical to the source except
-        for fields the user changed.
+        Every version except v102: copy the original file and re-pack each
+        ConstraintInfo / ConstraintSource / MatCnsInfo record at its original
+        offset.  Pointers, hashes and hash indices come from the original record,
+        so the file layout is untouched and every section this editor does not
+        model (ConeDrivers, SkinConstraints, ObjectSettings, ComplexMapping ...)
+        survives byte for byte.  Structural edits are refused beforehand by
+        jcns_validate.check_in_place_edits().
         """
-        cns_end   = p.inline_blob_cns_end   # = original CNS_INFO_START + original_N * 80
-        dep_start = p.header['DependencyTableEntry']
+        from jcns_validate import check_in_place_edits, format_problems
+        p = self.parser
+        problems = check_in_place_edits(p)
+        if problems:
+            raise ValueError(format_problems(problems, os.path.basename(p.filepath)))
 
-        orig_cns_count = (cns_end - CNS_INFO_START) // 80
+        v = p.version
+        out = bytearray(p.original_bytes)
+        axis_key = transform_axis_key(v)
+        src_struct = source_struct(v)
 
-        # ── Patch Source_v2 editable fields in-place ────────────────────
-        patched_blob = bytearray(p.inline_blob)
         for c in p.constraints:
-            src_ptr = c.get('LimitsPointer', 0)
-            if src_ptr == 0:
-                continue
-            for k, s in enumerate(c.get('sources', [])):
-                off = (src_ptr - cns_end) + k * 72
-                if off < 0 or off + 72 > len(patched_blob):
-                    continue
-                patched_blob[off + 24] = s.get('UpdateTiming', 3)
-                patched_blob[off + 25] = s.get('SrcTransformID', 3)
-                patched_blob[off + 26] = s.get('source_axis', 0)
-                patched_blob[off + 27] = s.get('UnkByte2', 0)
-                struct.pack_into('<I', patched_blob, off + 28, s.get('UnknownUInt32_2', 0))
-                struct.pack_into('<f', patched_blob, off + 32, s.get('from_start',  0.0))
-                struct.pack_into('<f', patched_blob, off + 36, s.get('from_kink',   0.0))
-                struct.pack_into('<f', patched_blob, off + 40, s.get('from_end',    0.0))
-                struct.pack_into('<f', patched_blob, off + 44, s.get('to_start',    0.0))
-                struct.pack_into('<f', patched_blob, off + 48, s.get('to_kink',     0.0))
-                struct.pack_into('<f', patched_blob, off + 52, s.get('to_end',      0.0))
-                struct.pack_into('<f', patched_blob, off + 56, s.get('rest_quat_x', 0.0))
-                struct.pack_into('<f', patched_blob, off + 60, s.get('rest_quat_y', 0.0))
-                struct.pack_into('<f', patched_blob, off + 64, s.get('rest_quat_z', 0.0))
-                struct.pack_into('<f', patched_blob, off + 68, s.get('rest_quat_w', 1.0))
+            rec = dict(c['_rec'])
+            rec.update({k: c[k] for k in INPLACE_CNS_FIELDS if k in rec and k in c})
+            rec[axis_key] = c.get('TransformAxis_parent', rec[axis_key])
+            if 'ParentTailBytes' in rec:
+                rec['ParentTailBytes'] = bytes(rec['ParentTailBytes'])
+            CONSTRAINT_INFO.pack_into(out, c['ParentSetOffset'], rec, v)
+            for s in c['sources']:
+                srec = dict(s['_rec'])
+                srec.update({k: s[k] for k in INPLACE_SRC_FIELDS if k in srec and k in s})
+                src_struct.pack_into(out, s['_offset'], srec, v)
 
-        # ── Rebuild ConstraintInfo with original pointers/hashes ────────
-        cns_info_blob = bytearray()
-        for c in p.constraints:
-            block = bytearray(80)
-            struct.pack_into('<Q', block,  0, c.get('ConeDriverInfoOffset', 0))
-            struct.pack_into('<Q', block,  8, c.get('LimitsPointer', 0))
-            struct.pack_into('<Q', block, 16, c.get('TargetBoneNameOffset', 0))
-            struct.pack_into('<Q', block, 24, c.get('PropertyOffset', 0))
-            struct.pack_into('<I', block, 32, c.get('TargetHashIndex', 0))
-            struct.pack_into('<I', block, 36, c.get('ObjectHash', 0))
-            struct.pack_into('<I', block, 40, c.get('PropertyHash', 0))
-            block[44] = c.get('ConeDriverInfoCount', 0)
-            block[45] = len(c.get('sources', []))
-            block[46] = c.get('Flags', 0x30)
-            block[47] = c.get('TransformType', 1)
-            vec4 = c.get('ParentVec4', (0.0, 0.0, 0.0, 1.0))
-            struct.pack_into('<4f', block, 48, *vec4)
-            f2 = c.get('ParentFloat2', (0.0, 0.0))
-            struct.pack_into('<2f', block, 64, *f2)
-            block[72] = c.get('ParentUInt8_72', 0)
-            block[73] = c.get('TransformAxis_parent', 0)
-            block[74:80] = bytes(c.get('ParentTailBytes', b'\x00' * 6))
-            cns_info_blob.extend(block)
-
-        # ── Minimal header: copy original, patch ConstraintInfoEntry ptr ─
-        header = bytearray(orig[:CNS_INFO_START])
-        struct.pack_into('<Q', header, 0x58, CNS_INFO_START)
-
-        # ── Assemble ────────────────────────────────────────────────────
-        out = bytearray()
-        out.extend(header)
-        out.extend(cns_info_blob)
-        out.extend(patched_blob)
-        out.extend(orig[dep_start:])   # dep table, sec table, hash table, all other sections
+        for mc in p.material_cns:
+            MATERIAL.pack_into(out, mc['_offset'], {'Body': bytes(mc['raw_body'])}, v)
 
         with open(self.filepath, 'wb') as f:
             f.write(out)
-
-        print(f'[JCNS] Written {len(out)} bytes → {self.filepath} (v35 inline_blob passthrough)')
-        print(f'  Cns={N}, blob={len(patched_blob)} bytes, suffix={len(orig)-dep_start} bytes')
+        n_src = sum(len(c['sources']) for c in p.constraints)
+        print(f'[JCNS] Written {len(out)} bytes → {self.filepath} '
+              f'(v{v} in place: Cns={len(p.constraints)}, Src={n_src}, Mat={len(p.material_cns)})')
         return True
+
+
+# Defaults for fields a newly created constraint / source has no value for.
+_CNS_DEFAULTS = {
+    'ConeDriverInfoOffset': 0, 'PropertyOffset': 0, 'PropertyHash': 0,
+    'ConeDriverInfoCount': 0, 'Flags': 0x30, 'TransformType': 1,
+    'ParentVec4': (0.0, 0.0, 0.0, 1.0), 'ParentFloat2': (0.0, 0.0),
+    'ParentUInt8_72': 0, 'ParentTailBytes': bytes(6),
+}
+_SOURCE_DEFAULTS = {
+    'ComplexMappingInfoOffset': 0, 'SourceHashIndex': 0, 'ComplexMappingInfoCount': 0,
+    'UnknownUInt16': 0, 'UpdateTiming': 3, 'SrcTransformID': 3, 'source_axis': 0,
+    'UnkByte2': 0, 'UnknownUInt32_2': 0,
+    'from_start': 0.0, 'from_kink': 0.0, 'from_end': 0.0,
+    'to_start': 0.0, 'to_kink': 0.0, 'to_end': 0.0,
+    'rest_quat_x': 0.0, 'rest_quat_y': 0.0, 'rest_quat_z': 0.0, 'rest_quat_w': 1.0,
+}
 
 
 # ── Utilities ────────────────────────────────────────────────────────────

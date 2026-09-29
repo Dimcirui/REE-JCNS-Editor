@@ -1,7 +1,7 @@
 """
 jcns_importer.py
 ----------------
-Import operator for RE Engine JCNS v102 files.
+Import operator for RE Engine JCNS files (every version in jcns_schema).
 
 Creates a green collection (JCNS_<filename>) containing:
   - One root Empty (PLAIN_AXES) with JCNSRootProperties
@@ -16,6 +16,10 @@ import bpy
 from bpy.props import StringProperty, BoolProperty, EnumProperty
 from bpy.types import Operator
 from bpy_extras.io_utils import ImportHelper
+
+from .modules_shim import get_schema
+
+_SCHEMA = get_schema()
 
 
 # ---------------------------------------------------------------------------
@@ -68,9 +72,12 @@ def _build_hash_dict(armature_obj):
 
 def _strip_ext(filename):
     """Strip JCNS version suffixes: 'foo.jcns.102' → 'foo'."""
-    for ext in ('.102', '.29', '.35', '.jcns'):
-        if filename.endswith(ext):
-            filename = filename[:-len(ext)]
+    for v in _SCHEMA.SUPPORTED_VERSIONS:
+        if filename.endswith(f'.{v}'):
+            filename = filename[:-len(f'.{v}')]
+            break
+    if filename.endswith('.jcns'):
+        filename = filename[:-len('.jcns')]
     return filename
 
 
@@ -130,23 +137,17 @@ def do_import(filepath, context, armature_obj=None):
     if armature_obj:
         root.jcns_root_props.target_armature = armature_obj
 
-    # Detected game / version
-    from jcns_parser import VERSION_GAME_MAP
-    root.jcns_root_props.detected_game = VERSION_GAME_MAP.get(
-        parser.header.get('Version', 102), 'MHW_WILDS'
-    )
+    # Detected version (drives the export extension and the in-place hint)
+    root.jcns_root_props.source_version = parser.version
 
-    # Cache structural data needed for export without source file
-    import base64, struct as _struct
+    # Cache structural data needed for export without source file (Tags block +
+    # DataInfo header, and the section table)
+    import base64
     raw = parser.original_bytes
-    cns_info_start = parser.header.get('ConstraintSetsStart', 0xF0)
-    root.jcns_root_props.cached_file_header = base64.b64encode(raw[:cns_info_start]).decode('ascii')
-    orig_sec_off = _struct.unpack_from('<Q', raw, 0xB0)[0]
-    layout = parser.header.get('layout', {})
-    cb = layout.get('counts_base', 0xD0)
-    cf = layout.get('counts_fields', {'SectionCount': (0x1A, '<B')})
-    sc_off, sc_fmt = cf['SectionCount']
-    sec_count = _struct.unpack_from(sc_fmt, raw, cb + sc_off)[0]
+    root.jcns_root_props.cached_file_header = base64.b64encode(
+        raw[:parser.header['HeaderEnd']]).decode('ascii')
+    orig_sec_off = parser.header.get('SectionTableEntry', 0)
+    sec_count = parser.header.get('SectionTableItemCount', 0)
     if orig_sec_off > 0 and orig_sec_off + sec_count * 4 <= len(raw):
         sec_data = raw[orig_sec_off : orig_sec_off + sec_count * 4]
     else:
@@ -316,11 +317,11 @@ def do_import(filepath, context, armature_obj=None):
 class JCNS_OT_ImportFile(Operator, ImportHelper):
     """Import a RE Engine JCNS joint constraint file and build an annotated collection"""
     bl_idname = "jcns.import_file"
-    bl_label  = "RE Engine JCNS (.jcns.102)"
+    bl_label  = "RE Engine JCNS (.jcns.*)"
     bl_options = {'REGISTER', 'UNDO'}
 
     filter_glob: StringProperty(
-        default="*.jcns.102;*.jcns.29;*.jcns.35",
+        default=_SCHEMA.FILE_GLOB,
         options={'HIDDEN'},
     )
 
@@ -391,7 +392,7 @@ class JCNS_FH_ImportFile(bpy.types.FileHandler):
     bl_idname = "JCNS_FH_import_file"
     bl_label = "RE Engine JCNS"
     bl_import_operator = "jcns.import_file"
-    bl_file_extensions = ".102;.29;.35"
+    bl_file_extensions = _SCHEMA.FILE_EXTENSIONS
 
     @classmethod
     def poll_drop(cls, context):
@@ -403,7 +404,7 @@ class JCNS_FH_ImportFile(bpy.types.FileHandler):
 # ---------------------------------------------------------------------------
 
 def _menu_import(self, context):
-    self.layout.operator(JCNS_OT_ImportFile.bl_idname, text="RE Engine JCNS (.jcns.102)")
+    self.layout.operator(JCNS_OT_ImportFile.bl_idname, text="RE Engine JCNS (.jcns.*)")
 
 
 # ---------------------------------------------------------------------------

@@ -224,6 +224,22 @@ class JCNS_PT_Status(Panel):
 # 根节点面板
 # ---------------------------------------------------------------------------
 
+def _draw_version_note(layout, rp):
+    """File version, and for in-place versions what export can and cannot do."""
+    from .modules_shim import get_schema
+    from .jcns_exporter import _root_version
+    schema = get_schema()
+    from jcns_parser import write_mode        # modules/ is on sys.path after get_schema()
+    v = _root_version(rp)
+    col = layout.column(align=True)
+    col.label(text=f"v{v} · {schema.VERSION_GAMES.get(v, '未知游戏')}", icon='INFO')
+    if v not in schema.VERIFIED_VERSIONS:
+        col.label(text="该版本布局未经实际文件验证", icon='ERROR')
+    if write_mode(v) == 'inplace':
+        col.label(text="只能就地修改数值：")
+        col.label(text="不能增删约束/驱动源，不能改骨骼名")
+
+
 class JCNS_PT_Root(Panel):
     bl_label    = "JCNS 文件"
     bl_idname   = "JCNS_PT_root"
@@ -243,6 +259,7 @@ class JCNS_PT_Root(Panel):
 
         box = layout.box()
         box.label(text=rp.source_filepath.replace('\\', '/').split('/')[-1], icon='FILE')
+        _draw_version_note(box, rp)
 
         layout.separator()
         box = layout.box()

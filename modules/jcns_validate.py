@@ -55,9 +55,19 @@ def check_exportable(parser):
     Return a list of human-readable problem descriptions.  Empty list == safe to export.
 
     Every check here corresponds to a structure that is present in the source file
-    but would be lost or corrupted by JCNSWriter.build_lossless().
+    but would be lost or corrupted by JCNSWriter.build_lossless().  The in-place
+    writer (every version but v102) keeps all bytes it does not re-pack, so the
+    "section not reproduced" checks only apply to the rebuild writer.
     """
     problems = []
+    in_place = getattr(parser, 'write_mode', 'rebuild') == 'inplace'
+
+    if in_place and getattr(parser, 'is_stub', False):
+        problems.append(
+            f"v{parser.header.get('Version', '?')} 只能在原文件上就地回写，"
+            "但源文件已找不到。请找回源文件后再导出。"
+        )
+        return problems
 
     n = _count_truncated_sources(parser)
     if n:
@@ -68,6 +78,9 @@ def check_exportable(parser):
             f"{'、'.join(names)}。该文件本身已损坏（SourceCount 超出可用数据），"
             "导出会静默丢失缺失的驱动源。"
         )
+
+    if in_place:
+        return problems
 
     n = _count_cone_driver_info(parser)
     if n:
@@ -114,6 +127,58 @@ def check_exportable(parser):
                     "整段丢失且不会报错。请找回源文件后再导出。"
                 )
 
+    return problems
+
+
+def check_in_place_edits(parser):
+    """
+    For in-place versions: the edits the writer cannot express without moving
+    data.  Call after the exporter has patched parser.constraints.  Empty == OK.
+
+    Only values change in place; the constraint list, each constraint's source
+    list, every bone name and the material/JXG entries must match the original
+    file one-to-one (the parser tags each record with its origin: `_rec`,
+    `_orig_target_name`, `_orig_name`, `_offset`).
+    """
+    problems = []
+    v = parser.header.get('Version', '?')
+    head = f"v{v} 只支持就地修改数值"
+    orig_n = parser.header.get('ConstraintCount', 0)
+
+    cns = parser.constraints
+    if len(cns) != orig_n or any('_rec' not in c for c in cns):
+        problems.append(f"{head}：约束数量从 {orig_n} 变成了 {len(cns)}（不能新增或删除约束）。")
+        return problems
+
+    for i, c in enumerate(cns):
+        label = c.get('_orig_target_name') or f'#{i}'
+        if c.get('TargetBoneName', '') != c.get('_orig_target_name', ''):
+            problems.append(f"{head}：约束 {label} 的目标骨骼被改成了 "
+                            f"「{c.get('TargetBoneName', '')}」（不能改名）。")
+        srcs = c.get('sources', [])
+        if len(srcs) != c['_rec']['SourceCount_parent'] or any('_rec' not in s for s in srcs):
+            problems.append(f"{head}：约束 {label} 的驱动源数量变了（不能增删驱动源）。")
+            continue
+        for s in srcs:
+            if s.get('SourceName', '') != s.get('_orig_name', ''):
+                problems.append(f"{head}：约束 {label} 的驱动源「{s.get('_orig_name', '')}」"
+                                f"被改成了「{s.get('SourceName', '')}」（不能改名）。")
+            if s.get('ComplexMappingInfoCount', 0) != s['_rec'].get('ComplexMappingInfoCount', 0):
+                problems.append(f"{head}：约束 {label} 的 ComplexMappingInfoCount 变了。")
+
+    mats = getattr(parser, 'material_cns', [])
+    orig_mats = parser.header.get('MaterialConstraintInfoCount', 0)
+    if len(mats) != orig_mats or any('_offset' not in m for m in mats):
+        problems.append(f"{head}：材质约束数量从 {orig_mats} 变成了 {len(mats)}。")
+    else:
+        for i, m in enumerate(mats):
+            if m.get('JointHash') != m.get('_orig_joint_hash'):
+                problems.append(f"{head}：材质约束 #{i} 的骨骼被改了（不能改骨骼）。")
+
+    jxg = getattr(parser, 'joint_export_graph', None)
+    had_jxg = bool(parser.header.get('JointExportGraphInfoEntry', 0))
+    if (jxg is not None) != had_jxg or (jxg and jxg.get('path') != jxg.get('_orig_path')):
+        problems.append(f"{head}：JointExportGraph 路径不能修改。")
     return problems
 
 
