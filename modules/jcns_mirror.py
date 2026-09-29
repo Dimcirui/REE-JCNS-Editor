@@ -43,6 +43,7 @@ No `bpy` import, so the rule stays testable without Blender.
 import re
 
 from jcns_flags import is_angular as _is_angular_by_type
+from jcns_mapping import source_quantity_of as _source_quantity_of
 
 # Measured on two skeletons.  Used only when the armature is unavailable.
 SIGMA_DEFAULT = {'X': +1, 'Y': -1, 'Z': -1, 'W': None}
@@ -105,8 +106,20 @@ def is_angular_output(transform_type, flags=None):
     return _is_angular_by_type(transform_type, flags)
 
 
+def _signed(sigma, quantity):
+    """Mirror sign of one side, given the pseudovector sigma for its axis.
+
+    Rotations follow sigma, positions the opposite way, scales not at all —
+    the same rule for a source (what is read) as for a target (what is driven).
+    """
+    if quantity == 'Scale':
+        return +1
+    return -sigma if quantity == 'Translation' else sigma
+
+
 def signs_for(source_axis, target_axis, flags, src_sigma=None, tgt_sigma=None,
-              transform_type='Rotation', mirror_in=True, mirror_out=True):
+              transform_type='Rotation', mirror_in=True, mirror_out=True,
+              source_quantity='Rotation'):
     """(in_sign, out_sign) for one source of one constraint.
 
     `src_sigma` / `tgt_sigma` are the per-axis dicts from sigma_from_frames() for
@@ -133,11 +146,24 @@ def signs_for(source_axis, target_axis, flags, src_sigma=None, tgt_sigma=None,
     convention" governed by flags_cns bit 5.  Both descriptions score identically
     (6271 of 7451 pairs), because the bit merely tracks the transform type — but
     only this one explains *why*.
+
+    The same applies to the input: `source_quantity` is what the source reads
+    (+25, see jcns_mapping.source_quantity).  A translation source flips
+    opposite to sigma and a scale source never flips.  Checked against the
+    shipped L/R pairs of MH Wilds with sigma measured from each mesh's bind
+    pose: translation sources reproduce 117 of 152 (23 when read as rotations),
+    scale sources 186 of 186 (62).  With SIGMA_DEFAULT instead of measured
+    frames translation sources do worse, because the helper bones they are
+    mostly read from do not share the main skeleton's frames.
     """
     if mirror_in:
-        ss = (src_sigma or SIGMA_DEFAULT).get(source_axis)
-        if ss is None:
-            return None, None
+        if source_quantity == 'Scale':
+            ss = +1
+        else:
+            ss = (src_sigma or SIGMA_DEFAULT).get(source_axis)
+            if ss is None:
+                return None, None
+            ss = _signed(ss, source_quantity)
     else:
         ss = +1
 
@@ -147,7 +173,6 @@ def signs_for(source_axis, target_axis, flags, src_sigma=None, tgt_sigma=None,
     ts = (tgt_sigma or SIGMA_DEFAULT).get(target_axis)
     if ts is None:
         return None, None
-    # The source is read as a bone rotation, so the input always uses sigma.
     if transform_type in UNSIGNED_OUTPUT_TYPES:
         return ss, +1
     if is_angular_output(transform_type, flags):
@@ -180,7 +205,8 @@ def mirror_source(source, source_axis, target_axis, flags,
     """Mirror one source mapping. Returns (dict_of_anchors, in_sign, out_sign).
 
     The signs are handed back so the UI can show what was applied and how much
-    to trust it. `mirror_in` / `mirror_out` — see signs_for().
+    to trust it. `mirror_in` / `mirror_out` — see signs_for().  What the source
+    reads comes from its own +25 byte (SrcTransformID / src_transform_id).
     """
     def g(name):
         if isinstance(source, dict):
@@ -189,7 +215,8 @@ def mirror_source(source, source_axis, target_axis, flags,
 
     in_sign, out_sign = signs_for(source_axis, target_axis, flags,
                                   src_sigma, tgt_sigma, transform_type,
-                                  mirror_in, mirror_out)
+                                  mirror_in, mirror_out,
+                                  _source_quantity_of(source))
     if in_sign is None:
         return None, None, None
 

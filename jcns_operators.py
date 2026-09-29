@@ -978,7 +978,7 @@ class JCNS_OT_MirrorConstraints(Operator):
         layout.prop(self, "overwrite")
         col = layout.column(align=True)
         col.label(text="符号由骨骼坐标系与驱动量类型决定", icon='INFO')
-        col.label(text="旋转与位移的镜像方式相反，已自动区分")
+        col.label(text="旋转与位移镜像方式相反，缩放不变号；来源按 +25 区分")
         if not (self.mirror_target or self.mirror_source):
             col.label(text="目标与来源至少要镜像一项", icon='ERROR')
 
