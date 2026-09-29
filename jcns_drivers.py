@@ -78,7 +78,6 @@ def rebuild_all():
     Runs after a .blend load so drivers saved in the file keep working without
     the user having to press Apply again.
     """
-    import math
     from . import (AXIS_TO_INT, group_constraints_by_channel)
 
     clear_channels()
@@ -90,15 +89,19 @@ def rebuild_all():
         arm = rp.target_armature
         for (bone, transform, axis), members in group_constraints_by_channel(obj).items():
             use_rad = (transform in ('Rotation', 'UnkRotation_13'))
+            m = get_mapping()
             maps = []
             # Only the last constraint on a channel is live; see _apply_channel.
+            # Units as in jcns_operators._apply_driver: input side by the source's
+            # +25, output side by the target.
             for sp in members[-1].jcns_cns_props.sources:
                 if not sp.source_bone:
                     continue
                 vals = (sp.from_start, sp.from_kink, sp.from_end,
                         sp.to_start, sp.to_kink, sp.to_end)
-                conv = tuple(math.radians(v) for v in vals) if use_rad else tuple(vals)
-                maps.append(conv + (get_mapping().is_two_point(sp.update_timing),))
+                src_rot = m.source_quantity_of(sp) == 'Rotation'
+                conv = m.driver_anchors(vals, src_rot, use_rad)
+                maps.append(tuple(conv) + (m.is_two_point(sp.update_timing),))
             if maps:
                 register_channel(channel_id(arm.name, bone, transform, axis), maps)
                 rebuilt += 1

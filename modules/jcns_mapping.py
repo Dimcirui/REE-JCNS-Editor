@@ -61,6 +61,65 @@ UNTESTED: +24 == 4 / 5 (9 sources in the whole corpus).
 """
 
 
+# +25 (SrcTransformID): which quantity of the source bone a mapping reads.
+# STATISTICAL, not yet measured in game.  Over all 1103 shipped v102 files:
+#   0  translation — facial slider bones (fcParam_*: 0 -> 1), weapon parts,
+#      HJ_Driven; bt names it Src_Translation
+#   2  scale       — Foot_XY_Ctrl, Sound_Scl, HJ_Driven: (0.01, 1, 3) ranges fed
+#      straight into a Scale target, never a multiple of 5
+#   3  rotation    — Thigh / UpperArm / fingers, +-180 ranges on multiples of 5
+#   1, 4, 5        rotation too (anatomical bones, angle-shaped ranges), most
+#      likely other decompositions of it: 5 only ever reads Thigh and drives
+#      ThighTwist / ThighRX / ThighRZ.  Swapping +25 between 1 and 3 was measured
+#      to shift the input slightly without changing the curve, which is what two
+#      decompositions of the same near-single-axis rotation would do.  All four
+#      are read as a plain local Euler angle until they are told apart.
+_SOURCE_QUANTITY = {0: 'Translation', 2: 'Scale'}
+
+
+def source_quantity(src_transform_id):
+    """'Translation', 'Rotation' or 'Scale' for a +25 value (None -> Rotation)."""
+    if src_transform_id is None:
+        return 'Rotation'
+    return _SOURCE_QUANTITY.get(int(src_transform_id), 'Rotation')
+
+
+def source_quantity_of(source):
+    """source_quantity() of a parser dict or a JCNSSourceProperties instance."""
+    if isinstance(source, dict):
+        v = source.get('SrcTransformID', source.get('src_transform_id'))
+    else:
+        v = getattr(source, 'src_transform_id', None)
+    return source_quantity(v)
+
+
+def source_rest_input(source):
+    """The source value with the bone at rest: 1 for a scale, 0 otherwise."""
+    return 1.0 if source_quantity_of(source) == 'Scale' else 0.0
+
+
+def source_unit(source):
+    """Display suffix for the source side of a mapping."""
+    return "°" if source_quantity_of(source) == 'Rotation' else ""
+
+
+def driver_anchors(values, source_rotation, target_rotation):
+    """(fs, fk, fe, ts, tk, te) in a Blender driver's own units.
+
+    The input side follows what the SOURCE is (a rotation reads in radians), the
+    output side what the TARGET is — they are independent: a thigh rotation
+    driving a helper bone's position has degrees on one side and lengths on the
+    other.
+    """
+    import math
+    fs, fk, fe, ts, tk, te = values
+    if source_rotation:
+        fs, fk, fe = (math.radians(v) for v in (fs, fk, fe))
+    if target_rotation:
+        ts, tk, te = (math.radians(v) for v in (ts, tk, te))
+    return fs, fk, fe, ts, tk, te
+
+
 def is_two_point(update_timing):
     """Does this source use the two-point (straight line A -> C) curve mode?
 
@@ -184,13 +243,14 @@ def describe(source):
     ts, tk, te = g('to_start'), g('to_kink'), g('to_end')
 
     tp = source_two_point(source)
-    at_rest = eval_piecewise(fs, fk, fe, ts, tk, te, 0.0, two_point=tp)
+    r = source_rest_input(source)
+    at_rest = eval_piecewise(fs, fk, fe, ts, tk, te, r, two_point=tp)
     return {
         'at_rest':    at_rest,
         'at_start':   eval_piecewise(fs, fk, fe, ts, tk, te, fs, two_point=tp),
         'at_kink':    eval_piecewise(fs, fk, fe, ts, tk, te, fk, two_point=tp),
         'at_end':     eval_piecewise(fs, fk, fe, ts, tk, te, fe, two_point=tp),
-        'rest_pos':   rest_position(fs, fk, fe),
+        'rest_pos':   rest_position(fs - r, fk - r, fe - r),
         'two_point':  tp,
         # '<' / '>' shape in three-point mode: the engine discards the whole
         # source and its output is a flat 0.  Harmless in two-point mode.
@@ -270,8 +330,10 @@ def plain_description(source, unit="°"):
     fs, fk, fe = g('from_start'), g('from_kink'), g('from_end')
     ts, tk, te = g('to_start'), g('to_kink'), g('to_end')
     tp = source_two_point(source)
+    # The source's value at rest: 0 for a rotation or translation, 1 for a scale.
+    r = source_rest_input(source)
 
-    at_rest = eval_piecewise(fs, fk, fe, ts, tk, te, 0.0, two_point=tp)
+    at_rest = eval_piecewise(fs, fk, fe, ts, tk, te, r, two_point=tp)
     inert = abs(ts) < 1e-9 and abs(tk) < 1e-9 and abs(te) < 1e-9
 
     # The three anchors do not have to be ordered, and when they double back
@@ -283,7 +345,7 @@ def plain_description(source, unit="°"):
     # therefore report behaviour the rig does not have.  Sample the real
     # function instead and read the shape back off it, so this can only ever
     # describe what eval_piecewise — and hence the driver — actually does.
-    lo, hi = min(0.0, fs, fk, fe), max(0.0, fs, fk, fe)
+    lo, hi = min(r, fs, fk, fe), max(r, fs, fk, fe)
     if hi - lo < 1e-9:
         return {'rest_output': at_rest, 'legs': [], 'inert': inert,
                 'offset_at_rest': abs(at_rest) > 1e-4,
@@ -313,7 +375,7 @@ def plain_description(source, unit="°"):
     # Sampling puts a breakpoint on the nearest sample rather than exactly on
     # the anchor, so 25 would be reported as 24.9.  Snap back to the real value.
     def snap(x):
-        for a in (0.0, fs, fk, fe):
+        for a in (r, fs, fk, fe):
             if abs(x - a) <= step * 1.5:
                 return a
         return x
@@ -330,9 +392,9 @@ def plain_description(source, unit="°"):
         for x0, x1, y0, y1 in ordered:
             a, b = (x0, x1) if direction > 0 else (x1, x0)
             u, v = (y0, y1) if direction > 0 else (y1, y0)
-            if (b <= 1e-6) if direction > 0 else (b >= -1e-6):
+            if (b <= r + 1e-6) if direction > 0 else (b >= r - 1e-6):
                 continue                       # entirely on the other side
-            a = max(a, 0.0) if direction > 0 else min(a, 0.0)
+            a = max(a, r) if direction > 0 else min(a, r)
             if abs(b - a) < 1e-6:
                 continue                       # zero-width run at a breakpoint
             u = eval_piecewise(fs, fk, fe, ts, tk, te, a, two_point=tp)

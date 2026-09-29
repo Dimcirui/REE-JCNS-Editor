@@ -142,6 +142,16 @@ _DRIVABLE = {
     'UnkRotation_13':  ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     True),
 }
 
+# What a driver variable reads off a SOURCE bone.  That is set by the source's
+# own +25 byte (modules.jcns_mapping.source_quantity), not by what the constraint
+# drives: a thigh rotation routinely drives a helper bone's position or scale,
+# and a facial slider's position drives an eyelid's rotation.
+_SOURCE_VARS = {
+    'Translation': ['LOC_X', 'LOC_Y', 'LOC_Z'],
+    'Rotation':    ['ROT_X', 'ROT_Y', 'ROT_Z'],
+    'Scale':       ['SCALE_X', 'SCALE_Y', 'SCALE_Z'],
+}
+
 
 def _sources_for_driver(cns_props):
     """Convert a constraint's JCNSSourceProperties collection into driver dicts."""
@@ -156,6 +166,8 @@ def _sources_for_driver(cns_props):
             'to_start':   sp.to_start,   'to_kink':   sp.to_kink,   'to_end':   sp.to_end,
             # +24 selects the curve mode; see modules.jcns_mapping.is_two_point.
             'update_timing': sp.update_timing,
+            # +25 selects what is read off the source bone; see _SOURCE_VARS.
+            'src_transform_id': sp.src_transform_id,
         })
     return out
 
@@ -186,7 +198,7 @@ def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
     entry = _DRIVABLE.get(transform_type)
     if entry is None:
         return False, "变换类型「%s」在 Blender 中没有对应通道" % transform_type
-    data_path, var_types, use_radians = entry
+    data_path, _, use_radians = entry
 
     usable = [s for s in sources if s.get('bone')]
     if not usable:
@@ -195,14 +207,17 @@ def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
     if data_path == 'rotation_euler' and pose_bone.rotation_mode not in _EULER_MODES:
         pose_bone.rotation_mode = 'XYZ'
 
-    # Anchors in the driver's own units, so the namespace function converts nothing.
+    # Anchors in the driver's own units, so the namespace function converts nothing:
+    # the input side in the source's units, the output side in the target's.
     # 7th element is the curve-mode flag (see modules.jcns_mapping.is_two_point).
+    m = get_mapping()
     maps = []
     for s in usable:
         vals = (s['from_start'], s['from_kink'], s['from_end'],
                 s['to_start'],   s['to_kink'],   s['to_end'])
-        conv = tuple(math.radians(v) for v in vals) if use_radians else tuple(vals)
-        maps.append(conv + (get_mapping().is_two_point(s.get('update_timing')),))
+        src_rot = m.source_quantity(s.get('src_transform_id')) == 'Rotation'
+        conv = m.driver_anchors(vals, src_rot, use_radians)
+        maps.append(tuple(conv) + (m.is_two_point(s.get('update_timing')),))
 
     key = jcns_drivers.channel_id(armature_obj.name, target_bone_name,
                                   transform_type, _AXIS_NAME[target_axis_idx])
@@ -228,7 +243,8 @@ def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
         tgt = var.targets[0]
         tgt.id = armature_obj
         tgt.bone_target = s['bone']
-        tgt.transform_type = var_types[min(s.get('axis_idx', 0), 2)]
+        tgt.transform_type = _SOURCE_VARS[get_mapping().source_quantity(
+            s.get('src_transform_id'))][min(s.get('axis_idx', 0), 2)]
         tgt.transform_space = 'LOCAL_SPACE'
 
     expr = 'jcns_ch("%s",%s)' % (key, ",".join(names))

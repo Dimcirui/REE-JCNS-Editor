@@ -644,9 +644,10 @@ class JCNS_PT_Constraint(Panel):
 
         col2 = layout.column(align=True)
         col2.separator()
-        col2.label(text="锚点数值（局部轴，单位：度）", icon='PREFERENCES')
+        col2.label(text="锚点数值（局部轴；角度以度为单位）", icon='PREFERENCES')
         h = col2.row()
-        h.label(text="源局部角：")
+        h.label(text={'Translation': "源局部位移：", 'Scale': "源局部缩放："}.get(
+            m.source_quantity_of(sp), "源局部角："))
         h.label(text="起点 A")
         h.label(text="折点 B")
         h.label(text="终点 C")
@@ -679,6 +680,10 @@ class JCNS_PT_Constraint(Panel):
         col = box.column(align=True)
         src = sp.source_bone or "驱动骨"
         tgt = p.target_bone or "目标骨"
+        # Units per side: the source's by its +25, the output's by the target type.
+        su = m.source_unit(sp)
+        from .modules_shim import get_flags
+        tu = "°" if get_flags().is_angular(p.transform_type) else ""
 
         # '<' / '>' shaped anchors in three-point mode: the engine discards the
         # whole source.  Louder than the unreachable-anchor notice below, because
@@ -709,7 +714,7 @@ class JCNS_PT_Constraint(Panel):
         head = col.row()
         head.alert = d['offset_at_rest']
         if d['offset_at_rest']:
-            head.label(text="静止时 %s 已偏转 %s°" % (tgt, _fmt(d['rest_output'])),
+            head.label(text="静止时 %s 已偏转 %s%s" % (tgt, _fmt(d['rest_output']), tu),
                        icon='ERROR')
         else:
             head.label(text="静止时 %s 不动" % tgt, icon='CHECKMARK')
@@ -718,12 +723,12 @@ class JCNS_PT_Constraint(Panel):
             col.separator(factor=0.4)
             for (x0, x1, y0, y1, kind) in leg['steps']:
                 if kind == 'dead':
-                    col.label(text="%s 局部 %s 轴 %s° → %s°：%s 不动"
-                                   % (src, sp.source_axis, _fmt(x0), _fmt(x1), tgt))
+                    col.label(text="%s 局部 %s 轴 %s%s → %s%s：%s 不动"
+                                   % (src, sp.source_axis, _fmt(x0), su, _fmt(x1), su, tgt))
                 else:
-                    col.label(text="%s 局部 %s 轴 %s° → %s°：%s 的局部 %s 轴 %s° → %s°"
-                                   % (src, sp.source_axis, _fmt(x0), _fmt(x1),
-                                      tgt, p.target_axis, _fmt(y0), _fmt(y1)))
+                    col.label(text="%s 局部 %s 轴 %s%s → %s%s：%s 的局部 %s 轴 %s%s → %s%s"
+                                   % (src, sp.source_axis, _fmt(x0), su, _fmt(x1), su,
+                                      tgt, p.target_axis, _fmt(y0), tu, _fmt(y1), tu))
 
         if d['offset_at_rest'] and m.would_swapping_ends_help(sp):
             col.separator()
@@ -737,7 +742,7 @@ class JCNS_PT_Constraint(Panel):
         if icon is None:
             return
         box = layout.box()
-        box.label(text="曲线（横轴：源骨局部轴角度　纵轴：输出）", icon='FCURVE')
+        box.label(text="曲线（横轴：源骨局部轴的值　纵轴：输出）", icon='FCURVE')
         row = box.row()
         row.alignment = 'CENTER'
         row.template_icon(icon_value=icon, scale=7.0)
