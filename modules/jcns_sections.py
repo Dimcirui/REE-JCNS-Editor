@@ -15,8 +15,8 @@ Derived data and the evidence for each rule (1103 shipped v102 files):
       with no repeated hash                                      (90/90 files)
     * the record tail byte and the source-info u32 are one per-file constant,
       usually 5                                                  (90/90)
-    * SkinConstraintHashTable (shared with Aim despite its name) lists the
-      joints whose world matrices the Skin and Aim sections read: every skin
+    * ReadJointTable (SkinConstraintHashTable in bt / REE-Lib, though Skin
+      shares it with Aim) lists the joints whose world matrices the Skin and Aim sections read: every skin
       source, and the parent of every joint they write (a result computed in
       world space has to be brought back into its parent's space).  Written
       joints themselves are left out, and so is any joint that is an ancestor
@@ -25,7 +25,7 @@ Derived data and the evidence for each rule (1103 shipped v102 files):
       it.  Set 42/42, depth order 42/42; ties within a depth follow first use
       in 23/42, the rest look like the authoring tool's container order, which
       cannot matter since no two entries are related.  It needs the skeleton
-      (see derive_skin_hash_table).  Only monster rigs carry one: player and NPC
+      (see derive_read_joint_table).  Only monster rigs carry one: player and NPC
       files with Skin or Aim sections leave it empty (0 of 65), so an empty
       table stays empty.
   Aim
@@ -49,7 +49,7 @@ def skin_editable(parser):
     """(records, meta) from a parsed file.
 
     records: [{'object': hash, 'sources': [{'hash': h, 'weight': w}, ...]}, ...]
-    meta:    {'constant': int, 'hash_table': [hash, ...]}
+    meta:    {'constant': int, 'read_joint_table': [hash, ...]}
     """
     infos = parser.skin_source_infos
     records = []
@@ -62,7 +62,7 @@ def skin_editable(parser):
             srcs.append({'hash': h, 'weight': s['Weight']})
         records.append({'object': sk['ObjectHash'], 'sources': srcs})
     constant = parser.skin_constraints[0]['Tail'][0] if parser.skin_constraints else 5
-    return records, {'constant': constant, 'hash_table': list(parser.skin_hash_table)}
+    return records, {'constant': constant, 'read_joint_table': list(parser.read_joint_table)}
 
 
 def skin_parser_form(records, meta):
@@ -89,28 +89,15 @@ def skin_parser_form(records, meta):
     return skins, infos
 
 
-def skin_signature(records, aim_joints=None):
-    """The structure a SkinConstraintHashTable depends on: skin objects and their
+def read_joint_signature(records, aim_joints):
+    """The structure a ReadJointTable depends on: skin objects and their
     source bones in order, and the Aim joints — everything except weights and
-    the Aim's own settings.
-
-    Without `aim_joints` this is the older skin-only form, which .blend files
-    saved by earlier builds still hold.
-    """
-    skin = [[r['object'], [s['hash'] for s in r['sources']]] for r in records]
-    if aim_joints is None:
-        return skin
-    return {'skin': skin, 'aim': list(aim_joints)}
+    the Aim's own settings."""
+    return {'skin': [[r['object'], [s['hash'] for s in r['sources']]] for r in records],
+            'aim': list(aim_joints)}
 
 
-def _structure_unchanged(locked, records, aim_joints):
-    if isinstance(locked, dict):
-        return locked == skin_signature(records, aim_joints)
-    # skin-only signature from an older import: Aim joints were never recorded
-    return locked == skin_signature(records)
-
-
-def derive_skin_hash_table(records, aim_joints, parent):
+def derive_read_joint_table(records, aim_joints, parent):
     """(table, missing) from the Skin records, the Aim joints and the skeleton.
 
     `parent` maps a joint hash to its parent's hash (None for a root).  Joints
@@ -146,23 +133,23 @@ def derive_skin_hash_table(records, aim_joints, parent):
     return sorted((h for h in need if h not in ancestors), key=depth.get), missing
 
 
-def resolve_skin_hash_table(records, aim_joints, meta, locked, parent=None, names=None):
+def resolve_read_joint_table(records, aim_joints, meta, locked, parent=None, names=None):
     """(table, problems) to export with.
 
     A file without a table keeps none.  An unchanged structure keeps the shipped
     table verbatim, including its order.  A changed one is re-derived when the
     skeleton is available and refused when it is not.
     """
-    orig = list(meta.get('hash_table') or [])
-    if not orig or _structure_unchanged(locked, records, aim_joints):
+    orig = list(meta.get('read_joint_table') or [])
+    if not orig or locked == read_joint_signature(records, aim_joints):
         return orig, []
     if parent is None:
-        return orig, ["这个文件带 SkinConstraintHashTable，它由 Skin/Aim 的骨骼按骨架层级推出；"
+        return orig, ["这个文件带读取骨表（ReadJointTable），它由 Skin/Aim 的骨骼按骨架层级推出；"
                       "改动了 Skin 对象、源骨骼或 Aim 骨骼，需要先在根节点设置目标骨架才能重算。"]
-    table, missing = derive_skin_hash_table(records, aim_joints, parent)
+    table, missing = derive_read_joint_table(records, aim_joints, parent)
     if missing:
         label = lambda h: (names or {}).get(h, f"0x{h:08X}")
-        return orig, ["重算 SkinConstraintHashTable 时目标骨架里找不到这些骨骼：%s"
+        return orig, ["重算读取骨表时目标骨架里找不到这些骨骼：%s"
                       % "、".join(label(h) for h in missing[:8])]
     return table, []
 

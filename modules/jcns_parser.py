@@ -221,7 +221,7 @@ class JCNSParser:
         self.object_settings    = []
         self.skin_constraints   = []
         self.skin_source_infos  = []
-        self.skin_hash_table    = []
+        self.read_joint_table    = []
         self.header = read_header(data)
         print(f"Version: {self.version} ({VERSION_GAMES.get(self.version, '?')}), "
               f"write mode: {self.write_mode}")
@@ -345,10 +345,11 @@ class JCNSParser:
 
     def _parse_skin_constraints(self, data):
         """Section 2: SkinConstraint records, their weighted source lists, and (v29+)
-        the shared source table; from v36 also a raw-hash SkinConstraintHashTable."""
+        the shared source table; from v36 also the ReadJointTable (raw hashes;
+        SkinConstraintHashTable in bt / REE-Lib), which Skin shares with Aim."""
         v, h = self.version, self.header
         n = h.get('SkinConstraintCount', 0)
-        self.skin_constraints, self.skin_source_infos, self.skin_hash_table = [], [], []
+        self.skin_constraints, self.skin_source_infos, self.read_joint_table = [], [], []
         if not n:
             return
         base, size = h['SkinConstraintTableEntry'], SKIN.size(v)
@@ -371,12 +372,12 @@ class JCNSParser:
                     rec['SourceHash'] = self._hash_at(rec['SourceHashIndex'])
                 self.skin_source_infos.append(rec)
 
-        k = h.get('SkinConstraintHashTableItemCount', 0)
-        if k and h.get('SkinConstraintHashTableEntry'):
-            self.skin_hash_table = list(struct.unpack_from(
-                f'<{k}I', data, h['SkinConstraintHashTableEntry']))
+        k = h.get('ReadJointTableItemCount', 0)
+        if k and h.get('ReadJointTableEntry'):
+            self.read_joint_table = list(struct.unpack_from(
+                f'<{k}I', data, h['ReadJointTableEntry']))
         print(f"Parsed {n} SkinConstraint(s), {len(self.skin_source_infos)} source info, "
-              f"{len(self.skin_hash_table)} skin hash(es)")
+              f"{len(self.read_joint_table)} read joint(s)")
 
     def _parse_rot_expressions(self, data):
         """Section 1.  From v35 two int32 hash-index arrays follow the info records."""

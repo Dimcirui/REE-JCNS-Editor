@@ -638,8 +638,8 @@ class JCNSRootProperties(PropertyGroup):
     # re-parsed source file, since their Empties hold no data.
     sections_cached: BoolProperty(default=False)
     skin_constant: IntProperty(default=5)
-    skin_hash_table_hex: StringProperty(default="")
-    skin_signature_json: StringProperty(default="")
+    read_joint_table_hex: StringProperty(default="")
+    read_joint_signature_json: StringProperty(default="")
     rot_map_hex: StringProperty(default="")
     object_settings_json: StringProperty(default="")
     # Superseded by source_version; kept so files imported by 0.14 still export

@@ -254,7 +254,7 @@ def do_import(filepath, context, armature_obj=None):
     # bone names this file's range constraints spell out, else show the raw hash
     # (the exporter reads a "0x1234ABCD" name back as that hash).
     import json
-    from jcns_sections import skin_editable, skin_signature, aim_editable, rot_editable
+    from jcns_sections import skin_editable, read_joint_signature, aim_editable, rot_editable
     from . import section_empty_name
     names = {}
     for c in constraints:
@@ -287,10 +287,10 @@ def do_import(filepath, context, armature_obj=None):
             w.bone, w.weight = _nm(src['hash']), src['weight']
         obj.name = section_empty_name('Skin', idx, p2)
     rp.skin_constant = sk_meta['constant']
-    rp.skin_hash_table_hex = b''.join(h.to_bytes(4, 'little') for h in sk_meta['hash_table']).hex()
+    rp.read_joint_table_hex = b''.join(h.to_bytes(4, 'little') for h in sk_meta['read_joint_table']).hex()
     aim_recs = aim_editable(parser)
-    rp.skin_signature_json = (json.dumps(skin_signature(sk_recs, [a['joint'] for a in aim_recs]))
-                              if sk_meta['hash_table'] else '')
+    rp.read_joint_signature_json = (json.dumps(read_joint_signature(sk_recs, [a['joint'] for a in aim_recs]))
+                              if sk_meta['read_joint_table'] else '')
 
     for idx, a in enumerate(aim_recs):
         obj, p2 = _section_empty('Aim', idx, 'SPHERE', 0.03)

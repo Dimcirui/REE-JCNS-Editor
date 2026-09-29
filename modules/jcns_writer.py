@@ -491,12 +491,12 @@ class JCNSWriter:
         # ── Phase 8f: build SkinConstraint section ──────────────────────
         # Four tables, all carried over as parsed: the records, their weighted
         # source lists, the shared source-info table, and (v36+) the raw-hash
-        # SkinConstraintHashTable.  Only the hash-list indices were remapped.
+        # ReadJointTable.  Only the hash-list indices were remapped.
         skins = getattr(p, 'skin_constraints', [])
         skin_infos = getattr(p, 'skin_source_infos', [])
-        skin_hashes = getattr(p, 'skin_hash_table', [])
+        read_joints = getattr(p, 'read_joint_table', [])
         N_SKIN = len(skins)
-        SKIN_START = SKIN_INFO_START = SKIN_HASH_START = 0
+        SKIN_START = SKIN_INFO_START = READ_JOINT_START = 0
         skin_blob = bytearray()
         if N_SKIN:
             if N_AIM > 0:
@@ -524,10 +524,10 @@ class JCNSWriter:
                 skin_blob.extend(b'\x00' * (SKIN_INFO_START - SKIN_START - len(skin_blob)))
                 for si in skin_infos:
                     skin_blob.extend(SKIN_SOURCE_INFO.pack(si, version))
-            if skin_hashes:
-                SKIN_HASH_START = _align(SKIN_START + len(skin_blob), 16)
-                skin_blob.extend(b'\x00' * (SKIN_HASH_START - SKIN_START - len(skin_blob)))
-                skin_blob.extend(struct.pack(f'<{len(skin_hashes)}I', *skin_hashes))
+            if read_joints:
+                READ_JOINT_START = _align(SKIN_START + len(skin_blob), 16)
+                skin_blob.extend(b'\x00' * (READ_JOINT_START - SKIN_START - len(skin_blob)))
+                skin_blob.extend(struct.pack(f'<{len(read_joints)}I', *read_joints))
 
         # ── Phase 9: patch header ───────────────────────────────────────
         header = bytearray(orig[:CNS_INFO_START])
@@ -570,10 +570,10 @@ class JCNSWriter:
             patch['SkinConstraintSourceCount'] = len(skin_infos)
             if skin_infos:
                 patch['SkinConstraintSourceTableEntry'] = SKIN_INFO_START
-            if HEADER.has('SkinConstraintHashTableItemCount', version):
-                patch['SkinConstraintHashTableItemCount'] = len(skin_hashes)
-                if skin_hashes:
-                    patch['SkinConstraintHashTableEntry'] = SKIN_HASH_START
+            if HEADER.has('ReadJointTableItemCount', version):
+                patch['ReadJointTableItemCount'] = len(read_joints)
+                if read_joints:
+                    patch['ReadJointTableEntry'] = READ_JOINT_START
         HEADER.pack_into(header, hdr['DataEntry'], patch, version)
 
         # ── Phase 10: assemble ──────────────────────────────────────────

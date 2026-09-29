@@ -150,8 +150,8 @@ def _draw_raw_group(layout, title, icon, rows):
 # ---------------------------------------------------------------------------
 
 def _skin_table_locked(rp):
-    """A shipped SkinConstraintHashTable can only be re-derived with the skeleton."""
-    return bool(rp and rp.skin_signature_json and rp.target_armature is None)
+    """A shipped ReadJointTable can only be re-derived with the skeleton."""
+    return bool(rp and rp.read_joint_signature_json and rp.target_armature is None)
 
 
 def _target_unit(transform_type):
@@ -566,9 +566,9 @@ class JCNS_PT_Constraint(Panel):
             locked = _skin_table_locked(rp)
             _field_row(box.column(align=True), "对象骨骼：", p, "target_bone")
             if locked:
-                box.label(text="文件带 SkinConstraintHashTable：未设目标骨架时只能改权重", icon='INFO')
-            elif rp and rp.skin_signature_json:
-                box.label(text="增删骨骼后，导出时按目标骨架重算 SkinConstraintHashTable", icon='INFO')
+                box.label(text="文件带读取骨表：未设目标骨架时只能改权重", icon='INFO')
+            elif rp and rp.read_joint_signature_json:
+                box.label(text="增删骨骼后，导出时按目标骨架重算读取骨表", icon='INFO')
             hdr = box.row(align=True)
             hdr.label(text="源骨骼（%d）" % len(p.skin_sources), icon='BONE_DATA')
             sub = hdr.row(align=True)
@@ -592,7 +592,7 @@ class JCNS_PT_Constraint(Panel):
             col = box.column(align=True)
             _field_row(col, "被瞄准的骨骼：", p, "target_bone")
             if _skin_table_locked(rp):
-                col.label(text="文件带 SkinConstraintHashTable：未设目标骨架时不能换被瞄准的骨骼", icon='INFO')
+                col.label(text="文件带读取骨表：未设目标骨架时不能换被瞄准的骨骼", icon='INFO')
             _field_row(col, "瞄准目标：", p, "aim_target_bone")
             _field_row(col, "辅助骨骼：", p, "aim_up_bone")
             _field_row(col, "影响：", p, "aim_influence")

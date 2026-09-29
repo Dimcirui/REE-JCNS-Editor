@@ -105,7 +105,7 @@ def _build_stub_parser(root_props, empties):
     parser.object_settings    = []
     parser.skin_constraints   = []
     parser.skin_source_infos  = []
-    parser.skin_hash_table    = []
+    parser.read_joint_table    = []
     parser.rot_expressions    = []
     parser.rot_expression_map = b''
     parser.material_cns       = []
@@ -138,10 +138,10 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
     records = [{'object': H(o.jcns_cns_props.target_bone),
                 'sources': [{'hash': H(w.bone), 'weight': w.weight} for w in o.jcns_cns_props.skin_sources]}
                for o in section_empties(root_obj, 'Skin')]
-    table = bytes.fromhex(root_props.skin_hash_table_hex or '')
+    table = bytes.fromhex(root_props.read_joint_table_hex or '')
     meta = {'constant': root_props.skin_constant,
-            'hash_table': [int.from_bytes(table[i:i + 4], 'little') for i in range(0, len(table), 4)]}
-    locked = json.loads(root_props.skin_signature_json) if root_props.skin_signature_json else []
+            'read_joint_table': [int.from_bytes(table[i:i + 4], 'little') for i in range(0, len(table), 4)]}
+    locked = json.loads(root_props.read_joint_signature_json) if root_props.read_joint_signature_json else []
     # The table also covers the Aim joints, so it is resolved against both.
     aim_joints = [H(o.jcns_cns_props.target_bone) for o in section_empties(root_obj, 'Aim')]
     arm = root_props.target_armature
@@ -149,16 +149,16 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
     if arm is not None and arm.type == 'ARMATURE':
         parent = {H(b.name): (H(b.parent.name) if b.parent else None) for b in arm.data.bones}
         names = {H(b.name): b.name for b in arm.data.bones}
-    table, problems = X.resolve_skin_hash_table(records, aim_joints, meta, locked, parent, names)
+    table, problems = X.resolve_read_joint_table(records, aim_joints, meta, locked, parent, names)
     if problems:
         return problems
     for w in X.skin_weight_warnings(records):
         print('[JCNS EXPORT] warning: ' + w)
     parser.skin_constraints, parser.skin_source_infos = X.skin_parser_form(records, meta)
-    if table != meta['hash_table']:
-        print('[JCNS EXPORT] SkinConstraintHashTable re-derived from the armature: %d -> %d joint(s)'
-              % (len(meta['hash_table']), len(table)))
-    parser.skin_hash_table = table
+    if table != meta['read_joint_table']:
+        print('[JCNS EXPORT] ReadJointTable re-derived from the armature: %d -> %d joint(s)'
+              % (len(meta['read_joint_table']), len(table)))
+    parser.read_joint_table = table
 
     # Aim
     aims = []

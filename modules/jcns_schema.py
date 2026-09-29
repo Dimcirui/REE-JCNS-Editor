@@ -193,7 +193,7 @@ FILE_EXTENSIONS = ';'.join(f'.{v}' for v in SUPPORTED_VERSIONS)
 #   * v12 has SkinConstraintSource{Entry,Count}, not Aim  (0.65.13 + ReeLib)
 #   * DependencyCount / DependencyTableEntry start at v21  (0.65.13 + ReeLib;
 #     0.65.14 has the count from v16)
-#   * no SkinConstraintHashTableItemCount before v36      (v29 files; ReeLib
+#   * no ReadJointTableItemCount before v36   (v29 files; ReeLib
 #     reads one from v29 and mis-assigns every later count)
 
 _has_skin_src = any_of(since(29), only(12))
@@ -214,7 +214,7 @@ HEADER = Struct('Header', [
     F('SectionTableEntry',                   'Q', since(16)),
     F('DependencyTableEntry',                'Q', since(21)),
     F('HashListOffset',                      'Q', since(35)),
-    F('SkinConstraintHashTableEntry',        'Q', since(36)),
+    F('ReadJointTableEntry',                 'Q', since(36)),   # bt / REE-Lib: SkinConstraintHashTable*
 
     F('HashCount',                           'i', since(35)),
     F('ConeDriverCount',                     'H'),
@@ -224,7 +224,7 @@ HEADER = Struct('Header', [
     F('RotExpressionInfoCount',              'H'),
     F('RotExpressionMapCount',               'H'),
     F('SkinConstraintCount',                 'H'),
-    F('SkinConstraintHashTableItemCount',    'H', since(36)),
+    F('ReadJointTableItemCount',             'H', since(36)),
     F('SkinConstraintSourceCount',           'H', _has_skin_src),
     F('AimConstraintCount',                  'H', since(16)),
     F('MaterialConstraintInfoCount',         'H', since(22)),

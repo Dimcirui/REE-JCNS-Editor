@@ -52,7 +52,7 @@ on the first data table), and a mismatch refuses the file rather than guessing.
 | --- | --- | --- |
 | 0 | Ranges (incl. ComplexMapping, ObjectSettings, Dependencies) | ✅️ Editable, ComplexMapping keyframes included; ObjectSettings carried over. ConeDrivers are not rebuilt (none in the Wilds corpus) |
 | 1 | Rotation Expressions | ✅️ Structurally editable (add / delete / change bones and raw values) |
-| 2 | Skin Constraints | ✅️ Structurally editable; files with a SkinConstraintHashTable need the target armature for bone changes |
+| 2 | Skin Constraints | ✅️ Structurally editable; files with a ReadJointTable need the target armature for bone changes |
 | 3 | Aim Constraints | ✅️ Structurally editable (add / delete / change bones and raw values); same armature rule as Skin |
 | 4 | Material Constraints | ✅️ Editable (raw hashes) |
 | 5 | Joint Export Graph | ✅️ Editable path |
@@ -64,8 +64,8 @@ indices, counts and the ComplexMapping flag byte. The rules were read off the
 whole shipped corpus (see `modules/jcns_sections.py`); what the raw values
 *mean* in-game is mostly unmeasured, so they are exposed as numbers.
 
-SkinConstraintHashTable (42 monster files; player and NPC files leave it empty)
-is shared by Skin and Aim and depends on the skeleton: it lists the joints whose
+ReadJointTable (called SkinConstraintHashTable in the bt template and REE-Lib;
+42 monster files, player and NPC files leave it empty) is shared by Skin and Aim and depends on the skeleton: it lists the joints whose
 world matrices those sections read — every Skin source and the parent of every
 joint they write — minus the written joints and minus any joint that is an
 ancestor of another one, sorted by hierarchy depth. That reproduces all 42

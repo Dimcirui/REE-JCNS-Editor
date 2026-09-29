@@ -1280,8 +1280,8 @@ class JCNS_OT_AddSectionEntry(Operator):
         if coll is None:
             self.report({'ERROR'}, "根节点不属于任何集合。")
             return {'CANCELLED'}
-        if self.kind in ('Skin', 'Aim') and rp.skin_signature_json and rp.target_armature is None:
-            self.report({'ERROR'}, "这个文件带 SkinConstraintHashTable，新增 %s 条目后需要按骨架重算它："
+        if self.kind in ('Skin', 'Aim') and rp.read_joint_signature_json and rp.target_armature is None:
+            self.report({'ERROR'}, "这个文件带读取骨表（ReadJointTable），新增 %s 条目后需要按骨架重算它："
                                    "请先在根节点设置目标骨架。" % self.kind)
             return {'CANCELLED'}
         if self.kind == 'RotExpression':
