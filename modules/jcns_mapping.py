@@ -13,7 +13,8 @@ this module across a grid of inputs.
 
 Kept free of `bpy` so it can be tested standalone.
 
-Anchors, all in the file's own units (degrees for rotation):
+Anchors, all in the file's own units — degrees for rotation, centimetres for
+translation (see driver_anchors):
 
     A = (from_start, to_start)   first endpoint
     B = (from_kink,  to_kink)    slope change
@@ -98,26 +99,60 @@ def source_rest_input(source):
     return 1.0 if source_quantity_of(source) == 'Scale' else 0.0
 
 
+# A jcns stores lengths in centimetres, as the earlier RE Engine titles did,
+# while mot/mesh data — and so a RE Mesh Editor armature, imported 1:1 — is in
+# metres.  Not measured in-game; inferred from the shipped MH Wilds files:
+#   * sources: a +25=0 range over the animated amplitude of the bone it reads is
+#     100 more often than anything else, and exactly 100 for pure control bones
+#     (Spear 1 m -> 100, Shot 0.5 -> 50, MOT_Fat 0.1 -> 10, MOT_Wing_PT 0.01 -> 1);
+#   * targets: 7148 of 8096 translation outputs peak between 1 and 100, which
+#     is a helper bone's travel in centimetres and absurd in metres;
+#   * the wing switches (MOT_Wing_PT keyed 0 / 0.01 m, output compared against a
+#     display threshold of 1.0) only work when read in centimetres.
+CM_PER_UNIT = 100.0
+
+# Driver targets by transform type: which quantity the output is.
+_TARGET_QUANTITY = {
+    'Translation': 'Translation', 'Scale': 'Scale',
+    'Rotation': 'Rotation', 'UnkRotation_13': 'Rotation',
+}
+
+
+def target_quantity(transform_type):
+    """'Translation', 'Rotation', 'Scale' or None for a target transform type."""
+    return _TARGET_QUANTITY.get(transform_type)
+
+
+def quantity_unit(quantity):
+    """Display suffix for values of a quantity in the file's own units."""
+    return {'Rotation': "°", 'Translation': " cm"}.get(quantity, "")
+
+
 def source_unit(source):
     """Display suffix for the source side of a mapping."""
-    return "°" if source_quantity_of(source) == 'Rotation' else ""
+    return quantity_unit(source_quantity_of(source))
 
 
-def driver_anchors(values, source_rotation, target_rotation):
+def _to_driver_units(values, quantity):
+    import math
+    if quantity == 'Rotation':
+        return tuple(math.radians(v) for v in values)
+    if quantity == 'Translation':
+        return tuple(v / CM_PER_UNIT for v in values)
+    return tuple(values)
+
+
+def driver_anchors(values, source_quantity, target_quantity):
     """(fs, fk, fe, ts, tk, te) in a Blender driver's own units.
 
-    The input side follows what the SOURCE is (a rotation reads in radians), the
-    output side what the TARGET is — they are independent: a thigh rotation
-    driving a helper bone's position has degrees on one side and lengths on the
-    other.
+    The input side follows what the SOURCE is, the output side what the TARGET
+    is — they are independent: a thigh rotation driving a helper bone's position
+    has degrees on one side and centimetres on the other.  Rotations go to
+    radians, translations to Blender units (metres), scales stay as they are.
     """
-    import math
     fs, fk, fe, ts, tk, te = values
-    if source_rotation:
-        fs, fk, fe = (math.radians(v) for v in (fs, fk, fe))
-    if target_rotation:
-        ts, tk, te = (math.radians(v) for v in (ts, tk, te))
-    return fs, fk, fe, ts, tk, te
+    return (_to_driver_units((fs, fk, fe), source_quantity)
+            + _to_driver_units((ts, tk, te), target_quantity))
 
 
 def is_two_point(update_timing):

@@ -126,7 +126,7 @@ _COMBINE_OPS = {
     'FIRST':   lambda parts: parts[0],
 }
 
-# TransformationID -> (Blender data path, driver variable prefix, values are angles)
+# TransformationID -> (Blender data path, driver variables, quantity driven)
 # bt TransformationID names ID 0 "Translation"; Blender's data path is "location".
 # These used to disagree ('Translation' vs 'Location'), so every Translation
 # constraint silently failed to produce a driver — and Translation is the single
@@ -134,12 +134,12 @@ _COMBINE_OPS = {
 _AXIS_NAME = ['X', 'Y', 'Z', 'W']
 
 _DRIVABLE = {
-    'Translation':     ('location',        ['LOC_X', 'LOC_Y', 'LOC_Z'],     False),
-    'Rotation':        ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     True),
-    'Scale':           ('scale',           ['SCALE_X', 'SCALE_Y', 'SCALE_Z'], False),
+    'Translation':     ('location',        ['LOC_X', 'LOC_Y', 'LOC_Z'],     'Translation'),
+    'Rotation':        ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     'Rotation'),
+    'Scale':           ('scale',           ['SCALE_X', 'SCALE_Y', 'SCALE_Z'], 'Scale'),
     # Unresolved variant seen driving cloth-offset bones; treated as a plain
     # Euler rotation until its actual semantics are reverse-engineered.
-    'UnkRotation_13':  ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     True),
+    'UnkRotation_13':  ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     'Rotation'),
 }
 
 # What a driver variable reads off a SOURCE bone.  That is set by the source's
@@ -198,7 +198,7 @@ def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
     entry = _DRIVABLE.get(transform_type)
     if entry is None:
         return False, "变换类型「%s」在 Blender 中没有对应通道" % transform_type
-    data_path, _, use_radians = entry
+    data_path, _, target_q = entry
 
     usable = [s for s in sources if s.get('bone')]
     if not usable:
@@ -215,8 +215,8 @@ def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
     for s in usable:
         vals = (s['from_start'], s['from_kink'], s['from_end'],
                 s['to_start'],   s['to_kink'],   s['to_end'])
-        src_rot = m.source_quantity(s.get('src_transform_id')) == 'Rotation'
-        conv = m.driver_anchors(vals, src_rot, use_radians)
+        conv = m.driver_anchors(vals, m.source_quantity(s.get('src_transform_id')),
+                                target_q)
         maps.append(tuple(conv) + (m.is_two_point(s.get('update_timing')),))
 
     key = jcns_drivers.channel_id(armature_obj.name, target_bone_name,
@@ -328,18 +328,22 @@ def refresh_channel_values(obj):
     entry = _DRIVABLE.get(p.transform_type)
     if entry is None:
         return False
-    use_radians = entry[2]
+    target_q = entry[2]
 
     # Only the last constraint on the channel is live — see _apply_channel.
+    # Units as in _apply_driver: input side by the source's +25, output side by
+    # the target.
     maps = []
     from .modules_shim import get_mapping
+    m = get_mapping()
     for s in _sources_for_driver(members[-1].jcns_cns_props):
         if not s['bone']:
             continue
         vals = (s['from_start'], s['from_kink'], s['from_end'],
                 s['to_start'],   s['to_kink'],   s['to_end'])
-        conv = tuple(math.radians(v) for v in vals) if use_radians else tuple(vals)
-        maps.append(conv + (get_mapping().is_two_point(s.get('update_timing')),))
+        conv = m.driver_anchors(vals, m.source_quantity(s.get('src_transform_id')),
+                                target_q)
+        maps.append(tuple(conv) + (m.is_two_point(s.get('update_timing')),))
     if not maps:
         return False
 

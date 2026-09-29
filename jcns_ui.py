@@ -149,6 +149,14 @@ def _draw_raw_group(layout, title, icon, rows):
 # 驱动源列表
 # ---------------------------------------------------------------------------
 
+def _target_unit(transform_type):
+    """Suffix for a constraint's output values: ° for angles, cm for positions."""
+    from .modules_shim import get_flags
+    if get_flags().is_angular(transform_type):
+        return "°"
+    return " cm" if transform_type == 'Translation' else ""
+
+
 class JCNS_UL_Sources(bpy.types.UIList):
     """每行对应文件里的一个 ConstraintSource_v2 块。"""
     bl_idname = "JCNS_UL_sources"
@@ -163,7 +171,9 @@ class JCNS_UL_Sources(bpy.types.UIList):
         row.prop(item, "source_bone", text="", emboss=False)
         row.label(text=item.source_axis)
         if info['offset_at_rest']:
-            row.label(text="%s°" % _fmt(info['at_rest']), icon='ERROR')
+            row.label(text="%s%s" % (_fmt(info['at_rest']),
+                                     _target_unit(getattr(data, 'transform_type', ''))),
+                      icon='ERROR')
 
 
 class JCNS_UL_SkinSources(bpy.types.UIList):
@@ -371,7 +381,7 @@ class JCNS_PT_RootChannels(Panel):
                                         for sp in sources if sp.source_bone})) or "（无）"
                 suffix = ""
                 if info['offset_at_rest']:
-                    suffix = "   静止 %s°" % _fmt(info['at_rest'])
+                    suffix = "   静止 %s%s" % (_fmt(info['at_rest']), _target_unit(transform))
                 elif info['all_inert']:
                     suffix = "   （无输出）"
                 row.label(text="局部 %s 轴 ← %s%s" % (axis, srcs, suffix), icon=icon)
@@ -644,7 +654,7 @@ class JCNS_PT_Constraint(Panel):
 
         col2 = layout.column(align=True)
         col2.separator()
-        col2.label(text="锚点数值（局部轴；角度以度为单位）", icon='PREFERENCES')
+        col2.label(text="锚点数值（局部轴；角度为度，位移为厘米）", icon='PREFERENCES')
         h = col2.row()
         h.label(text={'Translation': "源局部位移：", 'Scale': "源局部缩放："}.get(
             m.source_quantity_of(sp), "源局部角："))
@@ -682,8 +692,7 @@ class JCNS_PT_Constraint(Panel):
         tgt = p.target_bone or "目标骨"
         # Units per side: the source's by its +25, the output's by the target type.
         su = m.source_unit(sp)
-        from .modules_shim import get_flags
-        tu = "°" if get_flags().is_angular(p.transform_type) else ""
+        tu = _target_unit(p.transform_type)
 
         # '<' / '>' shaped anchors in three-point mode: the engine discards the
         # whole source.  Louder than the unreachable-anchor notice below, because

@@ -88,8 +88,8 @@ def rebuild_all():
             continue
         arm = rp.target_armature
         for (bone, transform, axis), members in group_constraints_by_channel(obj).items():
-            use_rad = (transform in ('Rotation', 'UnkRotation_13'))
             m = get_mapping()
+            target_q = m.target_quantity(transform)
             maps = []
             # Only the last constraint on a channel is live; see _apply_channel.
             # Units as in jcns_operators._apply_driver: input side by the source's
@@ -99,8 +99,7 @@ def rebuild_all():
                     continue
                 vals = (sp.from_start, sp.from_kink, sp.from_end,
                         sp.to_start, sp.to_kink, sp.to_end)
-                src_rot = m.source_quantity_of(sp) == 'Rotation'
-                conv = m.driver_anchors(vals, src_rot, use_rad)
+                conv = m.driver_anchors(vals, m.source_quantity_of(sp), target_q)
                 maps.append(tuple(conv) + (m.is_two_point(sp.update_timing),))
             if maps:
                 register_channel(channel_id(arm.name, bone, transform, axis), maps)
