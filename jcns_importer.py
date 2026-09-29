@@ -187,6 +187,7 @@ def do_import(filepath, context, armature_obj=None):
             idx, first.get('SourceName', ''), target_bone, tgt_ax_str,
             INT_TO_AXIS.get(min(first.get('source_axis', 0), 3), 'X'),
             max(0, len(file_sources) - 1),
+            len(c.get('ConeDriverInfo') or []),
         )
 
         obj = bpy.data.objects.new(empty_name, None)
@@ -243,7 +244,15 @@ def do_import(filepath, context, armature_obj=None):
         p.parent_uint8_72       = c.get('ParentUInt8_72', 0)
         ph                      = c.get('PropertyHash', 0) & 0xFFFFFFFF
         p.property_hash         = ph - (1 << 32) if ph >= (1 << 31) else ph
-        p.cone_driver_info_count = c.get('ConeDriverInfoCount', 0)
+        for ci in c.get('ConeDriverInfo') or []:
+            k = p.cone_infos.add()
+            k.cone_index, k.value = ci['ConeDriverIndex'], ci['Value']
+            k.rest = (ci['Rest0'],) + tuple(ci.get('Rest123', (0.0, 0.0, 0.0)))
+            k.unk_byte0, k.unk_byte3 = ci['UnkByte0'], ci['UnkByte3']
+        if len(p.cone_infos):
+            # named while the cone list was still empty (target_bone's update)
+            from . import constraint_name_from_props
+            obj.name = constraint_name_from_props(idx, p)
         tail = c.get('ParentTailBytes', b'\x00' * 6)
         p.parent_tail_0, p.parent_tail_1, p.parent_tail_2 = tail[0], tail[1], tail[2]
         p.parent_tail_3, p.parent_tail_4, p.parent_tail_5 = tail[3], tail[4], tail[5]
@@ -282,6 +291,7 @@ def do_import(filepath, context, armature_obj=None):
         obj, p2 = _section_empty('Skin', idx, 'SINGLE_ARROW', 0.03)
         p2.constraint_type = 'Skin'
         p2.target_bone = _nm(r['object'])
+        p2.skin_tail_hex = r['tail'].hex()
         for src in r['sources']:
             w = p2.skin_sources.add()
             w.bone, w.weight = _nm(src['hash']), src['weight']
@@ -317,6 +327,12 @@ def do_import(filepath, context, armature_obj=None):
         obj.name = section_empty_name('RotExpression', idx, p2)
     rp.rot_map_hex = bytes(rot_meta['map']).hex()
 
+    rp.cone_drivers_json = json.dumps([{
+        'Name': cd['Name'], 'Direction': list(cd['Direction']), 'Matrix': list(cd['Matrix']),
+        'JointHash': cd['JointHash'], 'ParentJointHash': cd['ParentJointHash'],
+        'SymmetryJointHash': cd['SymmetryJointHash'], 'AngleRad': cd['AngleRad'],
+        'UnknownUInt32': cd['UnknownUInt32'], 'Tail': cd['Tail'].hex()}
+        for cd in getattr(parser, 'cone_drivers', [])]) if getattr(parser, 'cone_drivers', []) else ''
     rp.object_settings_json = json.dumps([
         {'UnkBytes': o['UnkBytes'].hex(), 'UnknownDWORD': o['UnknownDWORD'],
          'ObjectNameHash': o['ObjectNameHash']} for o in parser.object_settings])

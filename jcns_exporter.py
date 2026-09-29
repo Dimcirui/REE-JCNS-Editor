@@ -1,7 +1,7 @@
 """
 jcns_exporter.py
 ----------------
-Export operator for RE Engine JCNS files (v102 rebuilt, other versions in place).
+Export operator for RE Engine JCNS files (v102 and v35 rebuilt, other versions in place).
 
 Strategy:
   1. Detect the JCNS root Empty from the active object.
@@ -106,6 +106,7 @@ def _build_stub_parser(root_props, empties):
     parser.skin_constraints   = []
     parser.skin_source_infos  = []
     parser.read_joint_table    = []
+    parser.cone_drivers       = []
     parser.rot_expressions    = []
     parser.rot_expression_map = b''
     parser.material_cns       = []
@@ -124,7 +125,7 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
     Empties of an older import hold no data.
     """
     import json
-    from . import section_empties
+    from . import section_empties, get_constraint_empties
     _ensure_modules_path()
     import jcns_sections as X
 
@@ -135,11 +136,19 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
         return _name_to_hash(name.strip())
 
     # SkinConstraint
+    def _tail(hexstr):
+        try:
+            raw = bytes.fromhex(hexstr.strip())
+        except ValueError:
+            return None
+        return raw[:2].ljust(2, bytes(1)) if raw else None
+
     records = [{'object': H(o.jcns_cns_props.target_bone),
+                'tail': _tail(o.jcns_cns_props.skin_tail_hex),
                 'sources': [{'hash': H(w.bone), 'weight': w.weight} for w in o.jcns_cns_props.skin_sources]}
                for o in section_empties(root_obj, 'Skin')]
     table = bytes.fromhex(root_props.read_joint_table_hex or '')
-    meta = {'constant': root_props.skin_constant,
+    meta = {'constant': root_props.skin_constant, 'tail': X.skin_default_tail(records),
             'read_joint_table': [int.from_bytes(table[i:i + 4], 'little') for i in range(0, len(table), 4)]}
     locked = json.loads(root_props.read_joint_signature_json) if root_props.read_joint_signature_json else []
     # The table also covers the Aim joints, so it is resolved against both.
@@ -185,6 +194,20 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
             rots, {'map': list(bytes.fromhex(root_props.rot_map_hex or ''))}, parser.version)
     except ValueError as exc:
         return [str(exc)]
+
+    # ConeDrivers: not editable yet, re-emitted from the import cache
+    n_cone = parser.header.get('ConeDriverCount', 0)
+    if root_props.cone_drivers_json:
+        parser.cone_drivers = [dict(cd, Direction=tuple(cd['Direction']), Matrix=tuple(cd['Matrix']),
+                                    Tail=bytes.fromhex(cd['Tail']))
+                               for cd in json.loads(root_props.cone_drivers_json)]
+    elif n_cone:
+        return [f"这个文件有 {n_cone} 条 ConeDriver，但当前根节点是旧版插件导入的，没有缓存它们；请重新导入后再导出。"]
+    n = len(parser.cone_drivers)
+    for o in get_constraint_empties(root_obj):
+        bad = [k.cone_index for k in o.jcns_cns_props.cone_infos if k.cone_index >= n]
+        if bad:
+            return [f"约束「{o.name}」引用了第 {bad[0]} 个 ConeDriver，但文件里只有 {n} 个。"]
 
     # ObjectSettings are not editable; the stub gets them back from the cache
     if getattr(parser, 'is_stub', False) and root_props.object_settings_json:
@@ -336,6 +359,7 @@ def _make_default_constraint_dict(empty_obj):
         'PropertyOffset':        0,
         'PropertyHash':          0,
         'ConeDriverInfoCount':   0,
+        'ConeDriverInfo':        [],
         'Flags':                 0x30,
         'TransformType':         _TRANSFORM_STR_TO_INT.get(p.transform_type, 1),
         'ParentVec4':            (0.0, 0.0, 0.0, 1.0),
@@ -349,7 +373,7 @@ def _make_default_constraint_dict(empty_obj):
     }
 
 
-def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached=False):
+def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached=False, version=102):
     """
     Overwrite the editable fields in the parsed constraint dict with
     values from the Empty's JCNSConstraintProperties.
@@ -421,18 +445,25 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
 
 
     # --- ConstraintInfo raw fields ---
-    # Bits 4 and 5 are redundant with the transform type (unanimous across all
-    # 19884 shipped constraints), so recompute them rather than trusting the raw
-    # field — otherwise changing a constraint's transform type would silently
-    # leave the flags describing the old one.
+    # Bits 4 and 5 are redundant with the transform type in v36 / v102 (every
+    # shipped constraint), so there they are recomputed rather than trusted —
+    # otherwise changing a constraint's transform type would silently leave the
+    # flags describing the old one.  RE9's v35 does not follow the rule, so its
+    # flags are written as they are.
     from .modules_shim import get_flags
-    parsed_c['Flags'] = get_flags().apply_derived_bits(p.cns_flags, p.transform_type)
+    flags = get_flags()
+    parsed_c['Flags'] = (flags.apply_derived_bits(p.cns_flags, p.transform_type)
+                         if version in flags.DERIVED_BITS_VERSIONS else int(p.cns_flags) & 0xFF)
     parsed_c['ParentVec4']          = (p.parent_vec4_x, p.parent_vec4_y,
                                        p.parent_vec4_z, p.parent_vec4_w)
     parsed_c['ParentFloat2']        = (p.parent_float2_x, p.parent_float2_y)
     parsed_c['ParentUInt8_72']      = p.parent_uint8_72
     parsed_c['PropertyHash']        = p.property_hash & 0xFFFFFFFF
-    parsed_c['ConeDriverInfoCount'] = p.cone_driver_info_count
+    parsed_c['ConeDriverInfo'] = [{
+        'Rest0': k.rest[0], 'Rest123': tuple(k.rest[1:]), 'Value': k.value,
+        'UnkByte0': k.unk_byte0, 'ConeDriverIndex': k.cone_index, 'UnkByte3': k.unk_byte3}
+        for k in p.cone_infos]
+    parsed_c['ConeDriverInfoCount'] = len(parsed_c['ConeDriverInfo'])
     parsed_c['ParentTailBytes']     = bytes([
         p.parent_tail_0, p.parent_tail_1, p.parent_tail_2,
         p.parent_tail_3, p.parent_tail_4, p.parent_tail_5,
@@ -556,7 +587,7 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
                 parsed_c = _make_default_constraint_dict(empty)
                 print(f"[JCNS EXPORT] New constraint [{i:02d}] '{empty.name}' — using defaults")
             _patch_constraint_from_empty(parsed_c, empty, parser.hash_list,
-                                         root_props.sections_cached)
+                                         root_props.sections_cached, parser.version)
             final_constraints.append(parsed_c)
 
         parser.constraints = final_constraints

@@ -20,8 +20,8 @@ bl_info = {
     "location": "View3D > Sidebar > JCNS Editor | File > Import/Export",
     "description": (
         "Import, edit, and export RE Engine JCNS joint constraint files "
-        "(Monster Hunter Wilds v102 and every other JCNS version, older "
-        "versions editable in place). Each imported file creates a green collection "
+        "(MH Wilds v102 and RE9 v35 rebuilt, every other JCNS version "
+        "editable in place). Each imported file creates a green collection "
         "with one Empty per constraint, each carrying its full list of "
         "driving sources."
     ),
@@ -296,6 +296,19 @@ class JCNSCMKey(PropertyGroup):
                         default=0, min=0)
 
 
+class JCNSConeInfo(PropertyGroup):
+    """One ConeDriverInfo record (24 bytes, v24+): a cone this constraint reads.
+
+    RE9 v35: Rest is (0,0,0,0), or (0,0,0,1) on scale targets; Value is what the
+    target takes for that cone (bt: AngleDeg, but scale targets hold factors).
+    """
+    cone_index: IntProperty(name="ConeDriver", description="ConeDriver 表里的序号", default=0, min=0)
+    value: FloatProperty(name="输出值", description="bt: AngleDeg —— 这个锥形对应的目标值", default=0.0)
+    rest: FloatVectorProperty(name="Rest", size=4, default=(0.0, 0.0, 0.0, 0.0))
+    unk_byte0: IntProperty(name="+20", default=0, min=0, max=255)
+    unk_byte3: IntProperty(name="+23", default=0, min=0, max=255)
+
+
 class JCNSWeightedSource(PropertyGroup):
     """One source bone of a SkinConstraint record."""
     bone: StringProperty(name="骨骼", default="", search=lambda self, context, text: _search_bone_names(context, text))
@@ -495,10 +508,9 @@ class JCNSConstraintProperties(PropertyGroup):
         name="PropertyHash", description="bt: PropertyHash — usually 0 (uint32, shown signed)",
         default=0,
     )
-    cone_driver_info_count: IntProperty(
-        name="ConeDriverInfoCount", description="bt: ConeDriverInfoCount — usually 0",
-        default=0, min=0, max=255,
-    )
+    # ConeDriverInfo[]: the cones this constraint reads (RE9 uses them heavily)
+    cone_infos: CollectionProperty(type=JCNSConeInfo)
+    active_cone_info_index: IntProperty(default=0)
     # Of these six, only [1] (+75) and [3] (+77) ever hold anything: [2]/[4]/[5]
     # are zero in all 19884 shipped constraints and [0] in 98.8% of them.
     # [1]=2 is both the corpus mode (70%) and what the verified hand-authored
@@ -540,6 +552,10 @@ class JCNSConstraintProperties(PropertyGroup):
     # --- SkinConstraint (target_bone is the skinned object) ---
     skin_sources: CollectionProperty(type=JCNSWeightedSource)
     active_skin_source_index: IntProperty(default=0)
+    skin_tail_hex: StringProperty(
+        name="尾部 2 字节", default="",
+        description="记录尾部第 2、3 字节（第 1 字节是每文件常量）。v102 恒为 0000，RE9 v35 逐条不同；"
+                    "留空则用本文件最常见的值")
 
     # --- Aim (target_bone is the aimed joint) ---
     aim_target_bone: StringProperty(name="瞄准目标", default="", update=_sync_section_name,
@@ -642,6 +658,8 @@ class JCNSRootProperties(PropertyGroup):
     read_joint_signature_json: StringProperty(default="")
     rot_map_hex: StringProperty(default="")
     object_settings_json: StringProperty(default="")
+    # ConeDriver table (v35+), cached so a rebuild can re-emit it
+    cone_drivers_json: StringProperty(default="")
     # Superseded by source_version; kept so files imported by 0.14 still export
     # with the right suffix.
     detected_game: EnumProperty(
@@ -807,17 +825,21 @@ def sibling_constraints(constraint_empty):
 
 
 def make_constraint_empty_name(idx, source_bone, target_bone, target_axis,
-                               source_axis='X', extra_sources=0):
+                               source_axis='X', extra_sources=0, cones=0):
     """
     Generate the canonical display name for a constraint Empty.
 
     extra_sources > 0 appends '(+N)' so multi-source constraints are visible in
-    the Outliner without opening the panel.
+    the Outliner without opening the panel.  A constraint driven only by
+    ConeDrivers shows 'Cone×N' where the source would be.
     """
     src_ax = source_axis if isinstance(source_axis, str) else INT_TO_AXIS.get(source_axis, 'X')
     tgt_ax = target_axis if isinstance(target_axis, str) else INT_TO_AXIS.get(target_axis, 'X')
+    tgt = f"{target_bone or '???'} {tgt_ax}"
+    if not source_bone and cones:
+        return f"[{idx:02d}] Cone×{cones} → {tgt}"
     suffix = f" (+{extra_sources})" if extra_sources > 0 else ""
-    return f"[{idx:02d}] {source_bone or '???'} {src_ax}{suffix} → {target_bone or '???'} {tgt_ax}"
+    return f"[{idx:02d}] {source_bone or '???'} {src_ax}{suffix} → {tgt}"
 
 
 def constraint_name_from_props(idx, props):
@@ -831,6 +853,7 @@ def constraint_name_from_props(idx, props):
         props.target_axis,
         first.source_axis if first else 'X',
         max(0, len(srcs) - 1),
+        len(props.cone_infos),
     )
 
 
@@ -852,6 +875,7 @@ def _poll_jcns_collection(self, collection):
 
 _classes = [
     JCNSCMKey,                  # groups must register before the groups that reference them
+    JCNSConeInfo,
     JCNSWeightedSource,
     JCNSSourceProperties,
     JCNSConstraintProperties,

@@ -6,6 +6,7 @@ import jcns_schema as S
 from jcns_schema import (
     HEADER, CONSTRAINT_INFO, AIM, AIM_TARGET, MATERIAL, ROT_EXPRESSION,
     COMPLEX_MAPPING, OBJECT_SETTING, SKIN, SKIN_SOURCE, SKIN_SOURCE_INFO,
+    CONE_DRIVER, CONE_DRIVER_INFO,
     SUPPORTED_VERSIONS, VERSION_GAMES, source_struct, transform_axis_key,
     check_header_layout,
 )
@@ -13,7 +14,7 @@ from jcns_schema import (
 # Versions the writer can rebuild from scratch (add / delete / rename).  Every
 # other version is written back in place: each record is re-packed at its
 # original offset, so values can change but the file's structure cannot.
-FULL_REBUILD_VERSIONS = frozenset({102})
+FULL_REBUILD_VERSIONS = frozenset({35, 102})
 
 
 def write_mode(version):
@@ -82,9 +83,9 @@ class JCNSParser:
       +32:  ObjectHashIndex       uint32   index into hash_list → target bone hash
       +36:  ObjectHash            uint32   direct target bone hash (redundant with above)
       +40:  PropertyHash          uint32   property hash
-      +44:  ConeDriverInfoCount   uint8    bt: ConeDriverInfoCount — 0 in every one of the
-                                             19884 constraints surveyed; no shipped file uses
-                                             ConeDrivers at all.
+      +44:  ConeDriverInfoCount   uint8    bt: ConeDriverInfoCount — 0 in every MH Wilds
+                                             constraint; RE9 (v35) uses ConeDrivers heavily
+                                             (1466 of 2349 constraints, see CONE_DRIVER).
       +45:  SourceCount           uint8    number of ConstraintSource_v2 blocks; ~12% of
                                              constraints have more than 1 (up to 8 observed)
       +46:  Flags                 uint8    bt: flags_cns.  11 distinct values observed; bit4/bit5
@@ -222,10 +223,12 @@ class JCNSParser:
         self.skin_constraints   = []
         self.skin_source_infos  = []
         self.read_joint_table    = []
+        self.cone_drivers       = []
         self.header = read_header(data)
         print(f"Version: {self.version} ({VERSION_GAMES.get(self.version, '?')}), "
               f"write mode: {self.write_mode}")
         self._parse_hash_list(data)
+        self._parse_cone_drivers(data)
         self._parse_constraints(data)
         self._parse_aim_constraints(data)
         self._parse_rot_expressions(data)
@@ -234,6 +237,25 @@ class JCNSParser:
         self._parse_object_settings(data)
         self._parse_skin_constraints(data)
         return self.constraints
+
+    def _parse_cone_drivers(self, data):
+        """Section 0 ConeDriver table (v35 layout only; older ones stay in place)."""
+        self.cone_drivers = []
+        n = self.header.get('ConeDriverCount', 0)
+        base = self.header.get('ConeDriverTableEntry', 0)
+        if not n or not base or self.version < 35:
+            return
+        size = CONE_DRIVER.size(self.version)
+        for i in range(n):
+            rec = CONE_DRIVER.read(data, base + i * size, self.version)
+            cd = dict(rec)
+            cd['Name'] = self._read_wstring(data, rec['Name_Offset'])
+            cd['JointHash'] = self._hash_at(rec['JointHashIndex'])
+            cd['ParentJointHash'] = self._hash_at(rec['ParentJointHashIndex'])
+            cd['SymmetryJointHash'] = (self._hash_at(rec['SymmetryJointHashIndex'])
+                                       if rec['SymmetryJointHashIndex'] >= 0 else None)
+            self.cone_drivers.append(cd)
+        print(f"Parsed {n} ConeDriver(s)")
 
     def _parse_hash_list(self, data):
         # The global hash table only exists from v35; older files store hashes inline.
@@ -277,6 +299,14 @@ class JCNSParser:
                 c['TargetHash'] = self.hash_list[rec['ObjectHashIndex']]
             else:
                 c['TargetHash'] = rec['ObjectHash']
+
+            # ConeDriverInfo[ConeDriverInfoCount]: which cones drive this constraint.
+            c['ConeDriverInfo'] = []
+            n_cone, cone_at = rec['ConeDriverInfoCount'], rec['ConeDriverInfoOffset']
+            if n_cone and cone_at:
+                size_ci = CONE_DRIVER_INFO.size(v)
+                c['ConeDriverInfo'] = [CONE_DRIVER_INFO.read(data, cone_at + k * size_ci, v)
+                                       for k in range(n_cone)]
 
             # ConstraintSource[SourceCount] — consecutive records at SourceListOffset.
             # Multi-source constraints are common (~12% in Wilds).

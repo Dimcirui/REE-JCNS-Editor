@@ -1247,7 +1247,7 @@ class JCNS_OT_ClearSingleDriver(Operator):
 # ---------------------------------------------------------------------------
 
 def _rebuild_root(context):
-    """(root, root_props) when the active JCNS file is rebuilt on export (v102)
+    """(root, root_props) when the active JCNS file is rebuilt on export (v35 / v102)
     and its importer cached the section data; (None, None) otherwise."""
     from . import get_export_root
     root, rp = get_export_root(context)
@@ -1423,6 +1423,55 @@ class JCNS_OT_CMKeyRemove(Operator):
         return {'FINISHED'}
 
 
+def _active_cone_constraint(context):
+    """Constraint props of the active Ranges constraint on a rebuilt root, or None."""
+    from . import get_jcns_constraint
+    obj, p = get_jcns_constraint(context)
+    if obj is None or p.constraint_type != 'Ranges' or _rebuild_root(context)[0] is None:
+        return None
+    return p
+
+
+class JCNS_OT_ConeInfoAdd(Operator):
+    """Add a ConeDriverInfo (a cone this constraint reads) to the active constraint"""
+    bl_idname = "jcns.cone_info_add"
+    bl_label  = "新增 ConeDriver 输入"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        p = _active_cone_constraint(context)
+        return p is not None and bool(_rebuild_root(context)[1].cone_drivers_json)
+
+    def execute(self, context):
+        p = _active_cone_constraint(context)
+        k = p.cone_infos.add()
+        if len(p.cone_infos) > 1:
+            prev = p.cone_infos[len(p.cone_infos) - 2]
+            k.cone_index, k.rest = prev.cone_index, tuple(prev.rest)
+        p.active_cone_info_index = len(p.cone_infos) - 1
+        return {'FINISHED'}
+
+
+class JCNS_OT_ConeInfoRemove(Operator):
+    """Remove the active ConeDriverInfo from the active constraint"""
+    bl_idname = "jcns.cone_info_remove"
+    bl_label  = "删除 ConeDriver 输入"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        p = _active_cone_constraint(context)
+        return p is not None and len(p.cone_infos) > 0
+
+    def execute(self, context):
+        p = _active_cone_constraint(context)
+        i = min(p.active_cone_info_index, len(p.cone_infos) - 1)
+        p.cone_infos.remove(i)
+        p.active_cone_info_index = max(0, i - 1)
+        return {'FINISHED'}
+
+
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
@@ -1446,6 +1495,8 @@ _classes = [
     JCNS_OT_SkinNormalizeWeights,
     JCNS_OT_CMKeyAdd,
     JCNS_OT_CMKeyRemove,
+    JCNS_OT_ConeInfoAdd,
+    JCNS_OT_ConeInfoRemove,
 ]
 
 

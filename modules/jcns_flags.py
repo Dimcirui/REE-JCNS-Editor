@@ -29,10 +29,18 @@ bit 0 is NOT derivable: it varies within a single type (Rotation appears as both
 49 and 48), so it is a genuine per-constraint setting and is left alone.  The bt
 template guesses "isAdd?".
 
+The rule holds for every constraint of v36 (Onimusha, 3596) and v102 (22839),
+but not for RE9's v35: 1149 of 2349 disagree, almost all UnkRotation_13/14 with
+bit 5 clear.  Only DERIVED_BITS_VERSIONS get the bits rewritten; older files
+have no Flags byte at all.
+
 No `bpy` import, so this stays testable without Blender.
 """
 
 JOINT_BIT = 4
+
+# Versions where bits 4/5 follow the transform type without exception.
+DERIVED_BITS_VERSIONS = frozenset({36, 102})
 ANGULAR_BIT = 5
 
 # transform type -> (drives a bone, quantity is angular)

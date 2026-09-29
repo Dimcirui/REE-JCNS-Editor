@@ -13,8 +13,11 @@ Derived data and the evidence for each rule (1103 shipped v102 files):
   SkinConstraint
     * the source-info table is the distinct source bones in first-use order,
       with no repeated hash                                      (90/90 files)
-    * the record tail byte and the source-info u32 are one per-file constant,
-      usually 5                                                  (90/90)
+    * the record's first tail byte and the source-info u32 are one per-file
+      constant, usually 5                                        (90/90)
+    * the other two tail bytes are 00 00 in every v102 record (1851), but vary
+      per record in RE9 v35 (01 00 / 01 01 / 02 00 / 02 01) and Onimusha v36
+      (00 01), so they are carried per record
     * ReadJointTable (SkinConstraintHashTable in bt / REE-Lib, though Skin
       shares it with Aim) lists the joints whose world matrices the Skin and Aim sections read: every skin
       source, and the parent of every joint they write (a result computed in
@@ -48,8 +51,8 @@ from jcns_schema import ROT_EXPRESSION
 def skin_editable(parser):
     """(records, meta) from a parsed file.
 
-    records: [{'object': hash, 'sources': [{'hash': h, 'weight': w}, ...]}, ...]
-    meta:    {'constant': int, 'read_joint_table': [hash, ...]}
+    records: [{'object': hash, 'tail': 2 bytes, 'sources': [{'hash': h, 'weight': w}, ...]}, ...]
+    meta:    {'constant': int, 'tail': the most common 'tail', 'read_joint_table': [hash, ...]}
     """
     infos = parser.skin_source_infos
     records = []
@@ -60,9 +63,16 @@ def skin_editable(parser):
             # v29+ index the source-info / source-hash table; before that the hash is inline
             h = infos[ref]['SourceHash'] if parser.version >= 29 else ref
             srcs.append({'hash': h, 'weight': s['Weight']})
-        records.append({'object': sk['ObjectHash'], 'sources': srcs})
+        records.append({'object': sk['ObjectHash'], 'tail': bytes(sk['Tail'][1:3]), 'sources': srcs})
     constant = parser.skin_constraints[0]['Tail'][0] if parser.skin_constraints else 5
-    return records, {'constant': constant, 'read_joint_table': list(parser.read_joint_table)}
+    return records, {'constant': constant, 'tail': skin_default_tail(records),
+                     'read_joint_table': list(parser.read_joint_table)}
+
+
+def skin_default_tail(records):
+    """Tail bytes for a new record: the file's most common, else zero."""
+    tails = [r['tail'] for r in records if r.get('tail') is not None]
+    return max(set(tails), key=tails.count) if tails else bytes(2)
 
 
 def skin_parser_form(records, meta):
@@ -81,7 +91,7 @@ def skin_parser_form(records, meta):
     const = meta.get('constant', 5) & 0xFF
     skins = [{
         'ObjectHash': r['object'], 'ObjectHashIndex': 0,
-        'Tail': bytes([const, 0, 0]),
+        'Tail': bytes([const]) + bytes(r.get('tail') or meta.get('tail') or bytes(2))[:2].ljust(2, bytes(1)),
         'SourceCount': len(r['sources']),
         'sources': [{'SourceRef': index[s['hash']], 'Weight': float(s['weight'])} for s in r['sources']],
     } for r in records]

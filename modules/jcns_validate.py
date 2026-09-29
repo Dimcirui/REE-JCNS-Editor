@@ -34,9 +34,10 @@ def _count_truncated_sources(parser):
                if len(c.get('sources', [])) != c.get('SourceCount_parent', 0))
 
 
-def _count_cone_driver_info(parser):
+def _count_unread_cone_info(parser):
+    """Constraints whose ConeDriverInfo list is not fully held by the parser."""
     return sum(1 for c in parser.constraints
-               if c.get('ConeDriverInfoCount', 0) or c.get('ConeDriverInfoOffset', 0))
+               if c.get('ConeDriverInfoCount', 0) != len(c.get('ConeDriverInfo') or []))
 
 
 def _header_count(parser, field):
@@ -75,22 +76,19 @@ def check_exportable(parser):
     if in_place:
         return problems
 
-    n = _count_cone_driver_info(parser)
+    # The rebuild writer re-emits ConeDrivers and every ConeDriverInfo list, but
+    # only what the parser (or Blender) actually holds.
+    n = _count_unread_cone_info(parser)
     if n:
         problems.append(
-            f"{n} 条约束引用了 ConeDriverInfo。写入器只会照抄原来的绝对偏移，"
-            "却不会搬运它指向的数据。"
+            f"{n} 条约束的 ConeDriverInfo 数量与读到的数据不符，重建会丢掉它们。"
         )
-
-    for field, label in (
-        ('ConeDriverCount',           "ConeDriver 表"),
-    ):
-        count = _header_count(parser, field)
-        if count:
-            problems.append(
-                f"文件含有 {count} 条 {label} 记录（{field}）。写入器不会输出这个段落，"
-                "却会原样复制它的头部指针 —— 导出的文件会指向无关数据。"
-            )
+    count = _header_count(parser, 'ConeDriverCount')
+    if count and len(getattr(parser, 'cone_drivers', [])) != count:
+        problems.append(
+            f"文件含有 {count} 条 ConeDriver，但只读到了 {len(getattr(parser, 'cone_drivers', []))} 条"
+            "（只认 v35 起的布局，或源文件缺失而 Blender 里没有缓存），重建会丢掉它们。"
+        )
 
     # RotExpression / Aim / SkinConstraint / ObjectSettings are only reproduced from
     # a freshly re-parsed source file — nothing in Blender caches their content

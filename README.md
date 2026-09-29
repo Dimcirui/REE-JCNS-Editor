@@ -1,160 +1,68 @@
-# Wilds JCNS Editor
+# REE JCNS Editor
 
-A Blender add-on for importing, editing, and exporting Monster Hunter Wilds
-`.jcns` (joint constraint) files.
+A Blender add-on for importing, editing and exporting RE Engine `.jcns` (joint
+constraint) files.
 
-JCNS is a joint constraint format: it always reads from joints as its control sources,
-and maps them onto a variety of targets — primarily other joints, but also blendshapes,
-material parameters, and RSZ object properties.
+A JCNS file drives targets from joint poses: each constraint reads one axis of a
+source joint (or how far a joint has swung into a cone) and maps it through a
+curve onto another joint, a blendshape, a material parameter, an RSZ property or
+a named output. The add-on turns a file into a collection of Empties you can
+inspect and edit, can apply the constraints to an armature as live Blender
+drivers so you can pose the rig and watch them work, and writes the file back.
 
-This addon focuses on Wilds' armor joint-to-joint constraints — each constraint
-reads an axis of one bone and maps it, through a two-segment curve,
-onto an axis of another. It turns a file into a collection of Empties
-you can inspect and edit, applies the constraints as live Blender drivers
-so you can pose the rig and watch them work, and writes the file back.
+Newer versions are rebuilt from scratch, so constraints, sources and section
+entries can be added, deleted and re-pointed. Older versions are written back in
+place: every value can change, the file's structure cannot.
 
-## Supported Versions
+## Supported Games
 
-| JCNS Version | Game | Export | Checked against real files |
-| --- | --- | --- | --- |
-| 102 | Monster Hunter Wilds (post-TU4) | ✅️ Full rebuild | ✅️ |
-| 36 | Onimusha: Way of the Sword | ✏️ In place | ✅️ |
-| 35 | RE9 / PRAGMATA / MH Stories 3 | ✏️ In place | ✅️ |
-| 29 | Monster Hunter Wilds (pre-TU4) | ✏️ In place | ✅️ |
-| 24 | Dragon's Dogma 2 | ✏️ In place | ⚠️ template only |
-| 22 | RE4R / SF6 | ✏️ In place | ✅️ |
-| 21 | MH Rise | ✏️ In place | ⚠️ template only |
-| 19 | RE2/RE3/RE7 ray-tracing updates | ✏️ In place | ⚠️ template only |
-| 16 | RE8 | ✏️ In place | ⚠️ template only |
-| 12 | RE3R | ✏️ In place | ⚠️ template only |
-| 11 | RE2R / DMC5 | ✏️ In place | ⚠️ template only |
+| JCNS version | Game | Export |
+| --- | --- | --- |
+| 102 | Monster Hunter Wilds (post-TU4) | ✅ Full rebuild |
+| 36 | Onimusha: Way of the Sword | ✏️ In place |
+| 35 | Resident Evil Requiem / PRAGMATA / MH Stories 3 | ✅ Full rebuild |
+| 29 | Monster Hunter Wilds (pre-TU4) | ✏️ In place |
+| 24 | Dragon's Dogma 2 | ✏️ In place |
+| 22 | RE4 / Street Fighter 6 | ✏️ In place |
+| 21 | Monster Hunter Rise | ✏️ In place |
+| 19 | RE2 / RE3 / RE7 ray-tracing updates | ✏️ In place |
+| 16 | RE Village | ✏️ In place |
+| 12 | RE3 | ✏️ In place |
+| 11 | RE2 / Devil May Cry 5 | ✏️ In place |
 
-Every record layout is declared once, per version, in `modules/jcns_schema.py`.
-
-**Full rebuild** (v102): add, delete and rename constraints and sources freely.
-
-**In place** (every other version): the original file is copied and each
-constraint / source / material record is re-packed at its own offset. Mapping
-values, axes, flags and the other per-record fields can be edited; the file's
-structure cannot (no adding or deleting constraints or sources, no renaming
-bones). Because nothing moves, sections the editor does not model — ConeDrivers,
-Skin Constraints, ObjectSettings, ComplexMapping — survive byte for byte, so
-these files never need to be refused at import. Export refuses structural edits
-with a list of what changed.
-
-Versions marked *template only* are parsed from RE_Engine_JCNS.bt and ReeLib's
-JcnsFile.cs alone. The header layout is self-checked on import (its end must land
-on the first data table), and a mismatch refuses the file rather than guessing.
+**Full rebuild**: the whole file is regenerated.
+**In place**: the original file is copied and each record is re-packed at its own
+offset; export refuses structural edits and lists what changed.
 
 ## Supported Sections
 
-| ID | Section | v102 rebuild |
-| --- | --- | --- |
-| 0 | Ranges (incl. ComplexMapping, ObjectSettings, Dependencies) | ✅️ Editable, ComplexMapping keyframes included; ObjectSettings carried over. ConeDrivers are not rebuilt (none in the Wilds corpus) |
-| 1 | Rotation Expressions | ✅️ Structurally editable (add / delete / change bones and raw values) |
-| 2 | Skin Constraints | ✅️ Structurally editable; files with a ReadJointTable need the target armature for bone changes |
-| 3 | Aim Constraints | ✅️ Structurally editable (add / delete / change bones and raw values); same armature rule as Skin |
-| 4 | Material Constraints | ✅️ Editable (raw hashes) |
-| 5 | Joint Export Graph | ✅️ Editable path |
+| ID | Section | Full rebuild (v102, v35) | In place |
+| --- | --- | --- | --- |
+| 0 | Range constraints and sources | ✅ Fully editable | ✏️ Values |
+| 0 | ComplexMapping (keyframed curves) | ✅ Keyframes editable | Kept |
+| 0 | ConeDrivers (v35) | ✅ Per-constraint cone inputs editable; cone table kept | Kept |
+| 0 | Dependencies | ✅ Regenerated | Kept |
+| 0 | ObjectSettings | Kept | Kept |
+| 1 | RotExpression | ✅ Structurally editable | Kept |
+| 2 | SkinConstraint | ✅ Structurally editable ¹ | Kept |
+| 3 | Aim | ✅ Structurally editable ¹ | Kept |
+| 4 | Material constraints | ✅ Editable (raw values) | ✏️ Values |
+| 5 | JointExportGraph | ✅ Path editable | Kept |
 
-"Structurally editable" means entries can be added, deleted and re-pointed, and
-every piece of derived data is regenerated on export: the Skin source-info
-table and per-file constant, RotExpression's index arrays and map, hash-list
-indices, counts and the ComplexMapping flag byte. The rules were read off the
-whole shipped corpus (see `modules/jcns_sections.py`); what the raw values
-*mean* in-game is mostly unmeasured, so they are exposed as numbers.
+*Structurally editable*: entries can be added, deleted and re-pointed; counts,
+hash-list indices and derived tables are regenerated on export. Raw fields whose
+in-game meaning is still unknown are exposed as numbers.
 
-ReadJointTable (called SkinConstraintHashTable in the bt template and REE-Lib;
-42 monster files, player and NPC files leave it empty) is shared by Skin and Aim and depends on the skeleton: it lists the joints whose
-world matrices those sections read — every Skin source and the parent of every
-joint they write — minus the written joints and minus any joint that is an
-ancestor of another one, sorted by hierarchy depth. That reproduces all 42
-shipped tables as sets. While the Skin/Aim bones are unchanged the table is kept
-verbatim; after a bone change it is re-derived from the root's target armature,
-and without one the export is refused (weights and Aim settings stay editable).
-
-Every v102 file in the shipped Wilds corpus (1103) imports and survives a
-rebuild with identical content. A file with ConeDrivers is refused at import —
-see Export Safety Gate. In-place versions keep every section byte for byte.
-Files imported by an earlier version of the add-on hold none of this data in
-Blender; re-import them to edit these sections.
-
-## How Constraints Combine
-
-Two rules:
-
-* **Several sources inside one constraint** — each maps independently and the
-  outputs are **summed**.
-* **Several constraints on the same bone axis** — the **last one in file order
-  wins outright**; the earlier ones are discarded, not blended. The add-on applies
-  only the winning constraint and warns on the ones it supersedes.
-
-Because constrant order decides that, the constraint panel shows each constraint's
-position and gives you buttons to move it earlier or later.
-
-## Mapping Diagnostics
-
-Each source shows what its curve actually produces — the output at rest, at the
-kink, and at full deflection — plus a plot of the curve. A non-zero output at rest
-means the bone is deflected before anything moves, which is almost always an
-authoring slip; the panel flags it and offers a one-click fix when swapping the
-MapTo ends would correct it.
-
-Constraints are grouped by driven bone under *Driven Bones*, so you can see at a
-glance which ones share a channel and which of them is the one that counts.
-
-## L/R Mirror
-
-Mirror signs are derived per constraint rather than from a fixed table: the input
-side comes from the two bones' local frames read out of the armature, the output
-side also depends on `flags_cns` bit 5, and multiplicative outputs (Scale,
-BlendShape) are never negated.
-
-## Export Safety Gate
-
-The writer rebuilds the whole file, so any structure it does not emit would be
-dropped while its header pointer is copied verbatim — producing a file that looks
-fine but points at unrelated data. Rather than write such a file, import warns and
-export refuses when it finds:
-
-* a constraint whose declared `SourceCount` exceeds the data actually present
-* a constraint referencing `ConeDriverInfo` or `ComplexMappingInfo`
-* a non-empty ConeDriver, ObjectSettings, or SkinConstraint table
-
-Output is not byte-identical to the input: the writer packs the string pools more
-tightly than the shipped files, so most outputs are slightly smaller with all
-downstream pointers shifted. Semantics are preserved.
-
-## Requirements
-
-[Blender 4.2 or newer](https://www.blender.org/download/) for the extension build,
-or 3.6+ for the legacy build.
+¹ Files that carry a ReadJointTable (SkinConstraintHashTable in the 010 template
+and REE-Lib) need the target armature set before Skin or Aim bones change: the
+table is re-derived from the skeleton's hierarchy.
 
 ## Installation
 
-**Blender 4.2+ (extension — recommended)**
-
-`Edit > Preferences > Get Extensions > ⌄ > Install from Disk...` and pick
-`Wilds-JCNS-Editor-extension-vX.Y.Z.zip`. Installing a newer build over an
-existing one updates it in place, so you normally do not have to restart Blender.
-
-**Blender 3.6 – 4.1 (legacy)**
-
-`Edit > Preferences > Add-ons > Install...` and pick `Wilds-JCNS-Editor-vX.Y.Z.zip`.
-
-Both archives come from the same sources: `__init__.py` keeps `bl_info` for older
-Blender, while 4.2+ reads `blender_manifest.toml` and ignores it.
-
-## Building
-
-```
-python build_addon.py          # extension zip
-python build_addon.py --all    # extension + legacy zips
-```
-
-The build validates `blender_manifest.toml` (required keys, id form, tagline
-length, SPDX licence, known tags, permission wording), byte-compiles every module,
-and checks that `bl_info` and the manifest agree on the version number.
+Blender 4.2 or newer: `Edit > Preferences > Get Extensions > ⌄ > Install from
+Disk...` and pick the `-extension-vX.Y.Z.zip`. Blender 3.6 – 4.1: `Edit >
+Preferences > Add-ons > Install...` and pick the plain `-vX.Y.Z.zip`.
+Both are built with `python build_addon.py --all`.
 
 ## Credits
 

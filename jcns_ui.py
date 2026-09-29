@@ -204,7 +204,7 @@ class JCNS_UL_CMKeys(bpy.types.UIList):
 
 def _sections_editable(root_props):
     """(editable, reason) for the Skin / Aim / RotExpression / ComplexMapping data
-    of a JCNS root: only v102 rebuilds them, and only a root whose importer
+    of a JCNS root: only rebuilt versions (v35, v102) re-emit them, and only a root whose importer
     cached them has the data in Blender."""
     if root_props is None:
         return False, "找不到所属的 JCNS 根节点"
@@ -565,6 +565,7 @@ class JCNS_PT_Constraint(Panel):
             box.label(text="SkinConstraint", icon='MOD_VERTEX_WEIGHT')
             locked = _skin_table_locked(rp)
             _field_row(box.column(align=True), "对象骨骼：", p, "target_bone")
+            _field_row(box.column(align=True), "尾部字节：", p, "skin_tail_hex")
             if locked:
                 box.label(text="文件带读取骨表：未设目标骨架时只能改权重", icon='INFO')
             elif rp and rp.read_joint_signature_json:
@@ -776,6 +777,82 @@ class JCNS_PT_Constraint(Panel):
                              % (i, s.source_bone or "?", s.source_axis))
 
 
+_CONE_NAME_CACHE = {}
+
+
+def _cone_names(rp):
+    """ConeDriver names of a root, from its import cache (parsed once per string)."""
+    raw = rp.cone_drivers_json if rp else ''
+    if not raw:
+        return []
+    hit = _CONE_NAME_CACHE.get(raw)
+    if hit is None:
+        import json
+        hit = [cd['Name'] for cd in json.loads(raw)]
+        _CONE_NAME_CACHE.clear()
+        _CONE_NAME_CACHE[raw] = hit
+    return hit
+
+
+class JCNS_UL_ConeInfos(bpy.types.UIList):
+    """ConeDriverInfo：这条约束读取的锥形及其输出值。"""
+    bl_idname = "JCNS_UL_cone_infos"
+
+    def draw_item(self, context, layout, data, item, icon, active_data, active_prop, index):
+        from . import get_jcns_root_from_constraint
+        _, rp = get_jcns_root_from_constraint(context.active_object)
+        names = _cone_names(rp)
+        row = layout.row(align=True)
+        row.prop(item, "cone_index", text="")
+        label = names[item.cone_index] if item.cone_index < len(names) else "（不存在）"
+        sub = row.row()
+        sub.alert = item.cone_index >= len(names)
+        sub.label(text=label, icon='CONE')
+        row.prop(item, "value", text="")
+
+
+class JCNS_PT_ConstraintCones(Panel):
+    """ConeDriver 输入：关节摆进某个锥形的程度驱动这条约束，与驱动源并列。"""
+    bl_label    = "ConeDriver 输入"
+    bl_idname   = "JCNS_PT_constraint_cones"
+    bl_space_type  = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category    = 'JCNS 编辑器'
+    bl_parent_id   = "JCNS_PT_constraint"
+
+    @classmethod
+    def poll(cls, context):
+        from . import get_jcns_constraint, get_jcns_root_from_constraint
+        obj, p = get_jcns_constraint(context)
+        if p is None or p.constraint_type != 'Ranges':
+            return False
+        _, rp = get_jcns_root_from_constraint(obj)
+        return bool(len(p.cone_infos) or (rp and rp.cone_drivers_json))
+
+    def draw(self, context):
+        from . import get_jcns_constraint, get_jcns_root_from_constraint
+        layout = self.layout
+        obj, p = get_jcns_constraint(context)
+        _, rp = get_jcns_root_from_constraint(obj)
+        names = _cone_names(rp)
+        layout.label(text="文件共 %d 个 ConeDriver；本约束读取 %d 个" % (len(names), len(p.cone_infos)),
+                     icon='INFO')
+        row = layout.row()
+        row.template_list("JCNS_UL_cone_infos", "", p, "cone_infos", p, "active_cone_info_index",
+                          rows=min(max(len(p.cone_infos), 2), 8))
+        col = row.column(align=True)
+        col.operator("jcns.cone_info_add", text="", icon='ADD')
+        col.operator("jcns.cone_info_remove", text="", icon='REMOVE')
+        if len(p.cone_infos):
+            k = p.cone_infos[min(p.active_cone_info_index, len(p.cone_infos) - 1)]
+            box = layout.box()
+            box.prop(k, "value")
+            box.row(align=True).prop(k, "rest", text="Rest")
+            r = box.row(align=True)
+            r.prop(k, "unk_byte0")
+            r.prop(k, "unk_byte3")
+
+
 class JCNS_PT_ConstraintAdvanced(Panel):
     """几乎每个文件都相同、或者含义尚未逆向出来的字段。"""
     bl_label    = "高级 / 原始字段"
@@ -826,8 +903,8 @@ class JCNS_PT_ConstraintAdvanced(Panel):
                 ("flag_bit_1", "位1"),
                 ("flag_bit_2", "位2"),
                 ("flag_bit_3", "位3"),
-                ("flag_bit_4", "位4 —— 驱动骨骼（导出时按变换类型自动设置）"),
-                ("flag_bit_5", "位5 —— 驱动量为旋转（导出时按变换类型自动设置）"),
+                ("flag_bit_4", "位4 —— 驱动骨骼（v36/v102 导出时按变换类型自动设置）"),
+                ("flag_bit_5", "位5 —— 驱动量为旋转（v36/v102 导出时按变换类型自动设置）"),
                 ("flag_bit_6", "位6"),
                 ("flag_bit_7", "位7"),
             ):
@@ -841,8 +918,7 @@ class JCNS_PT_ConstraintAdvanced(Panel):
         ])
         _draw_raw_group(layout, "杂项标量 [64..72]", 'PREFERENCES', [
             (p, [("parent_float2_x", "X"), ("parent_float2_y", "Y")]),
-            (p, [("parent_uint8_72", "+72"), ("property_hash", "属性哈希"),
-                 ("cone_driver_info_count", "锥形驱动数")]),
+            (p, [("parent_uint8_72", "+72"), ("property_hash", "属性哈希")]),
         ])
         _draw_raw_group(layout, "尾部字节 [74..79]", 'PREFERENCES', [
             (p, [(a, "") for a in ("parent_tail_0", "parent_tail_1", "parent_tail_2",
@@ -858,10 +934,12 @@ _classes = [
     JCNS_UL_Sources,
     JCNS_UL_SkinSources,
     JCNS_UL_CMKeys,
+    JCNS_UL_ConeInfos,
     JCNS_PT_Status,
     JCNS_PT_Root,
     JCNS_PT_RootChannels,
     JCNS_PT_Constraint,
+    JCNS_PT_ConstraintCones,
     JCNS_PT_ConstraintAdvanced,
 ]
 

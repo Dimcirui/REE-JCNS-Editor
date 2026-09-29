@@ -5,7 +5,7 @@ import sys
 from jcns_schema import (
     HEADER, CONSTRAINT_INFO, SOURCE_V2, AIM, AIM_TARGET, MATERIAL,
     COMPLEX_MAPPING, OBJECT_SETTING, SKIN, SKIN_SOURCE, SKIN_SOURCE_INFO,
-    source_struct, transform_axis_key,
+    CONE_DRIVER, CONE_DRIVER_INFO, source_struct, transform_axis_key,
 )
 from jcns_parser import header_field_offset
 
@@ -178,16 +178,65 @@ class JCNSWriter:
             from jcns_parser import read_header
             hdr = read_header(orig, check_layout=False)
 
-        # ConstraintInfo starts right after the header, which ends 16-aligned.
-        CNS_INFO_START = hdr['HeaderEnd']
+        # The header ends 16-aligned.  In RE9 (v35) every block below follows it
+        # in this order: ConeDriver[] and their names, ConstraintInfo[], every
+        # constraint's ConeDriverInfo[] (16-aligned each), ConstraintSource[].
+        # Without ConeDrivers ConstraintInfo starts right at the header's end.
+        HEADER_END     = hdr['HeaderEnd']
         SRC_SIZE       = SOURCE_V2.size(version)
         CNS_INFO_SIZE  = N * CONSTRAINT_INFO.size(version)
         axis_key       = transform_axis_key(version)
 
-        # ConstraintSource_v2 section starts right after ConstraintInfo,
-        # padded to 16-byte boundary (80 is a multiple of 16, so no pad needed
-        # for any N; still guard for correctness).
-        raw_src_start = CNS_INFO_START + CNS_INFO_SIZE
+        # ── Phase 2b: ConeDriver table + names ──────────────────────────
+        cones = getattr(p, 'cone_drivers', [])
+        N_CONE = len(cones)
+        CONE_START = HEADER_END
+        cone_blob = bytearray()
+        if N_CONE:
+            names_at = CONE_START + N_CONE * CONE_DRIVER.size(version)
+            name_blob = bytearray()
+            recs = []
+            for cd in cones:
+                # names are 8-aligned (614/614 in RE9)
+                name_blob.extend(b'\x00' * (_align(names_at + len(name_blob), 8) - (names_at + len(name_blob))))
+                name_off = names_at + len(name_blob)
+                name_blob.extend(cd['Name'].encode('utf-16le') + b'\x00\x00')
+                sym = cd.get('SymmetryJointHash')
+                rec = {k: v for k, v in cd.items() if CONE_DRIVER.has(k, version)}
+                rec.update({
+                    'Name_Offset': name_off,
+                    'NameHash': hashUTF16(cd['Name']) & 0xFFFFFFFF,
+                    'JointHashIndex': _get_or_add_hash(cd['JointHash']),
+                    'ParentJointHashIndex': _get_or_add_hash(cd['ParentJointHash']),
+                    'SymmetryJointHashIndex': -1 if sym is None else _get_or_add_hash(sym),
+                    'Tail': bytes(cd.get('Tail', b'\x06\x06' + bytes(6))),
+                })
+                recs.append(rec)
+            for rec in recs:
+                cone_blob.extend(CONE_DRIVER.pack(rec, version))
+            cone_blob.extend(name_blob)
+        CNS_INFO_START = _align(CONE_START + len(cone_blob), 16)
+
+        # ── Phase 2c: every constraint's ConeDriverInfo[] ───────────────
+        cone_info_blob = bytearray()
+        cone_info_at = []
+        CONE_INFO_START = CNS_INFO_START + CNS_INFO_SIZE
+        for c in p.constraints:
+            infos = c.get('ConeDriverInfo') or []
+            if not infos:
+                cone_info_at.append(0)
+                continue
+            pos = CONE_INFO_START + len(cone_info_blob)
+            cone_info_blob.extend(b'\x00' * (_align(pos, 16) - pos))
+            cone_info_at.append(CONE_INFO_START + len(cone_info_blob))
+            for ci in infos:
+                if not 0 <= ci['ConeDriverIndex'] < N_CONE:
+                    raise ValueError(f"约束「{c.get('ObjectName', '')}」引用了第 {ci['ConeDriverIndex']} 个 "
+                                     f"ConeDriver，但文件里只有 {N_CONE} 个。")
+                cone_info_blob.extend(CONE_DRIVER_INFO.pack(ci, version))
+
+        # ConstraintSource_v2 section starts after that, 16-aligned.
+        raw_src_start = CONE_INFO_START + len(cone_info_blob)
         SRC_START = _align(raw_src_start, 16)
 
         # ── Phase 3: build ConstraintSource_v2 blobs ───────────────────
@@ -325,6 +374,11 @@ class JCNSWriter:
                 src_h = new_hash_list[src_idx] if src_idx < len(new_hash_list) else 0
                 if src_h not in bucket:
                     bucket.append(src_h)
+            # A cone-driven constraint depends on each cone's joint (RE9 v35).
+            for ci in c.get('ConeDriverInfo') or []:
+                h = cones[ci['ConeDriverIndex']]['JointHash']
+                if h not in bucket:
+                    bucket.append(h)
 
         M = len(dep_order)
         DEP_DATA_START = DEP_TABLE_START + M * 16
@@ -394,6 +448,8 @@ class JCNSWriter:
                 'ObjectNameOffset': tgt_name_off,
                 'ObjectHashIndex':      tgt_idx,
                 'ObjectHash':           tgt_h,
+                'ConeDriverInfoOffset': cone_info_at[i],
+                'ConeDriverInfoCount':  len(c.get('ConeDriverInfo') or []),
                 'PropertyOffset':       (tgt_name_to_offset[c['PropertyName']]
                                          if c.get('PropertyName') else 0),
                 # Derived from the source list, never copied — a stale SourceCount is
@@ -530,13 +586,15 @@ class JCNSWriter:
                 skin_blob.extend(struct.pack(f'<{len(read_joints)}I', *read_joints))
 
         # ── Phase 9: patch header ───────────────────────────────────────
-        header = bytearray(orig[:CNS_INFO_START])
+        header = bytearray(orig[:HEADER_END])
 
         patch = {
             'DependencyTableEntry': DEP_TABLE_START,
             'SectionTableEntry':    SEC_TABLE_START,
             'HashListOffset':       HASH_TABLE_START,
             'ConstraintInfoEntry':  CNS_INFO_START,
+            'ConeDriverTableEntry': CONE_START,
+            'ConeDriverCount':      N_CONE,
             'HashCount':            len(new_hash_list),
             'ConstraintCount':      N,
             'DependencyCount':      M,
@@ -579,7 +637,10 @@ class JCNSWriter:
         # ── Phase 10: assemble ──────────────────────────────────────────
         out = bytearray()
         out.extend(header)                             # Tags + DataInfo header
+        out.extend(cone_blob)                          # ConeDriver[] + names
+        _pad_to(out, CNS_INFO_START)
         out.extend(cns_info_blob)                      # ConstraintInfo[]
+        out.extend(cone_info_blob)                     # ConeDriverInfo[] per constraint
         _pad_to(out, SRC_START)
         out.extend(src_blob)                           # Source_v2 + source WStrings
         out.extend(tgt_pool_blob)                      # Target WString pool

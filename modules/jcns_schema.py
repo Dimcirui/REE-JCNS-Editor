@@ -351,6 +351,39 @@ def source_hash_key(version):
 
 # ── Other sections ─────────────────────────────────────────────────────────
 
+# Section 0 ConeDrivers (v35 layout; bt ConeDriver_v2).  A cone around a joint's
+# direction: constraints read how far a joint has swung into it through their
+# ConeDriverInfo list, as an alternative to ConstraintSource ranges.  RE9 v35:
+# 614 records in 10 of 12 files.  NameHash is murmur(Name) (614/614), the joint
+# fields are hash-list indices (SymmetryJoint -1 when unpaired), UnknownUInt32
+# is 0 and Tail is 06 06 00 {0,1} 00 00 00 00 in every one.
+CONE_DRIVER = Struct('ConeDriver', [
+    F('Name_Offset',            'Q'),
+    F('Direction',              '4f'),
+    F('Matrix',                 '12f'),          # matrix4x3 (ReeLib reads a 4x4 here)
+    F('NameHash',               'I'),
+    F('JointHashIndex',         'i'),
+    F('ParentJointHashIndex',   'i'),
+    F('SymmetryJointHashIndex', 'i'),
+    F('AngleRad',               'f'),
+    F('UnknownUInt32',          'I'),
+    F('Tail',                   '8s'),
+])
+
+# ConstraintInfo.ConeDriverInfoOffset -> ConeDriverInfo[ConeDriverInfoCount].
+# Rest is (0,0,0,0), or (0,0,0,1) on scale targets whose neutral value is 1
+# (588 of 10512 in RE9); Value is what the target takes for that cone — bt calls
+# it AngleDeg, but on scale targets it holds factors like 1.002 or 3.5.
+CONE_DRIVER_INFO = Struct('ConeDriverInfo', [
+    F('Rest0',           'f'),
+    F('Rest123',         '3f', since(24)),
+    F('Value',           'f'),
+    F('UnkByte0',        'B'),                   # 0, or 2 in 30 of 10512
+    F('ConeDriverIndex', 'H'),
+    F('UnkByte3',        'B'),                   # always 0
+])
+
+
 AIM = Struct('ConstraintAim', [
     F('TargetInfoOffset',   'Q'),
     F('JointHashIndex',     'i', since(35)),
