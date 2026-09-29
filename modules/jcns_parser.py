@@ -79,7 +79,7 @@ class JCNSParser:
       +8:   OffsetSourceList      uint64   pointer to ConstraintSource_v2
       +16:  ObjectNameOffset      uint64   pointer to TARGET bone name (UTF-16LE)
       +24:  PropertyOffset        uint64   pointer to property name (0 usually)
-      +32:  TargetHashIndex       uint32   index into hash_list → target bone hash
+      +32:  ObjectHashIndex       uint32   index into hash_list → target bone hash
       +36:  ObjectHash            uint32   direct target bone hash (redundant with above)
       +40:  PropertyHash          uint32   property hash
       +44:  ConeDriverInfoCount   uint8    bt: ConeDriverInfoCount — 0 in every one of the
@@ -115,14 +115,11 @@ class JCNSParser:
       +20:  ComplexMappingInfoCount   uint16   bt: ComplexMappingInfoCount.  Nonzero in 78 of
                                               23031 sources, taking values {3, 4, 7}.
       +22:  UnknownUInt16             uint16   0 in all but a single observed source (which has 1).
-      +24:  UpdateTiming              uint8    bt(0.65.14): UpdateTimingID.  All six enum values
-                                              occur: MotionBegin(7.4%) MotionEnd(13.6%)
-                                              ConstraintBegin(8.2%) ConstraintEnd(70.8%)
-                                              Last(2 sources) ByBehavior(7 sources).
-                                              Appears to encode evaluation order — sources that are
-                                              themselves constraint outputs tend to read at
-                                              ConstraintEnd, raw animated bones earlier — rather
-                                              than anything about how sources combine.
+      +24:  CurveMode                 uint8    bt calls it UpdateTiming (UpdateTimingID enum),
+                                              ReeLib an unnamed byte.  Measured in game: bit 1
+                                              selects the curve — {0,1} two-point (kink ignored),
+                                              {2,3} three-point piecewise; see jcns_mapping.
+                                              Observed 0..5 (4 and 5: 9 sources, unmeasured).
       +25:  SrcTransformID            uint8    MEANING UNCERTAIN — bt 0.65.13 called this
                                               InterpolationID, bt 0.65.14 renamed it to
                                               TransformIDSrc; the template author marks both
@@ -265,8 +262,8 @@ class JCNSParser:
             c['ParentSetOffset'] = off
             c['TransformAxis_parent'] = rec[axis_key]
             c['target_axis'] = rec[axis_key]
-            c['TargetBoneName'] = self._read_wstring(data, rec['TargetBoneNameOffset'])
-            c['_orig_target_name'] = c['TargetBoneName']
+            c['ObjectName'] = self._read_wstring(data, rec['ObjectNameOffset'])
+            c['_orig_object_name'] = c['ObjectName']
             # Property of the target (e.g. 'Blend_A' of material 'face'); empty for bones.
             c['PropertyName'] = (self._read_wstring(data, rec['PropertyOffset'])
                                  if rec.get('PropertyOffset') else '')
@@ -275,16 +272,16 @@ class JCNSParser:
             # with TransformType=11 and a non-zero PropertyHash) whose ObjectHash is not
             # the name's hash; record whether they agree while both are still original.
             c['ObjectHashMatchesName'] = bool(
-                c['TargetBoneName'] and _hash_utf16(c['TargetBoneName']) == rec['ObjectHash'])
-            if v >= 35 and 0 <= rec['TargetHashIndex'] < len(self.hash_list):
-                c['TargetHash'] = self.hash_list[rec['TargetHashIndex']]
+                c['ObjectName'] and _hash_utf16(c['ObjectName']) == rec['ObjectHash'])
+            if v >= 35 and 0 <= rec['ObjectHashIndex'] < len(self.hash_list):
+                c['TargetHash'] = self.hash_list[rec['ObjectHashIndex']]
             else:
                 c['TargetHash'] = rec['ObjectHash']
 
-            # ConstraintSource[SourceCount] — consecutive records at LimitsPointer.
+            # ConstraintSource[SourceCount] — consecutive records at SourceListOffset.
             # Multi-source constraints are common (~12% in Wilds).
             c['sources'] = []
-            ptr = rec['LimitsPointer']
+            ptr = rec['SourceListOffset']
             if ptr:
                 for k in range(rec['SourceCount_parent']):
                     s_off = ptr + k * src_size
@@ -295,7 +292,7 @@ class JCNSParser:
 
         for i, c in enumerate(self.constraints):
             ta = self.AXIS_NAMES[min(c['target_axis'], 3)]
-            head = (f"[{i:02d}] target={c['TargetBoneName'] or '?':<20} "
+            head = (f"[{i:02d}] target={c['ObjectName'] or '?':<20} "
                     f"tgtAxis={ta}  hash32=0x{c['TargetHash']:08x}")
             if not c['sources']:
                 print(head + "  (no sources)")

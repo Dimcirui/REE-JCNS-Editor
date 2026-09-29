@@ -255,7 +255,7 @@ def _make_default_constraint_dict(empty_obj):
         'ParentUInt8_72':        0,
         'TransformAxis_parent':  tgt_ax,
         'ParentTailBytes':       b'\x00' * 6,
-        'TargetBoneName':        '',
+        'ObjectName':        '',
         # Sources are built entirely by _patch_constraint_from_empty()
         'sources':               [],
     }
@@ -269,8 +269,8 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list):
     Source bone: if changed, hash_list is searched for the MurmurHash3 value
     and SourceHashIndex is updated (or the hash is appended by the writer).
 
-    Target bone: if changed, TargetBoneName is updated; the writer recomputes
-    TargetHash and TargetHashIndex from the name automatically.
+    Target bone: if changed, ObjectName is updated; the writer recomputes
+    TargetHash and ObjectHashIndex from the name automatically.
     """
     from . import AXIS_TO_INT
     _ensure_modules_path()
@@ -280,10 +280,10 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list):
         hashUTF16 = None
     p = empty_obj.jcns_cns_props
 
-    # --- Target bone name (writer recomputes TargetHash/TargetHashIndex from it) ---
+    # --- Target bone name (writer recomputes TargetHash/ObjectHashIndex from it) ---
     new_target_name = p.target_bone.strip()
     if new_target_name:
-        parsed_c['TargetBoneName'] = new_target_name
+        parsed_c['ObjectName'] = new_target_name
 
     # --- Target axis lives in ConstraintInfo[+73], not in any source block ---
     parsed_c['TransformAxis_parent'] = AXIS_TO_INT.get(p.target_axis, 0)
@@ -315,7 +315,7 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list):
         base['rest_quat_y']     = sp.rest_quat_y
         base['rest_quat_z']     = sp.rest_quat_z
         base['rest_quat_w']     = sp.rest_quat_w
-        base['UpdateTiming']    = sp.update_timing
+        base['CurveMode']    = sp.update_timing
         base['SrcTransformID']  = sp.src_transform_id
         base['UnkByte2']        = sp.unk_byte2
         base['UnknownUInt16']   = sp.unknown_uint16

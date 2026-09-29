@@ -16,7 +16,7 @@ from jcns_parser import header_field_offset
 # (strings, source arrays, hash table) does not move.
 INPLACE_CNS_FIELDS = ('Flags', 'TransformType', 'ParentVec4', 'ParentFloat2',
                       'ParentUInt8_72', 'PropertyHash', 'ParentTailBytes')
-INPLACE_SRC_FIELDS = ('UpdateTiming', 'SrcTransformID', 'source_axis', 'UnkByte2',
+INPLACE_SRC_FIELDS = ('CurveMode', 'SrcTransformID', 'source_axis', 'UnkByte2',
                       'UnknownUInt16', 'UnknownUInt32_2',
                       'from_start', 'from_kink', 'from_end',
                       'to_start', 'to_kink', 'to_end',
@@ -93,7 +93,7 @@ class JCNSWriter:
         def _is_direct_hash(c):
             """True when target is identified by direct ObjectHash (TgtIdx=0xFFFFFFFF),
             e.g. BlendShape / property targets that don't live in the hash table."""
-            return c.get('TargetHashIndex', 0) == 0xFFFFFFFF
+            return c.get('ObjectHashIndex', 0) == 0xFFFFFFFF
 
         def _target_hash(c):
             """Hash to store in ObjectHash for a direct-hash (non-indexed) target.
@@ -103,7 +103,7 @@ class JCNSWriter:
             derived from something else — recomputing it there would corrupt the field,
             so the parser records whether the two agreed in the original file.
             """
-            name = c.get('TargetBoneName', '')
+            name = c.get('ObjectName', '')
             if name and c.get('ObjectHashMatchesName', True):
                 return hashUTF16(name) & 0xFFFFFFFF
             return c.get('ObjectHash', 0)
@@ -116,7 +116,7 @@ class JCNSWriter:
 
             # Only bone targets go into the hash table; BlendShape/property targets
             # use direct ObjectHash (TgtIdx=0xFFFFFFFF) and must not pollute the list.
-            tgt = c.get('TargetBoneName', '')
+            tgt = c.get('ObjectName', '')
             if tgt and not _is_direct_hash(c):
                 _get_or_add(tgt)
 
@@ -160,7 +160,7 @@ class JCNSWriter:
             if not prop:
                 return tgt_h
             sep = ':' if c.get('TransformType') == 11 else '.'
-            return hashUTF16(c.get('TargetBoneName', '') + sep + prop) & 0xFFFFFFFF
+            return hashUTF16(c.get('ObjectName', '') + sep + prop) & 0xFFFFFFFF
 
         # ── Phase 2: layout constants ───────────────────────────────────
         N = len(p.constraints)
@@ -273,7 +273,7 @@ class JCNSWriter:
                     tgt_pool_blob.extend(b'\x00')
 
         for c in p.constraints:
-            _pool(c.get('TargetBoneName', ''))
+            _pool(c.get('ObjectName', ''))
         # Property names ('Blend_A', 'BlendRate', ...) — the original PropertyOffset
         # points into the old file, so the string has to be re-emitted.
         for c in p.constraints:
@@ -300,7 +300,7 @@ class JCNSWriter:
         dep_order = []            # target hashes, in first-seen order
         dep_sources = {}          # target hash -> list of source hashes (unique, ordered)
         for c in p.constraints:
-            tgt_name = c.get('TargetBoneName', '')
+            tgt_name = c.get('ObjectName', '')
             if _is_direct_hash(c):
                 tgt_h = _target_hash(c)
             else:
@@ -368,7 +368,7 @@ class JCNSWriter:
         # ── Phase 8: build ConstraintInfo array ────────────────────────
         cns_info_blob = bytearray()
         for i, c in enumerate(p.constraints):
-            tgt_name    = c.get('TargetBoneName', '')
+            tgt_name    = c.get('ObjectName', '')
             tgt_name_off = tgt_name_to_offset.get(tgt_name, 0)
             if _is_direct_hash(c):
                 tgt_h   = _target_hash(c)
@@ -380,9 +380,9 @@ class JCNSWriter:
             rec = dict(_CNS_DEFAULTS)
             rec.update({k: v for k, v in c.items() if not k.startswith('_')})
             rec.update({
-                'LimitsPointer':        src_v2_off,
-                'TargetBoneNameOffset': tgt_name_off,
-                'TargetHashIndex':      tgt_idx,
+                'SourceListOffset':        src_v2_off,
+                'ObjectNameOffset': tgt_name_off,
+                'ObjectHashIndex':      tgt_idx,
                 'ObjectHash':           tgt_h,
                 'PropertyOffset':       (tgt_name_to_offset[c['PropertyName']]
                                          if c.get('PropertyName') else 0),
@@ -661,7 +661,7 @@ _CNS_DEFAULTS = {
 }
 _SOURCE_DEFAULTS = {
     'ComplexMappingInfoOffset': 0, 'SourceHashIndex': 0, 'ComplexMappingInfoCount': 0,
-    'UnknownUInt16': 0, 'UpdateTiming': 3, 'SrcTransformID': 3, 'source_axis': 0,
+    'UnknownUInt16': 0, 'CurveMode': 3, 'SrcTransformID': 3, 'source_axis': 0,
     'UnkByte2': 0, 'UnknownUInt32_2': 0,
     'from_start': 0.0, 'from_kink': 0.0, 'from_end': 0.0,
     'to_start': 0.0, 'to_kink': 0.0, 'to_end': 0.0,

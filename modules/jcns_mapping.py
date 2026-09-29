@@ -24,8 +24,8 @@ Segment 1 maps [A.x -> B.x] onto [A.y -> B.y]; segment 2 maps [B.x -> C.x] onto
 segment's bound.
 
 TWO CURVE MODES (measured in-game 2026-08-21 against a purpose-built rig).  The
-per-source byte at +24 — which jcns_parser calls `UpdateTiming`, a misnomer —
-selects the curve shape:
+per-source byte at +24 — `CurveMode` in jcns_parser; RE_Engine_JCNS.bt calls it
+UpdateTiming, a misnomer — selects the curve shape:
 
     +24 == 0, 1  ->  TWO-POINT: the kink is ignored entirely; the output is the
                      straight line A -> C.
@@ -64,8 +64,8 @@ UNTESTED: +24 == 4 / 5 (9 sources in the whole corpus).
 def is_two_point(update_timing):
     """Does this source use the two-point (straight line A -> C) curve mode?
 
-    The per-source byte at +24 — stored under the file-format name
-    `UpdateTiming` — is really the curve-mode selector.
+    The per-source byte at +24 (`CurveMode`; RE_Engine_JCNS.bt names it
+    UpdateTiming) is the curve-mode selector.
 
     Measured: 0 and 1 are two-point, 2 and 3 are three-point.  That split is
     exactly bit 1 (0x02), which is probably the real encoding, but 4 and 5 (9
@@ -78,11 +78,11 @@ def is_two_point(update_timing):
 def source_two_point(source):
     """Curve mode of a source, read from whichever field name it exposes.
 
-    Parser dicts carry the raw file-format key `UpdateTiming`; the Blender
-    PropertyGroup exposes it as `update_timing`.
+    Parser dicts carry it as `CurveMode`; the Blender PropertyGroup keeps the
+    older name `update_timing` so existing .blend files still load.
     """
     if isinstance(source, dict):
-        v = source.get('UpdateTiming', source.get('update_timing'))
+        v = source.get('CurveMode', source.get('update_timing'))
     else:
         v = getattr(source, 'update_timing', None)
     return is_two_point(v)

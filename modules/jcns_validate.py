@@ -64,7 +64,7 @@ def check_exportable(parser):
 
     n = _count_truncated_sources(parser)
     if n:
-        names = [c.get('TargetBoneName') or '?' for c in parser.constraints
+        names = [c.get('ObjectName') or '?' for c in parser.constraints
                  if len(c.get('sources', [])) != c.get('SourceCount_parent', 0)]
         problems.append(
             f"{n} 条约束声明的驱动源数量超过文件实际内容："
@@ -124,7 +124,7 @@ def check_in_place_edits(parser):
     Only values change in place; the constraint list, each constraint's source
     list, every bone name and the material/JXG entries must match the original
     file one-to-one (the parser tags each record with its origin: `_rec`,
-    `_orig_target_name`, `_orig_name`, `_offset`).
+    `_orig_object_name`, `_orig_name`, `_offset`).
     """
     problems = []
     v = parser.header.get('Version', '?')
@@ -137,10 +137,10 @@ def check_in_place_edits(parser):
         return problems
 
     for i, c in enumerate(cns):
-        label = c.get('_orig_target_name') or f'#{i}'
-        if c.get('TargetBoneName', '') != c.get('_orig_target_name', ''):
+        label = c.get('_orig_object_name') or f'#{i}'
+        if c.get('ObjectName', '') != c.get('_orig_object_name', ''):
             problems.append(f"{head}：约束 {label} 的目标骨骼被改成了 "
-                            f"「{c.get('TargetBoneName', '')}」（不能改名）。")
+                            f"「{c.get('ObjectName', '')}」（不能改名）。")
         srcs = c.get('sources', [])
         if len(srcs) != c['_rec']['SourceCount_parent'] or any('_rec' not in s for s in srcs):
             problems.append(f"{head}：约束 {label} 的驱动源数量变了（不能增删驱动源）。")

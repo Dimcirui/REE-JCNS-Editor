@@ -11,7 +11,7 @@ how one declaration covers every RE Engine release (the same idea as ReeLib's
     CONSTRAINT_INFO = Struct('ConstraintInfo', [
         F('ConeDriverInfoOffset', 'Q'),
         ...
-        F('TargetHashIndex', 'I', since(35)),
+        F('ObjectHashIndex', 'I', since(35)),
         F('ObjectHash',      'I'),
         ...
     ])
@@ -271,10 +271,10 @@ def section_count(header, version):
 
 CONSTRAINT_INFO = Struct('ConstraintInfo', [
     F('ConeDriverInfoOffset',  'Q'),
-    F('LimitsPointer',         'Q'),              # -> ConstraintSource[SourceCount]
-    F('TargetBoneNameOffset',  'Q'),
+    F('SourceListOffset',         'Q'),              # -> ConstraintSource[SourceCount]
+    F('ObjectNameOffset',  'Q'),
     F('PropertyOffset',        'Q', since(13)),
-    F('TargetHashIndex',       'I', since(35)),
+    F('ObjectHashIndex',       'I', since(35)),
     F('ObjectHash',            'I'),
     F('PropertyHash',          'I', since(13)),
     F('UnknownUInt32_v1',      'I', before(13)),
@@ -314,7 +314,7 @@ SOURCE_V2 = Struct('ConstraintSource_v2', [
     F('SourceHash',               'I', before(35)),
     F('ComplexMappingInfoCount',  'H'),
     F('UnknownUInt16',            'H'),
-    F('UpdateTiming',             'B'),
+    F('CurveMode',             'B'),
     F('SrcTransformID',           'B'),
     F('source_axis',              'B'),
     F('UnkByte2',                 'B'),
@@ -330,7 +330,7 @@ SOURCE_V1 = Struct('ConstraintSource_v1', [
     F('SourceHash',         'I'),
     F('from_start',  'f'), F('from_kink', 'f'), F('from_end', 'f'),
     F('to_start',    'f'), F('to_kink',   'f'), F('to_end',   'f'),
-    F('UpdateTiming',       'B'),
+    F('CurveMode',       'B'),
     F('SrcTransformID',     'B'),
     F('source_axis',        'B'),
     F('UnkByte2',           'B'),

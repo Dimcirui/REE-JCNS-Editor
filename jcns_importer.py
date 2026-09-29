@@ -160,7 +160,7 @@ def do_import(filepath, context, armature_obj=None):
     # --- Create one child Empty per constraint ---
     for idx, c in enumerate(constraints):
         file_sources = c.get('sources', [])
-        target_bone_name_from_file = c.get('TargetBoneName', '')
+        target_bone_name_from_file = c.get('ObjectName', '')
 
         # Resolve target bone name: try name from WStringOffset first, then hash lookup
         target_bone = target_bone_name_from_file
@@ -212,7 +212,7 @@ def do_import(filepath, context, armature_obj=None):
             sp.rest_quat_y = s.get('rest_quat_y', 0.0)
             sp.rest_quat_z = s.get('rest_quat_z', 0.0)
             sp.rest_quat_w = s.get('rest_quat_w', 1.0)
-            sp.update_timing    = s.get('UpdateTiming', 3)
+            sp.update_timing    = s.get('CurveMode', 3)
             sp.src_transform_id = s.get('SrcTransformID', 3)
             sp.unk_byte2        = s.get('UnkByte2', 0)
             sp.complex_mapping_info_count = s.get('ComplexMappingInfoCount', 0)
@@ -293,13 +293,13 @@ def do_import(filepath, context, armature_obj=None):
         p2.jxg_path = path
 
     # --- Populate available_bones_json from all bone names in hash_list ---
-    # Collect every SourceName and TargetBoneName that was decoded from the file.
+    # Collect every SourceName and ObjectName that was decoded from the file.
     # These are exactly the bones that have entries in the hash_list, and are
     # therefore valid choices for source_bone editing.
     import json
     all_bone_names = set()
     for c in constraints:
-        tgt = c.get('TargetBoneName', '').strip()
+        tgt = c.get('ObjectName', '').strip()
         if tgt:
             all_bone_names.add(tgt)
         for s_ in c.get('sources', []):
