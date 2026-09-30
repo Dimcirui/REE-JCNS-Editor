@@ -17,6 +17,7 @@ from types import SimpleNamespace
 import bpy
 from bpy.types import Panel
 
+from . import jcns_capture
 from .jcns_ui import (_mapping, _fmt, _field_row, _draw_raw_group, _active_source,
                       _skin_table_locked, _target_unit, _curve_icon, _swatch_icon,
                       _cone_names, _wrap_label, _kinds)
@@ -219,8 +220,9 @@ def draw_curve(layout, p, sp):
             r.label(text="%d  %s 局部 %s 轴"
                          % (i, s.source_bone or "?", s.source_axis))
 
-def draw_anchors(layout, m, sp):
-    """三点映射的六个锚点数值。"""
+def draw_anchors(layout, m, sp, c):
+    """三点映射的六个锚点数值，每个数值右边是「从当前姿态取值」按钮。"""
+    src_ok, tgt_ok = jcns_capture.sides_readable(c, sp)
     col2 = layout.column(align=True)
     col2.separator()
     col2.prop(sp, "three_point")
@@ -234,9 +236,8 @@ def draw_anchors(layout, m, sp):
     h.label(text="终点 C")
     rw = col2.row(align=True)
     rw.label(text="")
-    rw.prop(sp, "from_start", text="")
-    rw.prop(sp, "from_kink",  text="")
-    rw.prop(sp, "from_end",   text="")
+    for field in ("from_start", "from_kink", "from_end"):
+        jcns_capture.anchor_cell(rw, sp, field, src_ok)
 
     h = col2.row()
     h.label(text="输出：")
@@ -245,9 +246,8 @@ def draw_anchors(layout, m, sp):
     h.label(text="C′")
     rw = col2.row(align=True)
     rw.label(text="")
-    rw.prop(sp, "to_start", text="")
-    rw.prop(sp, "to_kink",  text="")
-    rw.prop(sp, "to_end",   text="")
+    for field in ("to_start", "to_kink", "to_end"):
+        jcns_capture.anchor_cell(rw, sp, field, tgt_ok)
 
 
 def draw_keyframes(layout, m, sp, cm_ok, reason):
@@ -428,13 +428,14 @@ class JCNS_PT_Ed_Ranges_Mapping(_Editor, Panel):
                                                     sp.source_axis), icon='BONE_DATA')
         from . import file_state, jcns_cm
         cm_ok, reason = _kinds().complex_mapping_editable(file_state(c.rp))
+        jcns_capture.draw_readout(c.body, c, sp)
         if jcns_cm.has_curve(sp):
             draw_curve(c.body, p, sp)
             draw_keyframes(c.body, m, sp, cm_ok, reason)
             return
         draw_plain(c.body, p, sp, m)
         draw_curve(c.body, p, sp)
-        draw_anchors(c.body, m, sp)
+        draw_anchors(c.body, m, sp, c)
         row = c.body.row()
         row.enabled = cm_ok
         row.operator("jcns.cm_create", icon='IPO_BEZIER')
