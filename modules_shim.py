@@ -17,6 +17,8 @@ _MODULES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modules")
 _mapping = None
 _mirror = None
 _flags = None
+_kinds = None
+_plan = None
 
 
 def ensure_path():
@@ -59,3 +61,23 @@ def get_flags():
         import jcns_flags
         _flags = jcns_flags
     return _flags
+
+
+def get_kinds():
+    """modules/jcns_kinds.py (section registry, capabilities), imported once."""
+    global _kinds
+    if _kinds is None:
+        ensure_path()
+        import jcns_kinds
+        _kinds = jcns_kinds
+    return _kinds
+
+
+def get_plan():
+    """modules/jcns_preview_plan.py (constraint-preview planners), imported once."""
+    global _plan
+    if _plan is None:
+        ensure_path()
+        import jcns_preview_plan
+        _plan = jcns_preview_plan
+    return _plan

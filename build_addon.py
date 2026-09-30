@@ -52,9 +52,11 @@ MANIFEST = "blender_manifest.toml"
 INCLUDE_FILES = [
     "__init__.py",
     "jcns_drivers.py",
+    "jcns_editors.py",
     "jcns_exporter.py",
     "jcns_importer.py",
     "jcns_operators.py",
+    "jcns_preview.py",
     "jcns_ui.py",
     "modules_shim.py",
     "README.md",

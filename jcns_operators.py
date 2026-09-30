@@ -1,14 +1,16 @@
 """
 jcns_operators.py
 -----------------
-Drive operators and constraint management operators.
+Driver maths and entry management operators.
+
+The driver code here is the Ranges preview backend (see jcns_preview.py, which owns
+the apply / clear operators for every section).
 
 Operators:
-  JCNS_OT_ApplySingleDriver  – apply driver for the selected constraint Empty
-  JCNS_OT_ApplyAllDrivers    – apply drivers for all constraint Empties in the collection
-  JCNS_OT_ClearAllDrivers    – remove all JCNS drivers from the target armature
   JCNS_OT_AddConstraint      – add a new empty constraint to the active JCNS collection
   JCNS_OT_DeleteConstraint   – remove the selected constraint Empty and reindex names
+  JCNS_OT_MoveConstraint     – move a Ranges entry one place earlier / later
+  ... and the per-entry editing operators below.
 """
 
 import os
@@ -296,8 +298,19 @@ def _get_active_constraint_props(context):
     return props
 
 
+def _caps_for(root_props, kind_id):
+    """What the UI may offer for a kind in this file (modules/jcns_kinds.py).
+
+    Operators consult the same table as the panels, so a button that is greyed
+    out for a reason cannot be bypassed by another route to the same operator.
+    """
+    from . import file_state
+    from .modules_shim import get_kinds
+    return get_kinds().capabilities(kind_id, file_state(root_props))
+
+
 # ---------------------------------------------------------------------------
-# Operator: Apply Single Driver
+# Driver refresh (the Ranges preview backend)
 # ---------------------------------------------------------------------------
 
 def refresh_channel_values(obj):
@@ -316,7 +329,7 @@ def refresh_channel_values(obj):
     p = getattr(obj, 'jcns_cns_props', None)
     if p is None or not p.is_jcns_constraint or p.constraint_type != 'Ranges':
         return False
-    if not p.driver_applied:
+    if not p.preview_on:
         return False
     root_obj, rp = get_jcns_root_from_constraint(obj)
     if root_obj is None or rp is None or rp.target_armature is None:
@@ -375,7 +388,7 @@ def refresh_applied_driver(obj):
             return False
         done = 0
         for key, members in group_constraints_by_channel(obj).items():
-            if not any(e.jcns_cns_props.driver_applied for e in members):
+            if not any(e.jcns_cns_props.preview_on for e in members):
                 continue
             try:
                 ok, _e, _l = _apply_channel(rp.target_armature, rp, members)
@@ -389,7 +402,7 @@ def refresh_applied_driver(obj):
     p = getattr(obj, 'jcns_cns_props', None)
     if p is None or not p.is_jcns_constraint or p.constraint_type != 'Ranges':
         return False
-    if not p.driver_applied:
+    if not p.preview_on:
         return False
     root_obj, root_props = get_jcns_root_from_constraint(obj)
     if root_obj is None or root_props is None or root_props.target_armature is None:
@@ -447,7 +460,7 @@ def _apply_channel(armature_obj, root_props, members):
     )
     if ok:
         for empty in members:
-            empty.jcns_cns_props.driver_applied = True
+            empty.jcns_cns_props.preview_on = True
     return ok, err, label
 
 
@@ -456,131 +469,19 @@ def _channel_of(empty):
     return channel_key(empty.jcns_cns_props)
 
 
-class JCNS_OT_ApplySingleDriver(Operator):
-    """Apply the driver for this constraint's target channel
-
-    Any other constraint driving the same bone axis is merged into the same
-    driver, because Blender only allows one driver per channel.
-    """
-    bl_idname = "jcns.apply_single_driver"
-    bl_label  = "应用驱动器"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    @classmethod
-    def poll(cls, context):
-        from . import get_jcns_constraint, get_jcns_root_from_constraint
-        cns_obj, cns_props = get_jcns_constraint(context)
-        if cns_obj is None or cns_props.constraint_type != 'Ranges':
-            return False
-        root_obj, root_props = get_jcns_root_from_constraint(cns_obj)
-        return (root_obj is not None and root_props is not None
-                and root_props.target_armature is not None)
-
-    def execute(self, context):
-        from . import (get_jcns_constraint, get_jcns_root_from_constraint,
-                       group_constraints_by_channel, channel_key)
-        cns_obj, cns_props = get_jcns_constraint(context)
-        root_obj, root_props = get_jcns_root_from_constraint(cns_obj)
-
-        key = channel_key(cns_props)
-        members = group_constraints_by_channel(root_obj).get(key, [cns_obj])
-
-        ok, err, label = _apply_channel(root_props.target_armature, root_props, members)
-        if not ok:
-            self.report({'WARNING'}, "%s — %s" % (label, err))
-            return {'CANCELLED'}
-
-        extra = ("　（该通道合并了 %d 条约束）" % len(members)
-                 if len(members) > 1 else "")
-        self.report({'INFO'}, "驱动器：%s%s" % (label, extra))
-        return {'FINISHED'}
-
-
-class JCNS_OT_ApplyAllDrivers(Operator):
-    """Apply drivers for every target channel in the active JCNS collection"""
-    bl_idname = "jcns.apply_all_drivers"
-    bl_label  = "应用全部驱动器"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    @classmethod
-    def poll(cls, context):
-        root_obj, root_props, armature_obj = _get_root_and_armature(context)
-        return root_obj is not None and armature_obj is not None
-
-    def execute(self, context):
-        from . import group_constraints_by_channel
-
-        root_obj, root_props, armature_obj = _get_root_and_armature(context)
-        groups = group_constraints_by_channel(root_obj)
-        if not groups:
-            self.report({'WARNING'}, "该 JCNS 集合中没有约束。")
-            return {'CANCELLED'}
-
-        applied = skipped = 0
-        merged_channels = 0
-        for key, members in groups.items():
-            if len(members) > 1:
-                merged_channels += 1
-            ok, err, label = _apply_channel(armature_obj, root_props, members)
-            if ok:
-                applied += 1
-                print("[JCNS OK  ] %s" % label)
-            else:
-                skipped += 1
-                print("[JCNS SKIP] %s - %s" % (label, err))
-
-        n_cns = sum(len(m) for m in groups.values())
-        msg = "已应用 %d 条驱动器，覆盖 %d 条约束" % (applied, n_cns)
-        if merged_channels:
-            msg += "；其中 %d 个通道合并了多条约束" % merged_channels
-        if skipped:
-            msg += "；跳过 %d 条，详见系统控制台" % skipped
-            self.report({'WARNING'}, msg)
-        else:
-            self.report({'INFO'}, msg)
-        return {'FINISHED'}
-
-
-
-class JCNS_OT_ClearAllDrivers(Operator):
-    """Remove all JCNS-applied rotation drivers from the target armature"""
-    bl_idname = "jcns.clear_drivers"
-    bl_label  = "清除全部驱动器"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    @classmethod
-    def poll(cls, context):
-        root_obj, root_props, armature_obj = _get_root_and_armature(context)
-        return root_obj is not None and armature_obj is not None
-
-    def execute(self, context):
-        from . import AXIS_TO_INT, get_constraint_empties
-
-        root_obj, root_props, armature_obj = _get_root_and_armature(context)
-        empties = get_constraint_empties(root_obj)
-        removed = 0
-
-        _DATA_PATH = {k: v[0] for k, v in _DRIVABLE.items()}
-
-        for empty in empties:
-            p = empty.jcns_cns_props
-            if not p.target_bone:
-                continue
-            data_path = _DATA_PATH.get(p.transform_type)
-            if data_path is None:
-                continue
-            tgt_ax = AXIS_TO_INT.get(p.target_axis, 0)
-            pose_bone = armature_obj.pose.bones.get(p.target_bone)
-            if pose_bone:
-                try:
-                    pose_bone.driver_remove(data_path, tgt_ax)
-                    removed += 1
-                    p.driver_applied = False
-                except Exception:
-                    pass
-
-        self.report({'INFO'}, f"已清除 {removed} 条驱动器。")
-        return {'FINISHED'}
+def _clear_channel(armature_obj, members):
+    """Remove the driver of one channel and mark its constraints as not previewed."""
+    from . import AXIS_TO_INT
+    bone, transform, axis = _channel_of(members[0])
+    entry = _DRIVABLE.get(transform)
+    pose_bone = armature_obj.pose.bones.get(bone)
+    if entry is not None and pose_bone is not None:
+        try:
+            pose_bone.driver_remove(entry[0], AXIS_TO_INT.get(axis, 0))
+        except Exception:
+            pass
+    for e in members:
+        e.jcns_cns_props.preview_on = False
 
 
 # ---------------------------------------------------------------------------
@@ -670,15 +571,15 @@ class JCNS_OT_AddConstraint(Operator):
 
     @classmethod
     def poll(cls, context):
-        from . import get_jcns_root
-        obj, _ = get_jcns_root(context)
-        return obj is not None
+        from . import get_export_root
+        obj, rp = get_export_root(context)
+        return obj is not None and _caps_for(rp, 'Ranges').can_add
 
     def execute(self, context):
-        from . import (get_jcns_root, get_constraint_empties,
+        from . import (get_export_root, get_constraint_empties,
                        make_constraint_empty_name)
 
-        root_obj, root_props = get_jcns_root(context)
+        root_obj, root_props = get_export_root(context)
         existing = get_constraint_empties(root_obj)
         new_idx = len(existing)
 
@@ -724,9 +625,12 @@ class JCNS_OT_DeleteConstraint(Operator):
 
     @classmethod
     def poll(cls, context):
-        from . import get_jcns_constraint
-        obj, _ = get_jcns_constraint(context)
-        return obj is not None
+        from . import get_jcns_constraint, get_jcns_root_from_constraint
+        obj, p = get_jcns_constraint(context)
+        if obj is None:
+            return False
+        _, rp = get_jcns_root_from_constraint(obj)
+        return rp is not None and _caps_for(rp, p.constraint_type).can_remove
 
     def execute(self, context):
         from . import (get_jcns_constraint, get_jcns_root_from_constraint,
@@ -800,9 +704,12 @@ class JCNS_OT_MoveConstraint(Operator):
 
     @classmethod
     def poll(cls, context):
-        from . import get_jcns_constraint
-        obj, _ = get_jcns_constraint(context)
-        return obj is not None
+        from . import get_jcns_constraint, get_jcns_root_from_constraint
+        obj, p = get_jcns_constraint(context)
+        if obj is None:
+            return False
+        _, rp = get_jcns_root_from_constraint(obj)
+        return rp is not None and _caps_for(rp, p.constraint_type).can_move
 
     def execute(self, context):
         from . import (get_jcns_constraint, get_jcns_root_from_constraint,
@@ -1190,58 +1097,6 @@ class JCNS_OT_SortAnchors(Operator):
 
 
 
-class JCNS_OT_ClearSingleDriver(Operator):
-    """清除此约束所在通道的驱动器
-
-    Blender 一个通道只能有一条驱动器，所以同一根骨骼同一个轴上的约束共用一条；
-    清除会一并影响它们，面板上会列出受影响的条目。
-    """
-    bl_idname = "jcns.clear_single_driver"
-    bl_label  = "清除驱动器"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    @classmethod
-    def poll(cls, context):
-        from . import get_jcns_constraint
-        obj, props = get_jcns_constraint(context)
-        return (obj is not None and props.constraint_type == 'Ranges'
-                and props.driver_applied)
-
-    def execute(self, context):
-        from . import (get_jcns_constraint, get_jcns_root_from_constraint,
-                       group_constraints_by_channel, channel_key, AXIS_TO_INT)
-        cns_obj, p = get_jcns_constraint(context)
-        root_obj, root_props = get_jcns_root_from_constraint(cns_obj)
-        arm = root_props.target_armature if root_props else None
-        if arm is None:
-            self.report({'ERROR'}, "未设置目标骨架。")
-            return {'CANCELLED'}
-
-        entry = _DRIVABLE.get(p.transform_type)
-        if entry is None:
-            self.report({'WARNING'}, "此变换类型没有对应的驱动器通道。")
-            return {'CANCELLED'}
-        data_path = entry[0]
-
-        pose_bone = arm.pose.bones.get(p.target_bone)
-        if pose_bone is not None:
-            try:
-                pose_bone.driver_remove(data_path, AXIS_TO_INT.get(p.target_axis, 0))
-            except Exception:
-                pass
-
-        members = group_constraints_by_channel(root_obj).get(channel_key(p), [cns_obj])
-        for e in members:
-            e.jcns_cns_props.driver_applied = False
-        arm.update_tag()
-
-        extra = ("，同通道另有 %d 条一并清除" % (len(members) - 1)
-                 if len(members) > 1 else "")
-        self.report({'INFO'}, "已清除 %s 的局部 %s 轴驱动器%s"
-                              % (p.target_bone, p.target_axis, extra))
-        return {'FINISHED'}
-
-
 # ---------------------------------------------------------------------------
 # Operators: non-range sections (SkinConstraint / Aim / RotExpression)
 # ---------------------------------------------------------------------------
@@ -1280,15 +1135,10 @@ class JCNS_OT_AddSectionEntry(Operator):
         if coll is None:
             self.report({'ERROR'}, "根节点不属于任何集合。")
             return {'CANCELLED'}
-        if self.kind in ('Skin', 'Aim') and rp.read_joint_signature_json and rp.target_armature is None:
-            self.report({'ERROR'}, "这个文件带读取骨表（ReadJointTable），新增 %s 条目后需要按骨架重算它："
-                                   "请先在根节点设置目标骨架。" % self.kind)
+        caps = _caps_for(rp, self.kind)
+        if not caps.can_add:
+            self.report({'ERROR'}, caps.reason('add') or "不能新增这类条目。")
             return {'CANCELLED'}
-        if self.kind == 'RotExpression':
-            m = bytes.fromhex(rp.rot_map_hex or '')
-            if len(set(m)) > 1:
-                self.report({'ERROR'}, "RotExpressionMap 不是单一常量，无法推导新条目。")
-                return {'CANCELLED'}
         idx = len(section_empties(root, self.kind))
         display = {'Skin': 'SINGLE_ARROW', 'Aim': 'SPHERE', 'RotExpression': 'CIRCLE'}[self.kind]
         obj = bpy.data.objects.new("__jcns_new_section", None)
@@ -1477,9 +1327,6 @@ class JCNS_OT_ConeInfoRemove(Operator):
 # ---------------------------------------------------------------------------
 
 _classes = [
-    JCNS_OT_ApplySingleDriver,
-    JCNS_OT_ApplyAllDrivers,
-    JCNS_OT_ClearAllDrivers,
     JCNS_OT_AddConstraint,
     JCNS_OT_DeleteConstraint,
     JCNS_OT_MoveConstraint,
@@ -1487,7 +1334,6 @@ _classes = [
     JCNS_OT_RemoveSource,
     JCNS_OT_SwapMapToEnds,
     JCNS_OT_SortAnchors,
-    JCNS_OT_ClearSingleDriver,
     JCNS_OT_MirrorConstraints,
     JCNS_OT_AddSectionEntry,
     JCNS_OT_SkinSourceAdd,

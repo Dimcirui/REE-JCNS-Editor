@@ -139,13 +139,13 @@ def _update_bits_from_flags(self, context):
         self[f'flag_bit_{i}'] = bool(v & (1 << i))
 
 
-def _refresh_driver_values(self, context):
-    """Cheap path: only the numbers changed, so the driver itself can stay."""
+def _refresh_preview_values(self, context):
+    """Cheap path: only numbers changed, so a preview already in place can stay."""
     try:
-        from . import jcns_operators
-        jcns_operators.refresh_channel_values(self.id_data)
+        from . import jcns_preview
+        jcns_preview.refresh(self.id_data, structural=False)
     except Exception as exc:
-        print("[JCNS] driver value refresh skipped: %r" % exc)
+        print("[JCNS] preview value refresh skipped: %r" % exc)
 
 
 def _sync_constraint_name(self):
@@ -212,29 +212,21 @@ def section_empties(root_empty, kind):
     return sorted(objs, key=section_index)
 
 
-def _sync_section_name(self, context):
-    obj = self.id_data
-    p = getattr(obj, 'jcns_cns_props', None)
-    if obj is None or p is None or p.constraint_type not in ('Skin', 'Aim', 'RotExpression'):
-        return
-    obj.name = section_empty_name(p.constraint_type, section_index(obj), p)
+def _refresh_preview(self, context):
+    """Keep an already-applied preview in step with the field being edited, and
+    keep the Empty's name in sync.  Used by the fields (bone / axis / transform
+    type, and each section's bones) that the display name and the preview are
+    built from.
 
-
-def _refresh_driver(self, context):
-    """Keep an already-applied driver in step with the value being edited, and
-    keep the Empty's name in sync — this callback is only used by the fields
-    (bone / axis / transform type) that the display name is built from.
-
-    Without the driver refresh the rig keeps showing the curve as it was when
-    Apply was last pressed, because the driver reads anchors baked into the
-    channel table. Does nothing when no driver is applied, so it costs nothing
-    while authoring.
+    Without the refresh the rig keeps showing what it showed when Apply was last
+    pressed.  Does nothing when no preview is on, so it costs nothing while
+    authoring.
     """
     try:
-        from . import jcns_operators
-        jcns_operators.refresh_applied_driver(self.id_data)
+        from . import jcns_preview
+        jcns_preview.refresh(self.id_data, structural=True)
     except Exception as exc:                     # an edit must never hard-fail
-        print("[JCNS] driver refresh skipped: %r" % exc)
+        print("[JCNS] preview refresh skipped: %r" % exc)
     try:
         _sync_constraint_name(self)
     except Exception as exc:
@@ -311,8 +303,9 @@ class JCNSConeInfo(PropertyGroup):
 
 class JCNSWeightedSource(PropertyGroup):
     """One source bone of a SkinConstraint record."""
-    bone: StringProperty(name="骨骼", default="", search=lambda self, context, text: _search_bone_names(context, text))
-    weight: FloatProperty(name="权重", default=1.0, precision=4)
+    bone: StringProperty(name="骨骼", default="", update=_refresh_preview,
+                         search=lambda self, context, text: _search_bone_names(context, text))
+    weight: FloatProperty(name="权重", default=1.0, precision=4, update=_refresh_preview_values)
 
 
 class JCNSSourceProperties(PropertyGroup):
@@ -325,7 +318,7 @@ class JCNSSourceProperties(PropertyGroup):
     """
 
     source_bone: StringProperty(
-        update=_refresh_driver,
+        update=_refresh_preview,
         name="驱动骨骼",
         description="读取旋转的骨骼。可输入以搜索本文件哈希表中的骨骼名",
         default="",
@@ -333,7 +326,7 @@ class JCNSSourceProperties(PropertyGroup):
         search_options={'SUGGESTION'},
     )
     source_axis: EnumProperty(
-        update=_refresh_driver,
+        update=_refresh_preview,
         name="源局部轴向",
         description="读取驱动骨骼的哪个局部轴。JCNS 的映射定义在骨骼自身的局部坐标系上，不是全局坐标系",
         items=AXIS_ITEMS,
@@ -342,32 +335,32 @@ class JCNSSourceProperties(PropertyGroup):
 
     # --- Three-point piecewise mapping ---
     from_start: FloatProperty(
-        update=_refresh_driver_values,
+        update=_refresh_preview_values,
         name="From 起点", description="MapFrom 点A — 第一段起始锚点（源角度，单位度）",
         default=0.0, precision=2, step=10,
     )
     from_kink: FloatProperty(
-        update=_refresh_driver_values,
+        update=_refresh_preview_values,
         name="From 折点", description="MapFrom 点B — 两段斜率的分界折点（源角度，单位度）",
         default=0.0, precision=2, step=10,
     )
     from_end: FloatProperty(
-        update=_refresh_driver_values,
+        update=_refresh_preview_values,
         name="From 终点", description="MapFrom 点C — 第二段终止锚点，源骨骼最大偏转角（单位度）",
         default=0.0, precision=2, step=10,
     )
     to_start: FloatProperty(
-        update=_refresh_driver_values,
+        update=_refresh_preview_values,
         name="To 起点", description="MapTo 点A — 对应 from_start 的输出值",
         default=0.0, precision=2, step=10,
     )
     to_kink: FloatProperty(
-        update=_refresh_driver_values,
+        update=_refresh_preview_values,
         name="To 折点", description="MapTo 点B — 折点处的输出值（引擎读取此值）",
         default=0.0, precision=2, step=10,
     )
     to_end: FloatProperty(
-        update=_refresh_driver_values,
+        update=_refresh_preview_values,
         name="To 终点", description="MapTo 点C — 目标骨骼最大输出旋转量（单位度）",
         default=0.0, precision=2, step=10,
     )
@@ -453,7 +446,7 @@ class JCNSConstraintProperties(PropertyGroup):
 
     # --- Identity ---
     target_bone: StringProperty(
-        update=_refresh_driver,
+        update=_refresh_preview,
         name="目标骨骼",
         description="被驱动的骨骼。可输入以搜索本文件哈希表中的骨骼名",
         default="",
@@ -461,7 +454,7 @@ class JCNSConstraintProperties(PropertyGroup):
         search_options={'SUGGESTION'},
     )
     transform_type: EnumProperty(
-        update=_refresh_driver,
+        update=_refresh_preview,
         name="变换类型",
         description="约束驱动的是旋转、平移还是缩放等",
         items=TRANSFORM_ITEMS,
@@ -470,7 +463,7 @@ class JCNSConstraintProperties(PropertyGroup):
 
     # --- Axis (editable — exported back to file) ---
     target_axis: EnumProperty(
-        update=_refresh_driver,
+        update=_refresh_preview,
         name="目标局部轴向",
         description="驱动目标骨骼的哪个局部轴。JCNS 的映射定义在骨骼自身的局部坐标系上，不是全局坐标系",
         items=AXIS_ITEMS,
@@ -558,13 +551,14 @@ class JCNSConstraintProperties(PropertyGroup):
                     "留空则用本文件最常见的值")
 
     # --- Aim (target_bone is the aimed joint) ---
-    aim_target_bone: StringProperty(name="瞄准目标", default="", update=_sync_section_name,
+    aim_target_bone: StringProperty(name="瞄准目标", default="", update=_refresh_preview,
                                     search=_search_target_bone)
     aim_up_bone: StringProperty(name="辅助骨骼", description="AimVectorPointJoint；留空表示不使用",
-                                default="", search=_search_target_bone)
-    aim_influence: FloatProperty(name="影响", default=1.0)
+                                default="", update=_refresh_preview, search=_search_target_bone)
+    aim_influence: FloatProperty(name="影响", default=1.0, update=_refresh_preview_values)
     aim_vec0: FloatVectorProperty(name="Vec0", size=3, default=(0.0, 0.0, 0.0))
-    aim_vec1: FloatVectorProperty(name="Vec1", size=3, default=(1.0, 0.0, 0.0))
+    aim_vec1: FloatVectorProperty(name="Vec1", size=3, default=(1.0, 0.0, 0.0),
+                                  update=_refresh_preview_values)
     aim_vec2: FloatVectorProperty(name="Vec2", size=3, default=(0.0, 1.0, 0.0))
     aim_vec3: FloatVectorProperty(name="Vec3", size=3, default=(0.0, 1.0, 0.0))
     aim_rotation_type: IntProperty(name="RotationType", default=0, min=0, max=255)
@@ -573,12 +567,13 @@ class JCNSConstraintProperties(PropertyGroup):
     aim_target_tail_hex: StringProperty(name="目标块尾部 8 字节", default="00" * 8)
 
     # --- RotExpression (target_bone is the driven joint) ---
-    rot_source_bone: StringProperty(name="源骨骼", default="", update=_sync_section_name,
+    rot_source_bone: StringProperty(name="源骨骼", default="", update=_refresh_preview,
                                     search=_search_target_bone)
     rot_rotation: FloatVectorProperty(name="Rotation", size=4, default=(0.0, 0.0, 0.0, 1.0))
     rot_scale: FloatVectorProperty(name="Scale", size=4, default=(0.0, 0.0, 0.0, 1.0))
     rot_bytes: IntVectorProperty(name="字节", size=4, default=(0, 0, 0, 0), min=0, max=255)
-    rot_floats: FloatVectorProperty(name="尾部浮点", size=3, default=(1.0, 1.0, 1.0))
+    rot_floats: FloatVectorProperty(name="尾部浮点", size=3, default=(1.0, 1.0, 1.0),
+                                    update=_refresh_preview_values)
 
     # --- Section type (set at import, read-only in UI) ---
     constraint_type: StringProperty(
@@ -588,11 +583,14 @@ class JCNSConstraintProperties(PropertyGroup):
     )
 
     # --- Driver state (runtime, not exported) ---
-    driver_applied: BoolProperty(
-        name="已应用驱动器",
-        description="此约束当前是否已生成 Blender 驱动器",
+    preview_on: BoolProperty(
+        name="已应用预览",
+        description="此条目当前是否在骨架上生成了预览（Ranges 是驱动器，其余是原生骨骼约束）",
         default=False,
     )
+    # The pose bone currently carrying this entry's preview constraint, so a
+    # changed target bone can clean up after itself (constraint previews only).
+    preview_bone: StringProperty(default="")
 
 
 # ---------------------------------------------------------------------------
@@ -601,6 +599,109 @@ class JCNSConstraintProperties(PropertyGroup):
 
 def _armature_poll(self, obj):
     return obj.type == 'ARMATURE'
+
+
+# ---------------------------------------------------------------------------
+# Browser state: which section tab is showing, and which entry is active
+# ---------------------------------------------------------------------------
+#
+# Entries are Empties, so "the active entry" is just the active object.  The
+# browser's list is a UI list over the root's Collection.objects (template_list
+# needs a real RNA collection; Object.children is a Python tuple), and its active
+# index reads and writes the active object, which keeps the list, the viewport
+# and the Outliner in step without any handler.
+
+def entry_collection(root_empty):
+    """The Collection whose .objects holds a root's entries."""
+    return next(iter(root_empty.users_collection), None)
+
+
+def is_entry_of(obj, root_empty):
+    p = getattr(obj, 'jcns_cns_props', None)
+    return bool(p and p.is_jcns_constraint and obj.parent == root_empty)
+
+
+def entry_sort_key(obj):
+    """File order: the number in the '[N]' / '[AimNN]' name prefix."""
+    return section_index(obj)
+
+
+def entries_of(root_empty, kind_id=None):
+    """A root's entries in file order, optionally only one kind's."""
+    from .modules_shim import get_kinds
+    coll = entry_collection(root_empty)
+    if coll is None:
+        return []
+    kinds = get_kinds()
+    out = [o for o in coll.objects
+           if is_entry_of(o, root_empty)
+           and (kind_id is None
+                or kinds.kind_of(o.jcns_cns_props.constraint_type).id == kind_id)]
+    return sorted(out, key=entry_sort_key)
+
+
+def entry_counts(root_empty):
+    """{kind id: number of entries} for a root."""
+    from .modules_shim import get_kinds
+    kinds = get_kinds()
+    counts = {}
+    for o in entries_of(root_empty):
+        k = kinds.kind_of(o.jcns_cns_props.constraint_type).id
+        counts[k] = counts.get(k, 0) + 1
+    return counts
+
+
+def file_state(rp):
+    """The kinds module's FileState for a root's properties."""
+    from .modules_shim import get_kinds, ensure_path
+    ensure_path()
+    from jcns_parser import write_mode
+    from .jcns_exporter import _root_version
+    v = _root_version(rp)
+    try:
+        rot_map = bytes.fromhex(rp.rot_map_hex or '')
+    except ValueError:
+        rot_map = b''
+    return get_kinds().FileState(
+        version=v,
+        rebuild=write_mode(v) == 'rebuild',
+        sections_cached=bool(rp.sections_cached),
+        has_armature=rp.target_armature is not None,
+        has_read_table=bool(rp.read_joint_signature_json),
+        rot_map_uniform=len(set(rot_map)) <= 1,
+    )
+
+
+def _entry_index_get(self):
+    coll = entry_collection(self.id_data)
+    act = bpy.context.view_layer.objects.active
+    if coll is None or act is None:
+        return -1
+    for i, o in enumerate(coll.objects):
+        if o == act:
+            return i
+    return -1
+
+
+def _entry_index_set(self, value):
+    coll = entry_collection(self.id_data)
+    if coll is None or not 0 <= value < len(coll.objects):
+        return
+    obj = coll.objects[value]
+    ctx = bpy.context
+    try:
+        for o in list(ctx.selected_objects):
+            o.select_set(False)
+        obj.select_set(True)
+        ctx.view_layer.objects.active = obj
+    except RuntimeError:                     # hidden or excluded from the view layer
+        pass
+
+
+def _browser_kind_items():
+    from .modules_shim import get_kinds
+    return [(k.id, k.label, k.summary, k.icon, i)
+            for i, k in enumerate(get_kinds().TAB_KINDS)]
 
 
 class JCNSRootProperties(PropertyGroup):
@@ -653,6 +754,15 @@ class JCNSRootProperties(PropertyGroup):
     # Blender.  Files imported before that keep exporting those sections from the
     # re-parsed source file, since their Empties hold no data.
     sections_cached: BoolProperty(default=False)
+    # Browser state (UI only)
+    browser_kind: EnumProperty(
+        name="分区", description="在列表里显示哪一类条目",
+        items=_browser_kind_items(), default='Ranges',
+    )
+    entry_index: IntProperty(
+        name="条目", description="列表里当前条目的序号；读写的是当前活动物体",
+        get=_entry_index_get, set=_entry_index_set,
+    )
     skin_constant: IntProperty(default=5)
     read_joint_table_hex: StringProperty(default="")
     read_joint_signature_json: StringProperty(default="")
@@ -865,7 +975,9 @@ from . import jcns_operators
 from . import jcns_importer
 from . import jcns_exporter
 from . import jcns_ui
+from . import jcns_editors
 from . import jcns_drivers
+from . import jcns_preview
 
 def _poll_jcns_collection(self, collection):
     """Restrict the active-collection picker to collections that hold a JCNS root."""
@@ -897,17 +1009,21 @@ def register():
     )
 
     jcns_operators.register()
+    jcns_preview.register()
     jcns_importer.register()
     jcns_exporter.register()
     jcns_ui.register()
+    jcns_editors.register()
     jcns_drivers.register()
 
 
 def unregister():
     jcns_drivers.unregister()
+    jcns_editors.unregister()
     jcns_ui.unregister()
     jcns_exporter.unregister()
     jcns_importer.unregister()
+    jcns_preview.unregister()
     jcns_operators.unregister()
 
     del bpy.types.Scene.jcns_active_collection
