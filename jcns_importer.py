@@ -260,10 +260,12 @@ def do_import(filepath, context, armature_obj=None):
 
     # --- Non-Range sections: SkinConstraint, Aim, RotExpression, Material, JXG ---
     # These store hashes only.  Resolve them through the armature, then through the
-    # bone names this file's range constraints spell out, else show the raw hash
-    # (the exporter reads a "0x1234ABCD" name back as that hash).
+    # bone names this file's range constraints spell out, then through the bundled
+    # name dictionary, else show the raw hash (the exporter reads a "0x1234ABCD"
+    # name back as that hash).
     import json
     from jcns_sections import skin_editable, read_joint_signature, aim_editable, rot_editable
+    from jcns_names import name_of
     from . import section_empty_name
     names = {}
     for c in constraints:
@@ -273,7 +275,7 @@ def do_import(filepath, context, armature_obj=None):
     names.update(hash_dict)
 
     def _nm(h):
-        return names.get(h, f"0x{h:08X}")
+        return names.get(h) or name_of(h) or f"0x{h:08X}"
 
     def _section_empty(kind, idx, display, size):
         obj = bpy.data.objects.new(f"[{kind}{idx:02d}]", None)
@@ -339,7 +341,7 @@ def do_import(filepath, context, armature_obj=None):
     rp.sections_cached = True
 
     for idx, mc in enumerate(parser.material_cns):
-        jnt_name = hash_dict.get(mc['JointHash'], f"0x{mc['JointHash']:08X}")
+        jnt_name = _nm(mc['JointHash'])
         obj = bpy.data.objects.new(f"[Mat{idx:02d}] {jnt_name}", None)
         obj.empty_display_type = 'CUBE'
         obj.empty_display_size = 0.02
