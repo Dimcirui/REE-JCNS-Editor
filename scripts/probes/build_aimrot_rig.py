@@ -101,7 +101,7 @@ def check(dst):
     h = q.header
     table = list(struct.unpack_from('<%dI' % h['SectionTableItemCount'], q.original_bytes, h['SectionTableEntry']))
     assert table == SECTION_TABLE and h['SectionCount'] == 3, table
-    assert len(back) == 9 and [c['ParentTailBytes'][3] for c in back] == [0] * 9
+    assert len(back) == 9 and [c['TailBytes'][3] for c in back] == [0] * 9
     assert not q.skin_constraints
     names = {H(n): n for n in ['TestTgt' + c for c in 'ABCDEFGHIJK'] + [AIM_TARGET, ROT_SOURCE]}
     want = plan()

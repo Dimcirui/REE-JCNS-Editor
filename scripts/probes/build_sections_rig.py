@@ -61,9 +61,9 @@ def H(name):
 
 
 def set_count(c, n):
-    tail = bytearray(c['ParentTailBytes'])
+    tail = bytearray(c['TailBytes'])
     tail[3] = n
-    c['ParentTailBytes'] = bytes(tail)
+    c['TailBytes'] = bytes(tail)
 
 
 def plan():
@@ -137,7 +137,7 @@ def check(dst):
     table = list(struct.unpack_from('<%dI' % h['SectionTableItemCount'], q.original_bytes, h['SectionTableEntry']))
     assert table == SECTION_TABLE, table
     assert h['SectionCount'] == len(SECTION_TABLE)
-    assert [c['ParentTailBytes'][3] for c in back] == [0] * len(back)
+    assert [c['TailBytes'][3] for c in back] == [0] * len(back)
     names = {H(n): n for n in ['TestTgt' + c for c in 'ABCDEFGHIJK'] + [AIM_TARGET, AIM_UP, ROT_SOURCE,
                                                                         'R_Hand', 'L_Hand', 'Head']}
     want = plan()

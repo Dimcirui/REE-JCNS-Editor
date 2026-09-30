@@ -285,7 +285,7 @@ def _source_read_notes(c, p, sp):
     from . import jcns_operators
     from .jcns_drivers import jcns_source_read as sr
     lines = sr.read_rule(sp.read_mode, sr.euler_order_value(sp.euler_order),
-                         abs(sp.rest_quat_w) >= 1.0 - 1e-9)
+                         abs(sp.ref_frame_w) >= 1.0 - 1e-9)
     if c.root is not None and sp.source_bone:
         later = jcns_operators._written_from(c.root, c.obj)
         q = _mapping().source_quantity(sp.read_mode)
@@ -489,7 +489,7 @@ class JCNS_PT_Ed_Ranges_Tools(_Editor, Panel):
 # 游戏自带 v102 文件里取值固定的 Ranges 原始字段；「隐藏固定字段」只隐藏这些，
 # 有例外取值的字段照常显示。
 FIXED_RANGES_FIELDS = frozenset((
-    'parent_vec4_x', 'parent_vec4_y', 'parent_vec4_z', 'parent_vec4_w',   # 恒为 (0,0,0,1)
+    'reserved_vec4_x', 'reserved_vec4_y', 'reserved_vec4_z', 'reserved_vec4_w',   # 恒为 (0,0,0,1)
     'parent_tail_2', 'parent_tail_4', 'parent_tail_5',                     # +76/+78/+79 恒为 0
     'flag_bit_1', 'flag_bit_6', 'flag_bit_7',                              # 从未置位
 ))
@@ -523,12 +523,12 @@ class JCNS_PT_Ed_Ranges_Advanced(_Editor, _Sub, Panel):
 
         if sp is not None:
             _draw_raw_group(layout, "驱动源：参考系四元数", 'ORIENTATION_GIMBAL', [
-                (sp, [("rest_quat_x", "X"), ("rest_quat_y", "Y"),
-                     ("rest_quat_z", "Z"), ("rest_quat_w", "W")]),
+                (sp, [("ref_frame_x", "X"), ("ref_frame_y", "Y"),
+                     ("ref_frame_z", "Z"), ("ref_frame_w", "W")]),
             ])
             box = _draw_raw_group(layout, "驱动源：原始字节", 'PREFERENCES', [
                 (sp, [("update_timing", "+24")]),
-                (sp, [("unknown_uint16", "U16(+22)"), ("unknown_uint32_2", "U32(+28)"),
+                (sp, [("unknown_uint16_22", "U16(+22)"), ("unknown_uint32_28", "U32(+28)"),
                      ("complex_mapping_info_count", "复杂映射数")]),
             ])
             box.label(text="+24 是曲线模式（0/1 两点、2/3 三点）；+25/+27 在「驱动源」里", icon='INFO')
@@ -560,12 +560,12 @@ class JCNS_PT_Ed_Ranges_Advanced(_Editor, _Sub, Panel):
                 rb.label(text=desc)
 
         vec4 = keep([(a, a[-1].upper()) for a in
-                     ("parent_vec4_x", "parent_vec4_y", "parent_vec4_z", "parent_vec4_w")])
+                     ("reserved_vec4_x", "reserved_vec4_y", "reserved_vec4_z", "reserved_vec4_w")])
         if vec4:
             _draw_raw_group(layout, "未知四维向量 [48..63]", 'PREFERENCES', [(p, vec4)])
         _draw_raw_group(layout, "杂项标量 [64..72]", 'PREFERENCES', [
-            (p, [("parent_float2_x", "X"), ("parent_float2_y", "Y")]),
-            (p, [("parent_uint8_72", "+72"), ("property_hash", "属性哈希")]),
+            (p, [("unknown_float2_x", "X"), ("unknown_float2_y", "Y")]),
+            (p, [("unknown_byte_72", "+72"), ("property_hash", "属性哈希")]),
         ])
         _draw_raw_group(layout, "尾部字节 [74..79]", 'PREFERENCES', [
             (p, keep([("parent_tail_0", "+74"), ("parent_tail_1", "+75"), ("parent_tail_2", "+76"),

@@ -200,10 +200,10 @@ def do_import(filepath, context, armature_obj=None):
             sp.to_start    = s.get('to_start',   0.0)
             sp.to_kink     = s.get('to_kink',    0.0)
             sp.to_end      = s.get('to_end',     0.0)
-            sp.rest_quat_x = s.get('rest_quat_x', 0.0)
-            sp.rest_quat_y = s.get('rest_quat_y', 0.0)
-            sp.rest_quat_z = s.get('rest_quat_z', 0.0)
-            sp.rest_quat_w = s.get('rest_quat_w', 1.0)
+            sp.ref_frame_x = s.get('ref_frame_x', 0.0)
+            sp.ref_frame_y = s.get('ref_frame_y', 0.0)
+            sp.ref_frame_z = s.get('ref_frame_z', 0.0)
+            sp.ref_frame_w = s.get('ref_frame_w', 1.0)
             sp.update_timing    = s.get('CurveMode', 3)
             mode = jcns_source_read.read_mode_id(s.get('ReadMode', 3))
             if mode is None:
@@ -220,18 +220,18 @@ def do_import(filepath, context, armature_obj=None):
                 order = 'XYZ'
             sp.euler_order = order
             sp.complex_mapping_info_count = s.get('ComplexMappingInfoCount', 0)
-            sp.unknown_uint16   = s.get('UnknownUInt16', 0)
-            sp.unknown_uint32_2 = s.get('UnknownUInt32_2', 0)
+            sp.unknown_uint16_22   = s.get('UnknownUInt16_22', 0)
+            sp.unknown_uint32_28 = s.get('UnknownUInt32_28', 0)
             if s.get('ComplexMapping'):
                 jcns_cm.load(sp, s['ComplexMapping'])
 
         # cns_flags' update callback syncs the 8 bit properties.
         p.cns_flags = c.get('Flags', 0x30)
-        vec4                    = c.get('ParentVec4', (0.0, 0.0, 0.0, 1.0))
-        p.parent_vec4_x, p.parent_vec4_y, p.parent_vec4_z, p.parent_vec4_w = vec4
-        f2                      = c.get('ParentFloat2', (0.0, 0.0))
-        p.parent_float2_x, p.parent_float2_y = f2
-        p.parent_uint8_72       = c.get('ParentUInt8_72', 0)
+        vec4                    = c.get('ReservedVec4', (0.0, 0.0, 0.0, 1.0))
+        p.reserved_vec4_x, p.reserved_vec4_y, p.reserved_vec4_z, p.reserved_vec4_w = vec4
+        f2                      = c.get('UnknownFloat2', (0.0, 0.0))
+        p.unknown_float2_x, p.unknown_float2_y = f2
+        p.unknown_byte_72       = c.get('UnknownByte72', 0)
         ph                      = c.get('PropertyHash', 0) & 0xFFFFFFFF
         p.property_hash         = ph - (1 << 32) if ph >= (1 << 31) else ph
         for ci in c.get('ConeDriverInfo') or []:
@@ -243,7 +243,7 @@ def do_import(filepath, context, armature_obj=None):
             # Rename: target_bone's update named it while the cone list was empty.
             from . import constraint_name_from_props
             obj.name = constraint_name_from_props(idx, p)
-        tail = c.get('ParentTailBytes', b'\x00' * 6)
+        tail = c.get('TailBytes', b'\x00' * 6)
         p.parent_tail_0, p.parent_tail_1, p.parent_tail_2 = tail[0], tail[1], tail[2]
         p.parent_tail_3, p.parent_tail_4, p.parent_tail_5 = tail[3], tail[4], tail[5]
 

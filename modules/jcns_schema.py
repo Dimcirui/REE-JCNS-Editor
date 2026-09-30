@@ -274,12 +274,12 @@ CONSTRAINT_INFO = Struct('ConstraintInfo', [
     F('UnkByte_Pre35_2',       'B', before(35)),
     F('TransformAxis_pre35',   'B', before(35)),
     F('UnkBytes_Pre35_4',      '2s', before(35)),
-    F('ParentVec4',            '4f'),
-    F('ParentFloat2',          '2f', since(21)),
-    F('ParentUInt8_72',        'B', since(21)),
+    F('ReservedVec4',            '4f'),
+    F('UnknownFloat2',          '2f', since(21)),
+    F('UnknownByte72',        'B', since(21)),
     F('TransformAxis_v35',     'B', since(35)),
     F('UnkByte_Pre35_73',      'B', between(21, 35)),
-    F('ParentTailBytes',       '6s', since(21)),
+    F('TailBytes',       '6s', since(21)),
 ])
 
 
@@ -299,16 +299,16 @@ SOURCE_V2 = Struct('ConstraintSource_v2', [
     F('SourceHashIndex',          'I', since(35)),
     F('SourceHash',               'I', before(35)),
     F('ComplexMappingInfoCount',  'H'),
-    F('UnknownUInt16',            'H'),
+    F('UnknownUInt16_22',            'H'),
     F('CurveMode',                'B'),
     F('ReadMode',                 'B'),
     F('source_axis',              'B'),
     F('EulerOrder',                 'B'),
-    F('UnknownUInt32_2',          'I'),
+    F('UnknownUInt32_28',          'I'),
     F('from_start',  'f'), F('from_kink', 'f'), F('from_end', 'f'),
     F('to_start',    'f'), F('to_kink',   'f'), F('to_end',   'f'),
-    F('rest_quat_x', 'f'), F('rest_quat_y', 'f'),
-    F('rest_quat_z', 'f'), F('rest_quat_w', 'f'),
+    F('ref_frame_x', 'f'), F('ref_frame_y', 'f'),
+    F('ref_frame_z', 'f'), F('ref_frame_w', 'f'),
 ])
 
 SOURCE_V1 = Struct('ConstraintSource_v1', [
@@ -320,9 +320,9 @@ SOURCE_V1 = Struct('ConstraintSource_v1', [
     F('ReadMode',           'B'),
     F('source_axis',        'B'),
     F('EulerOrder',           'B'),
-    F('UnknownUInt32_2',    'I'),
-    F('rest_quat_x', 'f'), F('rest_quat_y', 'f'),
-    F('rest_quat_z', 'f'), F('rest_quat_w', 'f'),
+    F('UnknownUInt32_28',    'I'),
+    F('ref_frame_x', 'f'), F('ref_frame_y', 'f'),
+    F('ref_frame_z', 'f'), F('ref_frame_w', 'f'),
     F('UnknownDWORD_v1',    'I'),
 ])
 

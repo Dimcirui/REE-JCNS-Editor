@@ -14,7 +14,7 @@ whole rotation, which is why B, C, D, H write only some axes.
   H      type 14, bit0 = 0: like type 13 (round 9: the whole rest is dropped)?
   G      type 1 X added + Y replaced on one bone (the panel models this with override_basis)
   I      type 1 X / Z with a type 4 Y on the same bone
-  J K    ParentFloat2 (-45, 0) and (-90, -90): any difference from control A?
+  J K    UnknownFloat2 (-45, 0) and (-90, -90): any difference from control A?
   E F    a scale read by ReadMode 2: the rest scale, the pose scale, or their product?
 """
 import argparse
@@ -147,7 +147,7 @@ def analyze(F, rests, stride=STRIDE):
         'first entry is type 1 and takes the Y value too: rest*euler(x,y,z)': rq * rot_seq(eul, vx, vy, vz),
         'unchanged rest': rq})
 
-    # J K: ParentFloat2 against the control
+    # J K: UnknownFloat2 against the control
     a_out = out(8)
     rq = wxyz_to_rot([rest('A')] * len(a_out))
     res['parent_float2'] = {}
@@ -236,7 +236,7 @@ def synthetic(n=900, seed=5):
     for i, v in zip(OUT['I'], (vx, vy, vz)):
         o(i, v)
     setq('I', full('I') * rot_of(lambda a, c: R.from_euler_xyz((a, 0.0, c)), vx, vz))
-    # truth: ParentFloat2 does nothing
+    # truth: UnknownFloat2 does nothing
     for b in 'JK':
         o(OUT[b], 0.5 * x)
         setq(b, full(b) * Rot.from_euler('x', (0.5 * x)[:, None]))

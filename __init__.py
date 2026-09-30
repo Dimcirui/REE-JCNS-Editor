@@ -359,16 +359,16 @@ class JCNSSourceProperties(PropertyGroup):
         default=0.0, precision=2, step=10,
     )
 
-    # --- Reference frame (+56, stored as "rest_quat") ---
+    # --- Reference frame (+56, stored as "ref_frame") ---
     # Not the bone's rest pose (the engine takes that from the skeleton): the frame
     # the swing-twist and rotation-vector reads decompose in, f^-1 * q * f.
-    rest_quat_x: FloatProperty(name="参考系 X", default=0.0, precision=5,
+    ref_frame_x: FloatProperty(name="参考系 X", default=0.0, precision=5,
                                update=_refresh_preview)
-    rest_quat_y: FloatProperty(name="参考系 Y", default=0.0, precision=5,
+    ref_frame_y: FloatProperty(name="参考系 Y", default=0.0, precision=5,
                                update=_refresh_preview)
-    rest_quat_z: FloatProperty(name="参考系 Z", default=0.0, precision=5,
+    ref_frame_z: FloatProperty(name="参考系 Z", default=0.0, precision=5,
                                update=_refresh_preview)
-    rest_quat_w: FloatProperty(name="参考系 W", default=1.0, precision=5,
+    ref_frame_w: FloatProperty(name="参考系 W", default=1.0, precision=5,
                                update=_refresh_preview)
 
     # --- Raw bytes ---
@@ -406,11 +406,11 @@ class JCNSSourceProperties(PropertyGroup):
         name="复杂映射数", description="复杂映射曲线的关键帧数，导出时按曲线重算",
         default=0, min=0, max=65535,
     )
-    unknown_uint16: IntProperty(
+    unknown_uint16_22: IntProperty(
         name="未知 UInt16 (+22)", description="具体作用未知。通常为 0",
         default=0, min=0, max=65535,
     )
-    unknown_uint32_2: IntProperty(
+    unknown_uint32_28: IntProperty(
         name="未知 UInt32 (+28)", description="具体作用未知。低字节通常为 0（约 92%）；次字节在有复杂映射时为 1",
         default=0, min=0,
     )
@@ -476,15 +476,15 @@ class JCNSConstraintProperties(PropertyGroup):
     flag_bit_5: BoolProperty(name="Bit5 — 驱动旋转", default=True, update=_update_flags_from_bits)
     flag_bit_6: BoolProperty(name="Bit6",            default=False, update=_update_flags_from_bits)
     flag_bit_7: BoolProperty(name="Bit7",            default=False, update=_update_flags_from_bits)
-    parent_vec4_x: FloatProperty(name="Vec4 X", default=0.0, precision=5, description="固定为 0，请勿修改")
-    parent_vec4_y: FloatProperty(name="Vec4 Y", default=0.0, precision=5, description="固定为 0，请勿修改")
-    parent_vec4_z: FloatProperty(name="Vec4 Z", default=0.0, precision=5, description="固定为 0，请勿修改")
-    parent_vec4_w: FloatProperty(name="Vec4 W", default=1.0, precision=5, description="固定为 1，请勿修改")
-    parent_float2_x: FloatProperty(name="Float2 X", default=0.0, precision=5,
+    reserved_vec4_x: FloatProperty(name="Vec4 X", default=0.0, precision=5, description="固定为 0，请勿修改")
+    reserved_vec4_y: FloatProperty(name="Vec4 Y", default=0.0, precision=5, description="固定为 0，请勿修改")
+    reserved_vec4_z: FloatProperty(name="Vec4 Z", default=0.0, precision=5, description="固定为 0，请勿修改")
+    reserved_vec4_w: FloatProperty(name="Vec4 W", default=1.0, precision=5, description="固定为 1，请勿修改")
+    unknown_float2_x: FloatProperty(name="Float2 X", default=0.0, precision=5,
                                    description="具体作用未知。通常为 0")
-    parent_float2_y: FloatProperty(name="Float2 Y", default=0.0, precision=5,
+    unknown_float2_y: FloatProperty(name="Float2 Y", default=0.0, precision=5,
                                    description="具体作用未知。通常为 0")
-    parent_uint8_72: IntProperty(
+    unknown_byte_72: IntProperty(
         name="未知字节 (+72)", description="具体作用未知。通常为 0（约 99%）",
         default=0, min=0, max=255,
     )

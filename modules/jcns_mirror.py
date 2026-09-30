@@ -12,7 +12,7 @@ according to its quantity:
   translation   an ordinary vector, so -sigma
   scale, blend  neutral value 1.0, never negated
 
-A source's reference frame (rest_quat) is a rotation in its local axes and reflects the same
+A source's reference frame (ref_frame) is a rotation in its local axes and reflects the same
 way: its vector part is multiplied by sigma.  tests/test_mirror_math.py checks every read and
 compose formula against this.
 

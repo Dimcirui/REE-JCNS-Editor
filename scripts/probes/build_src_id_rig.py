@@ -52,9 +52,9 @@ assert len(ENTRIES) == 3 + 16
 
 
 def set_count(c, n):
-    tail = bytearray(c['ParentTailBytes'])
+    tail = bytearray(c['TailBytes'])
     tail[3] = n
-    c['ParentTailBytes'] = bytes(tail)
+    c['TailBytes'] = bytes(tail)
 
 
 def main():
@@ -88,7 +88,7 @@ def main():
     q = JCNSParser(DST)
     with contextlib.redirect_stdout(io.StringIO()):
         back = q.parse()
-    assert [c['ParentTailBytes'][3] for c in back] == [0] * len(back)
+    assert [c['TailBytes'][3] for c in back] == [0] * len(back)
     for i, c in enumerate(back):
         s = c['sources'][0]
         print(f"[{i:02}] {c['ObjectName']:<14}.{'XYZW'[c['target_axis']]} <- {s['SourceName']}.{'XYZW'[s['source_axis']]}"

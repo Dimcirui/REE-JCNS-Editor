@@ -19,7 +19,7 @@ Two more source fields shape the rotation reads:
   +27 (EulerOrder)  the Euler order of +25=1, as a matrix product with
          the rightmost factor applied first: 0 Rz*Ry*Rx (Blender XYZ), 1 Rx*Rz*Ry
          (YZX), 2 Ry*Rx*Rz (ZXY), 3 Rx*Ry*Rz (ZYX).  +25 = 3/4/5 ignore it.
-  rest_quat (+56, the reference frame)  +25 = 3/4/5 decompose f^-1 * q * f instead of
+  ref_frame (+56, the reference frame)  +25 = 3/4/5 decompose f^-1 * q * f instead of
          q, so the twist axis is f * X and the rotation vector is read in f's
          axes.  +25=1 ignores it.
 
@@ -147,7 +147,7 @@ def rotation(mode, q, axis, order=0, frame=None):
     """Component `axis` (0-2) of whole rotation q as read by one rotation mode.
 
     `order` is the source's +27 EulerOrder (used by 'euler' only); `frame` its
-    rest_quat (w, x, y, z), the reference frame of the other modes.
+    ref_frame (w, x, y, z), the reference frame of the other modes.
     """
     q = _pos_w(q)
     if mode == 'euler':

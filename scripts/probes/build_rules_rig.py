@@ -10,8 +10,8 @@ Round-11 mesh, reused as is.  Every entry reads L_Thigh.X (ReadMode 3) through a
   [15-16]  G  type 1 F49 X, then F48 Y         add and replace mixed on one bone (rest (-2, 17, -23))
   [17]     H  type 14 F48 Y                    does 14 drop the rest like 13 (round 9)?
   [18-20]  I  type 1 F49 X, type 4 F49 Y, type 1 F49 Z     two rotation types on one bone
-  [21]     J  type 1 F49 X, ParentFloat2 (-45, 0)          the float's effect, against A
-  [22]     K  type 1 F49 X, ParentFloat2 (-90, -90)
+  [21]     J  type 1 F49 X, UnknownFloat2 (-45, 0)          the float's effect, against A
+  [22]     K  type 1 F49 X, UnknownFloat2 (-90, -90)
   [23-25]  E  rotation X / Y / Z <- E.scale X / Y / Z, ReadMode 2, identity map 0..3
            (E's static scale is (1.4, 0.7, 1.8): is that what a scale source reads?)
   [26]     F  type 2 F17 Y <- L_Thigh.X, scale 1 +- 0.9 (a moving scale)
@@ -36,7 +36,7 @@ DIR = r"E:/Program/Steam/steamapps/common/MonsterHunterWilds/natives/STM/art/mod
 SRC = DIR + "/xaihi_constraint.jcns.102.orig_20260929"
 
 GAIN = {'X': 0.5, 'Y': 0.8, 'Z': -0.9}
-# (bone, TransformType, Flags, axis, ParentFloat2, source) ; source = None for L_Thigh.X,
+# (bone, TransformType, Flags, axis, UnknownFloat2, source) ; source = None for L_Thigh.X,
 # else (bone, source_axis, ReadMode, (from), (to)); a scale driver sets its own gain.
 ENTRIES = [
     ('A', 1, 49, 'X', (0, 0), None),
@@ -57,9 +57,9 @@ FIRST_OUT = 8
 
 
 def set_count(c, n):
-    tail = bytearray(c['ParentTailBytes'])
+    tail = bytearray(c['TailBytes'])
     tail[3] = n
-    c['ParentTailBytes'] = bytes(tail)
+    c['TailBytes'] = bytes(tail)
 
 
 def main(dst):
@@ -74,13 +74,13 @@ def main(dst):
         i = 'XYZ'.index(axis)
         c = copy.deepcopy(tmpl)
         c.update(ObjectName='TestTgt' + bone, TransformType=tt, Flags=flags, TransformAxis_parent=i,
-                 target_axis=i, ParentUInt8_72=0, ParentFloat2=tuple(pf2))
-        tail = bytearray(c['ParentTailBytes'])
+                 target_axis=i, UnknownByte72=0, UnknownFloat2=tuple(pf2))
+        tail = bytearray(c['TailBytes'])
         tail[1], tail[3] = 2, 0
-        c['ParentTailBytes'] = bytes(tail)
+        c['TailBytes'] = bytes(tail)
         s = c['sources'][0]
-        common = dict(CurveMode=0, EulerOrder=0, UnknownUInt32_2=0, rest_quat_x=0.0, rest_quat_y=0.0,
-                      rest_quat_z=0.0, rest_quat_w=1.0, ComplexMapping=[], ComplexMappingInfoCount=0)
+        common = dict(CurveMode=0, EulerOrder=0, UnknownUInt32_28=0, ref_frame_x=0.0, ref_frame_y=0.0,
+                      ref_frame_z=0.0, ref_frame_w=1.0, ComplexMapping=[], ComplexMappingInfoCount=0)
         if src is None:
             k = GAIN[axis]
             s.update(SourceName='L_Thigh', source_axis=0, ReadMode=3, from_start=-90.0, from_kink=0.0,
@@ -104,18 +104,18 @@ def check(dst):
     with contextlib.redirect_stdout(io.StringIO()):
         back = q.parse()
     assert len(back) == FIRST_OUT + len(ENTRIES)
-    assert [c['ParentTailBytes'][3] for c in back] == [0] * len(back)
+    assert [c['TailBytes'][3] for c in back] == [0] * len(back)
     assert list(q.aim_constraints) == [] and not q.skin_constraints and not q.rot_expressions
     for i, (c, (bone, tt, flags, axis, pf2, src)) in enumerate(zip(back[FIRST_OUT:], ENTRIES)):
         s = c['sources'][0]
         assert (c['ObjectName'], c['TransformType'], c['Flags'], 'XYZ'[c['target_axis']]) == \
             ('TestTgt' + bone, tt, flags, axis), (i, c['ObjectName'])
-        assert tuple(round(v, 4) for v in c['ParentFloat2']) == tuple(pf2), (i, c['ParentFloat2'])
+        assert tuple(round(v, 4) for v in c['UnknownFloat2']) == tuple(pf2), (i, c['UnknownFloat2'])
         if isinstance(src, tuple):
             assert (s['SourceName'], s['source_axis'], s['ReadMode']) == ('TestTgt' + src[0], src[1], src[2])
         else:
             assert (s['SourceName'], s['source_axis'], s['ReadMode']) == ('L_Thigh', 0, 3)
-        assert s['EulerOrder'] == 0 and s['UnknownUInt32_2'] == 0 and s['CurveMode'] == 0
+        assert s['EulerOrder'] == 0 and s['UnknownUInt32_28'] == 0 and s['CurveMode'] == 0
         print(f"[{FIRST_OUT + i:02}] {c['ObjectName']:<11} TT={tt:<2} F={flags} .{axis} pf2={pf2} <- {s['SourceName']}.{s['source_axis']} rm{s['ReadMode']}")
     return q
 

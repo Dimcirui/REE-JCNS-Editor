@@ -15,13 +15,13 @@ from jcns_parser import header_field_offset
 # edited dicts.  Everything else — pointers, hashes, hash indices, counts — is
 # re-packed from the original record, because in place the surrounding data
 # (strings, source arrays, hash table) does not move.
-INPLACE_CNS_FIELDS = ('Flags', 'TransformType', 'ParentVec4', 'ParentFloat2',
-                      'ParentUInt8_72', 'PropertyHash', 'ParentTailBytes')
+INPLACE_CNS_FIELDS = ('Flags', 'TransformType', 'ReservedVec4', 'UnknownFloat2',
+                      'UnknownByte72', 'PropertyHash', 'TailBytes')
 INPLACE_SRC_FIELDS = ('CurveMode', 'ReadMode', 'source_axis', 'EulerOrder',
-                      'UnknownUInt16', 'UnknownUInt32_2',
+                      'UnknownUInt16_22', 'UnknownUInt32_28',
                       'from_start', 'from_kink', 'from_end',
                       'to_start', 'to_kink', 'to_end',
-                      'rest_quat_x', 'rest_quat_y', 'rest_quat_z', 'rest_quat_w')
+                      'ref_frame_x', 'ref_frame_y', 'ref_frame_z', 'ref_frame_w')
 
 
 class JCNSWriter:
@@ -295,9 +295,9 @@ class JCNSWriter:
                 rec['ComplexMappingInfoOffset'] = cm_off
                 # Byte +29 is 1 exactly when the source has ComplexMapping; a source
                 # without one may also hold 2, so only a 1 is cleared.
-                flag = (rec['UnknownUInt32_2'] >> 8) & 0xFF
+                flag = (rec['UnknownUInt32_28'] >> 8) & 0xFF
                 flag = 1 if cm_off else (0 if flag == 1 else flag)
-                rec['UnknownUInt32_2'] = (rec['UnknownUInt32_2'] & ~0xFF00) | (flag << 8)
+                rec['UnknownUInt32_28'] = (rec['UnknownUInt32_28'] & ~0xFF00) | (flag << 8)
                 src_blob.extend(SOURCE_V2.pack(rec, version))
 
             src_blob.extend(name_blob)
@@ -446,10 +446,10 @@ class JCNSWriter:
                 'SourceCount_parent':   len(c.get('sources', [])),
                 axis_key:               c.get('TransformAxis_parent', 0),
             })
-            tail = bytearray(rec['ParentTailBytes'])
+            tail = bytearray(rec['TailBytes'])
             if len(tail) >= 4:
                 tail[3] = group_counts[i]
-            rec['ParentTailBytes'] = bytes(tail)
+            rec['TailBytes'] = bytes(tail)
             cns_info_blob.extend(CONSTRAINT_INFO.pack(rec, version))
 
         # ── Phase 8b: build RotExpression section ───────────────────────
@@ -699,8 +699,8 @@ class JCNSWriter:
             rec = dict(c['_rec'])
             rec.update({k: c[k] for k in INPLACE_CNS_FIELDS if k in rec and k in c})
             rec[axis_key] = c.get('TransformAxis_parent', rec[axis_key])
-            if 'ParentTailBytes' in rec:
-                rec['ParentTailBytes'] = bytes(rec['ParentTailBytes'])
+            if 'TailBytes' in rec:
+                rec['TailBytes'] = bytes(rec['TailBytes'])
             CONSTRAINT_INFO.pack_into(out, c['ParentSetOffset'], rec, v)
             for s in c['sources']:
                 srec = dict(s['_rec'])
@@ -722,23 +722,23 @@ class JCNSWriter:
 _CNS_DEFAULTS = {
     'ConeDriverInfoOffset': 0, 'PropertyOffset': 0, 'PropertyHash': 0,
     'ConeDriverInfoCount': 0, 'Flags': 0x30, 'TransformType': 1,
-    'ParentVec4': (0.0, 0.0, 0.0, 1.0), 'ParentFloat2': (0.0, 0.0),
-    'ParentUInt8_72': 0, 'ParentTailBytes': bytes(6),
+    'ReservedVec4': (0.0, 0.0, 0.0, 1.0), 'UnknownFloat2': (0.0, 0.0),
+    'UnknownByte72': 0, 'TailBytes': bytes(6),
 }
 _SOURCE_DEFAULTS = {
     'ComplexMappingInfoOffset': 0, 'SourceHashIndex': 0, 'ComplexMappingInfoCount': 0,
-    'UnknownUInt16': 0, 'CurveMode': 3, 'ReadMode': 3, 'source_axis': 0,
-    'EulerOrder': 0, 'UnknownUInt32_2': 0,
+    'UnknownUInt16_22': 0, 'CurveMode': 3, 'ReadMode': 3, 'source_axis': 0,
+    'EulerOrder': 0, 'UnknownUInt32_28': 0,
     'from_start': 0.0, 'from_kink': 0.0, 'from_end': 0.0,
     'to_start': 0.0, 'to_kink': 0.0, 'to_end': 0.0,
-    'rest_quat_x': 0.0, 'rest_quat_y': 0.0, 'rest_quat_z': 0.0, 'rest_quat_w': 1.0,
+    'ref_frame_x': 0.0, 'ref_frame_y': 0.0, 'ref_frame_z': 0.0, 'ref_frame_w': 1.0,
 }
 
 
 # ── Utilities ────────────────────────────────────────────────────────────
 
 def tail_group_counts(constraints):
-    """ParentTailBytes[3] for every constraint: how many of the entries right after it
+    """TailBytes[3] for every constraint: how many of the entries right after it
     the engine folds into its joint group.
 
     The engine writes a whole group to the *first* entry's target, whatever the others
@@ -752,7 +752,7 @@ def tail_group_counts(constraints):
         return (c.get('ObjectName', ''), c.get('PropertyName', ''), c.get('TransformType'))
 
     def given(c):
-        tb = c.get('ParentTailBytes') or b''
+        tb = c.get('TailBytes') or b''
         return tb[3] if len(tb) >= 4 else 0
 
     n = len(constraints)

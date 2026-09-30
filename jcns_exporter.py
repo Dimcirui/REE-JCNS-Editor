@@ -344,11 +344,11 @@ def _make_default_constraint_dict(empty_obj):
         'ConeDriverInfo':        [],
         'Flags':                 0x30,
         'TransformType':         _transform_int(p.transform_type),
-        'ParentVec4':            (0.0, 0.0, 0.0, 1.0),
-        'ParentFloat2':          (0.0, 0.0),
-        'ParentUInt8_72':        0,
+        'ReservedVec4':            (0.0, 0.0, 0.0, 1.0),
+        'UnknownFloat2':          (0.0, 0.0),
+        'UnknownByte72':        0,
         'TransformAxis_parent':  tgt_ax,
-        'ParentTailBytes':       b'\x00' * 6,
+        'TailBytes':       b'\x00' * 6,
         'ObjectName':        '',
         'sources':               [],
     }
@@ -400,15 +400,15 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
         base['to_start']        = sp.to_start
         base['to_kink']         = sp.to_kink
         base['to_end']          = sp.to_end
-        base['rest_quat_x']     = sp.rest_quat_x
-        base['rest_quat_y']     = sp.rest_quat_y
-        base['rest_quat_z']     = sp.rest_quat_z
-        base['rest_quat_w']     = sp.rest_quat_w
+        base['ref_frame_x']     = sp.ref_frame_x
+        base['ref_frame_y']     = sp.ref_frame_y
+        base['ref_frame_z']     = sp.ref_frame_z
+        base['ref_frame_w']     = sp.ref_frame_w
         base['CurveMode']    = sp.update_timing
         base['ReadMode']        = jcns_source_read.read_mode_value(sp.read_mode)
         base['EulerOrder']      = jcns_source_read.euler_order_value(sp.euler_order)
-        base['UnknownUInt16']   = sp.unknown_uint16
-        base['UnknownUInt32_2'] = sp.unknown_uint32_2
+        base['UnknownUInt16_22']   = sp.unknown_uint16_22
+        base['UnknownUInt32_28'] = sp.unknown_uint32_28
         if sections_cached:
             # The F-Curve is the data; the count follows it.
             from . import jcns_cm
@@ -426,17 +426,17 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
     flags = get_flags()
     parsed_c['Flags'] = (flags.apply_derived_bits(p.cns_flags, p.transform_type)
                          if version in flags.DERIVED_BITS_VERSIONS else int(p.cns_flags) & 0xFF)
-    parsed_c['ParentVec4']          = (p.parent_vec4_x, p.parent_vec4_y,
-                                       p.parent_vec4_z, p.parent_vec4_w)
-    parsed_c['ParentFloat2']        = (p.parent_float2_x, p.parent_float2_y)
-    parsed_c['ParentUInt8_72']      = p.parent_uint8_72
+    parsed_c['ReservedVec4']          = (p.reserved_vec4_x, p.reserved_vec4_y,
+                                       p.reserved_vec4_z, p.reserved_vec4_w)
+    parsed_c['UnknownFloat2']        = (p.unknown_float2_x, p.unknown_float2_y)
+    parsed_c['UnknownByte72']      = p.unknown_byte_72
     parsed_c['PropertyHash']        = p.property_hash & 0xFFFFFFFF
     parsed_c['ConeDriverInfo'] = [{
         'Rest0': k.rest[0], 'Rest123': tuple(k.rest[1:]), 'Value': k.value,
         'UnkByte0': k.unk_byte0, 'ConeDriverIndex': k.cone_index, 'UnkByte3': k.unk_byte3}
         for k in p.cone_infos]
     parsed_c['ConeDriverInfoCount'] = len(parsed_c['ConeDriverInfo'])
-    parsed_c['ParentTailBytes']     = bytes([
+    parsed_c['TailBytes']     = bytes([
         p.parent_tail_0, p.parent_tail_1, p.parent_tail_2,
         p.parent_tail_3, p.parent_tail_4, p.parent_tail_5,
     ])

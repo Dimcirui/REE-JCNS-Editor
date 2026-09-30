@@ -107,18 +107,18 @@ def main():
     for name, fn in (('PropertyName', lambda c: c['PropertyName']),
                      ('SourceCount', lambda c: c['SourceCount_parent']),
                      ('Flags', lambda c: c['Flags']), ('TransformType', lambda c: c['TransformType']),
-                     ('ParentVec4', lambda c: c['ParentVec4']), ('ParentFloat2', lambda c: c['ParentFloat2']),
-                     ('ParentUInt8_72', lambda c: c['ParentUInt8_72']),
+                     ('ReservedVec4', lambda c: c['ReservedVec4']), ('UnknownFloat2', lambda c: c['UnknownFloat2']),
+                     ('UnknownByte72', lambda c: c['UnknownByte72']),
                      ('TransformAxis', lambda c: c['TransformAxis_v35'])):
         dist(name, [fn(c) for _, c in C], 12)
     for k in range(6):
-        dist('Tail[%d] (+%d)' % (k, 74 + k), [c['ParentTailBytes'][k] for _, c in C])
+        dist('Tail[%d] (+%d)' % (k, 74 + k), [c['TailBytes'][k] for _, c in C])
     print('--- Source')
-    for name in ('ComplexMappingInfoCount', 'UnknownUInt16', 'CurveMode', 'ReadMode', 'source_axis', 'EulerOrder'):
+    for name in ('ComplexMappingInfoCount', 'UnknownUInt16_22', 'CurveMode', 'ReadMode', 'source_axis', 'EulerOrder'):
         dist(name, [s[name] for _, _, _, s in S])
     for k in range(4):
-        dist('+%d (UnknownUInt32_2 byte %d)' % (28 + k, k), [(s['UnknownUInt32_2'] >> (8 * k)) & 0xFF for *_, s in S])
-    dist('rest_quat', [(s['rest_quat_x'], s['rest_quat_y'], s['rest_quat_z'], s['rest_quat_w']) for *_, s in S])
+        dist('+%d (UnknownUInt32_28 byte %d)' % (28 + k, k), [(s['UnknownUInt32_28'] >> (8 * k)) & 0xFF for *_, s in S])
+    dist('ref_frame', [(s['ref_frame_x'], s['ref_frame_y'], s['ref_frame_z'], s['ref_frame_w']) for *_, s in S])
     if len(sys.argv) > 1:
         field = sys.argv[1]
         rows = [(s[field], r) for r in S for s in [r[3]] if field in s]

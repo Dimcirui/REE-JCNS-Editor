@@ -102,7 +102,7 @@ for unk2 in (1, 2, 3):
             print('[%d] +27=%d +25=%d %s  range %7.1f..%6.1f | %s' % (
                 i, unk2, read, ax, out[i].min(), out[i].max(), ' ; '.join('%s %.3f' % (s, e) for e, s in b)))
             i += 1
-print('== 3. rest_quat readers')
+print('== 3. ref_frame readers')
 for read in (1, 3, 4, 5):
     for ax in 'XYZ':
         b = best(out[i])

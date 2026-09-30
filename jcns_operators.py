@@ -80,10 +80,10 @@ def _sources_for_driver(cns_props):
             # +25 ReadMode, as its byte value: how the source bone is read
             # (modules/jcns_source_read.py).
             'read_mode': get_mapping().read_mode_value(sp.read_mode),
-            # +27 EulerOrder and the rest_quat reference frame, both only used by
+            # +27 EulerOrder and the ref_frame reference frame, both only used by
             # rotation reads (modules/jcns_source_read.py).
             'euler_order': get_mapping().euler_order_value(sp.euler_order),
-            'frame': (sp.rest_quat_w, sp.rest_quat_x, sp.rest_quat_y, sp.rest_quat_z),
+            'frame': (sp.ref_frame_w, sp.ref_frame_x, sp.ref_frame_y, sp.ref_frame_z),
             # ComplexMapping keys, which replace the anchors when present.
             'cm': jcns_cm.keys(sp),
         })
@@ -196,7 +196,7 @@ def source_rest_input_of(sp):
     sr = jcns_drivers.jcns_source_read
     return sr.rest_input(sp.read_mode, axis, rest, tuple(v / per_cm for v in off),
                          order=sr.euler_order_value(sp.euler_order),
-                         frame=(sp.rest_quat_w, sp.rest_quat_x, sp.rest_quat_y, sp.rest_quat_z),
+                         frame=(sp.ref_frame_w, sp.ref_frame_x, sp.ref_frame_y, sp.ref_frame_z),
                          scale=mesh_rest_scale(arm.data.bones[sp.source_bone]))
 
 
@@ -1035,7 +1035,7 @@ class JCNS_OT_AddSource(Operator):
             prev = p.sources[len(p.sources) - 2]
             for attr in ('source_axis', 'from_start', 'from_kink', 'from_end',
                          'to_start', 'to_kink', 'to_end', 'update_timing',
-                         'read_mode', 'rest_quat_w'):
+                         'read_mode', 'ref_frame_w'):
                 setattr(sp, attr, getattr(prev, attr))
         p.active_source_index = len(p.sources) - 1
         idx = 0
@@ -1255,7 +1255,7 @@ class JCNS_OT_MirrorConstraints(Operator):
                     # The reference frame is a rotation in the source's local axes, so
                     # it reflects like any rotation: its vector part flips by sigma.
                     sg = src_sigma or mirror.SIGMA_DEFAULT
-                    comps = (sp.rest_quat_x, sp.rest_quat_y, sp.rest_quat_z)
+                    comps = (sp.ref_frame_x, sp.ref_frame_y, sp.ref_frame_z)
                     if any(abs(c) > 1e-9 and sg.get(a) is None for c, a in zip(comps, 'XYZ')):
                         failed = "%s 的参考系四元数无法镜像" % sp.source_bone
                         break
@@ -1301,12 +1301,12 @@ class JCNS_OT_MirrorConstraints(Operator):
                 for k, v in vals.items():
                     if not k.startswith('_'):
                         setattr(ns, k, v)
-                for attr in ('rest_quat_x', 'rest_quat_y', 'rest_quat_z',
-                             'rest_quat_w', 'update_timing', 'read_mode',
-                             'euler_order', 'unknown_uint16', 'unknown_uint32_2'):
+                for attr in ('ref_frame_x', 'ref_frame_y', 'ref_frame_z',
+                             'ref_frame_w', 'update_timing', 'read_mode',
+                             'euler_order', 'unknown_uint16_22', 'unknown_uint32_28'):
                     setattr(ns, attr, getattr(orig, attr))
                 if '_frame' in vals:
-                    ns.rest_quat_x, ns.rest_quat_y, ns.rest_quat_z = vals['_frame']
+                    ns.ref_frame_x, ns.ref_frame_y, ns.ref_frame_z = vals['_frame']
                 if jcns_cm.has_curve(orig):
                     jcns_cm.copy_keys(orig, ns, lambda k, i_s=i_s, o_s=o_s:
                                       jcns_cm.jcns_complex.mirrored(k, i_s, o_s))

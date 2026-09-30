@@ -65,9 +65,9 @@ ENTRIES = [
 
 
 def set_count(c, n):
-    tail = bytearray(c['ParentTailBytes'])
+    tail = bytearray(c['TailBytes'])
     tail[3] = n
-    c['ParentTailBytes'] = bytes(tail)
+    c['TailBytes'] = bytes(tail)
 
 
 def main():
@@ -96,7 +96,7 @@ def main():
         s['ComplexMappingInfoCount'] = 0
         cons.append(c)
     assert cons is p.constraints
-    want = [c['ParentTailBytes'][3] for c in cons]
+    want = [c['TailBytes'][3] for c in cons]
     # The C pair is deliberately left ungrouped, which is still a valid layout, so the
     # writer must keep these counts rather than re-derive them.
     assert tail_group_counts(cons) == want
@@ -104,12 +104,12 @@ def main():
     q = JCNSParser(DST)
     with contextlib.redirect_stdout(io.StringIO()):
         back = q.parse()
-    assert [c['ParentTailBytes'][3] for c in back] == want
+    assert [c['TailBytes'][3] for c in back] == want
     for i, c in enumerate(back):
         s = c['sources'][0]
         k = s['to_end'] / s['from_end'] if s['from_end'] else 0
         print(f"[{i:02}] {c['ObjectName']:<14}.{'XYZW'[c['target_axis']]} <- {s['SourceName']}.{'XYZW'[s['source_axis']]}"
-              f"  k={k:+.2f}  group={c['ParentTailBytes'][3]}  F={c['Flags']}")
+              f"  k={k:+.2f}  group={c['TailBytes'][3]}  F={c['Flags']}")
 
 
 if __name__ == '__main__':

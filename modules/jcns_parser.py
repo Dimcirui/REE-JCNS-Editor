@@ -149,7 +149,7 @@ class JCNSParser:
       +20:  ComplexMappingInfoCount   uint16   records in the ComplexMapping curve; nonzero in 78
                                               sources ({3, 4, 7}).  The curve is a cubic Hermite
                                               (measured, see jcns_complex).
-      +22:  UnknownUInt16             uint16   0 in every source but one (flower_ziva, 1).
+      +22:  UnknownUInt16_22             uint16   0 in every source but one (flower_ziva, 1).
       +24:  CurveMode                 uint8    bt: UpdateTiming (wrong).  bit 1 selects the curve:
                                               {0,1} two-point (kink ignored), {2,3} three-point
                                               (measured).  bit 0 does nothing -- not to the curve,
@@ -175,7 +175,7 @@ class JCNSParser:
                                               F1 bones and capes 2, wings 3, nearly all others 0,
                                               always 0 for ReadMode 0/2 -- a per-bone rotation
                                               order, stored even where the read ignores it.
-      +28:  UnknownUInt32_2           uint32   Two live bytes; +30/+31 always 0.
+      +28:  UnknownUInt32_28           uint32   Two live bytes; +30/+31 always 0.
                                               +28: 0 92%, 3 8% (3 mostly on non-joint targets and
                                               ReadMode 1/4), 1/2 rare.  Unmeasured.
                                               +29: 1 exactly when ComplexMappingInfoCount > 0; 2 in
@@ -186,7 +186,7 @@ class JCNSParser:
                                               through them is in jcns_mapping (measured: linear
                                               between anchors; an out-of-range kink in
                                               three-point mode kills the source).
-      +56:  rest_quat_x/y/z/w         float    (0,0,0,1) in every source but two: ch90_021's
+      +56:  ref_frame_x/y/z/w         float    (0,0,0,1) in every source but two: ch90_021's
                                               Chest -> Chest_Roll_Val_HJ and Spine0 ->
                                               Spine_Roll_Val_HJ, both a 90 deg turn about Y
                                               (0,-0.7071,0,0.7071), ReadMode 3.  Not the bone's
@@ -370,7 +370,7 @@ class JCNSParser:
         # v2-only fields, so downstream code sees the same keys for every version.
         s.setdefault('ComplexMappingInfoOffset', 0)
         s.setdefault('ComplexMappingInfoCount', 0)
-        s.setdefault('UnknownUInt16', 0)
+        s.setdefault('UnknownUInt16_22', 0)
         if v >= 35:
             s['SourceHash'] = self._hash_at(rec['SourceHashIndex'])
         # ComplexMappingInfo[count]; the bt template aligns the pointer up to 16

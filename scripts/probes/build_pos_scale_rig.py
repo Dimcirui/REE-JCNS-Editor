@@ -7,8 +7,8 @@ Out21 F.Y translation F17; Out22 G.Y translation F16.
 Out23 H.Y scale F17; Out24 I.Y scale F16. J/K remain undriven.
 Translation anchors: degrees * (0.03, 0.05, -0.04) cm.
 Scale anchors: 1 + degrees * (0.002, 0.003, -0.004).
-All test entries explicitly set EulerOrder/U32_2/+72/ParentFloat2=0,
-Tail[1]=2, Tail[3]=0 and identity rest_quat. Other fields inherit original [00].
+All test entries explicitly set EulerOrder/U32_2/+72/UnknownFloat2=0,
+Tail[1]=2, Tail[3]=0 and identity ref_frame. Other fields inherit original [00].
 Writes a staging file; deployment must back up the active jcns first.
 """
 import argparse
@@ -40,23 +40,23 @@ def main():
     assert len(cons) == 8
     template = copy.deepcopy(cons[0])
     for c in cons:
-        tail = bytearray(c['ParentTailBytes']); tail[3] = 0
-        c['ParentTailBytes'] = bytes(tail)
+        tail = bytearray(c['TailBytes']); tail[3] = 0
+        c['TailBytes'] = bytes(tail)
     for bone, tt, flags, axes in CASES:
         for axis in axes:
             i = 'XYZ'.index(axis)
             c = copy.deepcopy(template)
             c.update(ObjectName='TestTgt' + bone, TransformType=tt, Flags=flags,
                      TransformAxis_parent=i, target_axis=i,
-                     ParentUInt8_72=0, ParentFloat2=(0.0, 0.0))
-            tail = bytearray(c['ParentTailBytes']); tail[1] = 2; tail[3] = 0
-            c['ParentTailBytes'] = bytes(tail)
+                     UnknownByte72=0, UnknownFloat2=(0.0, 0.0))
+            tail = bytearray(c['TailBytes']); tail[1] = 2; tail[3] = 0
+            c['TailBytes'] = bytes(tail)
             s = c['sources'][0]
             gain = 0.5 if tt == 1 else ((0.03, 0.05, -0.04) if tt == 0 else (0.002, 0.003, -0.004))[i]
             bias = 1.0 if tt == 2 else 0.0
             s.update(SourceName='L_Thigh', source_axis=0, ReadMode=3, CurveMode=0,
-                     EulerOrder=0, UnknownUInt32_2=0, rest_quat_x=0.0,
-                     rest_quat_y=0.0, rest_quat_z=0.0, rest_quat_w=1.0,
+                     EulerOrder=0, UnknownUInt32_28=0, ref_frame_x=0.0,
+                     ref_frame_y=0.0, ref_frame_z=0.0, ref_frame_w=1.0,
                      from_start=-90.0, from_kink=0.0, from_end=90.0,
                      to_start=bias-90*gain, to_kink=bias, to_end=bias+90*gain,
                      ComplexMapping=[], ComplexMappingInfoCount=0)
@@ -70,7 +70,7 @@ def main():
     for idx, (a, b) in enumerate(zip(cons, back)):
         assert (a['ObjectName'], a['TransformType'], a['Flags'], a['target_axis']) == (b['ObjectName'], b['TransformType'], b['Flags'], b['target_axis'])
         if idx >= 8:
-            assert b['sources'][0]['UnknownUInt32_2'] == 0
+            assert b['sources'][0]['UnknownUInt32_28'] == 0
         print(idx, b['ObjectName'], b['TransformType'], b['Flags'], b['target_axis'])
 
 
