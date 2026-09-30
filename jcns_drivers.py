@@ -19,7 +19,20 @@ still declared through real driver variables so the depsgraph updates correctly.
 
 Values in _CHANNELS are pre-converted to the driver's own units (radians for
 rotation), so the function does no unit conversion.
+
+How a source is read is part of the channel too (measured in game 2026-09-30, xaihi
+rig round 6):
+
+  * a +25=3 rotation source is the twist angle 2*atan2(q_axis, q_w) of the bone's
+    whole parent-relative rotation, rest pose included -- not an Euler component, and
+    not relative to rest.  The driver hands over the bone's three XYZ Euler channels
+    and jcns_ch rebuilds rest * Rz * Ry * Rx from them.
+  * entries run in file order within one frame, so a source whose channel is only
+    written by a LATER entry is still at its unconstrained pose when it is read.  Such
+    a channel gets no variable and reads its rest value.
 """
+
+import math
 
 import bpy
 
@@ -29,16 +42,57 @@ ensure_path()
 import jcns_complex  # noqa: E402
 
 
-# key -> {'maps': [map, …]}, one map per source of the single constraint that
-# owns the channel; their outputs are summed.  A map is either the three-point
-# (fs, fk, fe, ts, tk, te, two_point) or ('CM', keys) for a ComplexMapping, both
-# already in the driver's units.
+# key -> {'maps': [map, …], 'reads': [read, …]}, one of each per source of the
+# single constraint that owns the channel; their outputs are summed.  A map is
+# either the three-point (fs, fk, fe, ts, tk, te, two_point) or ('CM', keys) for a
+# ComplexMapping, both already in the driver's units.  A read says which driver
+# variables feed the source:
+#   ('v',)                        one variable, used as is
+#   ('c', value)                  none; the source is not live yet, use value
+#   ('tw', axis, rest, live)      one variable per axis in `live` (XYZ Euler, radians,
+#                                 the others read 0); rest is (w, x, y, z)
 _CHANNELS = {}
+
+READ_VALUE = ('v',)
 
 
 def _unit_scale(quantity):
     """File units -> driver units for one quantity (degrees -> radians, cm -> m)."""
     return get_mapping()._to_driver_units((1.0,), quantity)[0]
+
+
+def source_read(s):
+    """How the driver feeds one source dict; see _CHANNELS."""
+    return s.get('read') or READ_VALUE
+
+
+def read_width(read):
+    """How many driver variables a read consumes."""
+    if read[0] == 'c':
+        return 0
+    if read[0] == 'tw':
+        return len(read[3])
+    return 1
+
+
+def _qmul(a, b):
+    aw, ax, ay, az = a
+    bw, bx, by, bz = b
+    return (aw * bw - ax * bx - ay * by - az * bz, aw * bx + ax * bw + ay * bz - az * by,
+            aw * by - ax * bz + ay * bw + az * bx, aw * bz + ax * by - ay * bx + az * bw)
+
+
+def twist(rest, euler, axis):
+    """Twist angle about `axis` of rest * Rz * Ry * Rx (Blender XYZ Euler), radians."""
+    q = rest
+    for a in (2, 1, 0):
+        h = euler[a] * 0.5
+        r = [math.cos(h), 0.0, 0.0, 0.0]
+        r[a + 1] = math.sin(h)
+        q = _qmul(q, r)
+    if q[0] < 0.0:
+        q = tuple(-c for c in q)
+    return 2.0 * math.atan2(q[axis + 1], q[0])
 
 
 def source_map(s, target_q):
@@ -63,8 +117,14 @@ def channel_id(armature_name, bone, transform, axis):
     return "|".join(parts)
 
 
-def register_channel(key, maps):
-    _CHANNELS[key] = {'maps': list(maps)}
+def register_channel(key, maps, reads=None):
+    maps = list(maps)
+    _CHANNELS[key] = {'maps': maps, 'reads': list(reads or [READ_VALUE] * len(maps))}
+
+
+def channel_reads(key):
+    ch = _CHANNELS.get(key)
+    return ch['reads'] if ch else None
 
 
 def clear_channels():
@@ -80,7 +140,6 @@ def jcns_ch(key, *values):
         # evaluation.  rebuild_all() is called from a load_post handler instead.
         return 0.0
     ev = get_mapping().eval_piecewise
-    maps = ch['maps']
     # Each source maps independently and the outputs add up — verified in-game
     # against a two-source constraint swept over its whole input range.
     #
@@ -88,10 +147,21 @@ def jcns_ch(key, *values):
     # an older build are 6-long; treat those as three-point, which is what the
     # shipped data uses in ~86% of sources.
     total = 0.0
-    for i, v in enumerate(values):
-        if i >= len(maps):
-            break
-        m = maps[i]
+    at = 0
+    for m, read in zip(ch['maps'], ch['reads']):
+        width = read_width(read)
+        if at + width > len(values):
+            break                  # the driver predates this layout; Apply rebuilds it
+        if read[0] == 'c':
+            v = read[1]
+        elif read[0] == 'tw':
+            euler = [0.0, 0.0, 0.0]
+            for a, val in zip(read[3], values[at:at + width]):
+                euler[a] = val
+            v = twist(read[2], euler, read[1])
+        else:
+            v = values[at]
+        at += width
         if m[0] == 'CM':
             total += jcns_complex.evaluate(m[1], v)
         else:
@@ -106,7 +176,7 @@ def rebuild_all():
     the user having to press Apply again.
     """
     from . import group_constraints_by_channel
-    from .jcns_operators import _sources_for_driver
+    from .jcns_operators import channel_sources
 
     clear_channels()
     rebuilt = 0
@@ -119,10 +189,11 @@ def rebuild_all():
             m = get_mapping()
             target_q = m.target_quantity(transform)
             # Only the last constraint on a channel is live; see _apply_channel.
-            maps = [source_map(s, target_q)
-                    for s in _sources_for_driver(members[-1].jcns_cns_props) if s['bone']]
-            if maps:
-                register_channel(channel_id(arm.name, bone, transform, axis), maps)
+            sources = channel_sources(arm, obj, members[-1])
+            if sources:
+                register_channel(channel_id(arm.name, bone, transform, axis),
+                                 [source_map(s, target_q) for s in sources],
+                                 [source_read(s) for s in sources])
                 rebuilt += 1
     return rebuilt
 

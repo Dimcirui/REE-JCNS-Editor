@@ -37,7 +37,6 @@ def _ensure_modules_path():
 # Driver math
 # ---------------------------------------------------------------------------
 
-_X_FIRST_EULER = ('XYZ', 'XZY')
 _ROT_TYPE   = ['ROT_X',   'ROT_Y',   'ROT_Z']
 _LOC_TYPE   = ['LOC_X',   'LOC_Y',   'LOC_Z']
 _SCALE_TYPE = ['SCALE_X', 'SCALE_Y', 'SCALE_Z']
@@ -91,6 +90,71 @@ def _sources_for_driver(cns_props):
     return out
 
 
+# A source channel that is not live yet reads its rest value; see channel_sources.
+_REST_VALUE = {'Translation': 0.0, 'Rotation': 0.0, 'Scale': 1.0}
+
+
+def _written_from(root_obj, owner):
+    """{(bone, data path, axis)} of every channel whose live writer is `owner` or an
+    entry after it in the file.
+
+    Entries run in file order within one frame (measured in game 2026-09-30), so when
+    `owner` reads one of these channels the writer has not run yet and the bone is
+    still at its unconstrained pose.
+    """
+    from . import AXIS_TO_INT, get_constraint_empties, group_constraints_by_channel
+    order = {e.name: i for i, e in enumerate(get_constraint_empties(root_obj))}
+    here = order.get(owner.name, -1)
+    out = set()
+    for (bone, transform, axis), members in group_constraints_by_channel(root_obj).items():
+        entry = _DRIVABLE.get(transform)
+        if entry is None or axis == 'W':
+            continue
+        if order.get(members[-1].name, -1) >= here:
+            out.add((bone, entry[0], AXIS_TO_INT.get(axis, 0)))
+    return out
+
+
+def _rest_rotation(armature_obj, bone_name):
+    """A bone's rest rotation relative to its parent, as (w, x, y, z)."""
+    b = armature_obj.data.bones.get(bone_name)
+    if b is None or b.parent is None:
+        return (1.0, 0.0, 0.0, 0.0)
+    q = (b.parent.matrix_local.inverted() @ b.matrix_local).to_quaternion()
+    return (q.w, q.x, q.y, q.z)
+
+
+def channel_sources(armature_obj, root_obj, owner):
+    """The source dicts of constraint Empty `owner`, each with the 'read' that tells
+    the driver how to feed it (see jcns_drivers._CHANNELS).
+
+    Measured in game 2026-09-30 (xaihi rig round 6):
+      * a +25=3 rotation source is the twist of the bone's whole parent-relative
+        rotation, rest pose included, so the driver takes the three Euler channels
+        and the rest rotation goes into the channel table;
+      * a channel written by this entry or a later one is read at its rest value.
+    +25=1/4/5 rotations and translation / scale sources keep the single LOCAL_SPACE
+    variable: what they read beyond that is not measured.
+    """
+    from . import jcns_drivers
+    from .modules_shim import get_mapping
+    mp = get_mapping()
+    sources = [s for s in _sources_for_driver(owner.jcns_cns_props) if s['bone']]
+    later = _written_from(root_obj, owner) if root_obj is not None else set()
+    for s in sources:
+        q = mp.source_quantity(s.get('src_transform_id'))
+        path = _DRIVABLE[q][0]
+        axis = min(s.get('axis_idx', 0), 2)
+        if q == 'Rotation' and s.get('src_transform_id') == 3:
+            live = tuple(a for a in range(3) if (s['bone'], path, a) not in later)
+            s['read'] = ('tw', axis, _rest_rotation(armature_obj, s['bone']), live)
+        elif (s['bone'], path, axis) in later:
+            s['read'] = ('c', _REST_VALUE[q])
+        else:
+            s['read'] = jcns_drivers.READ_VALUE
+    return sources
+
+
 def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
                   sources, transform_type='Rotation'):
     """
@@ -105,7 +169,8 @@ def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
     is reduced to a jcns_ch(...) call — Blender truncates expressions past 255
     characters, and a single inline mapping already costs ~170 of them.
 
-    Sources are read in LOCAL_SPACE.  Returns (ok: bool, error_str: str).
+    Sources are read in LOCAL_SPACE, as their 'read' says (channel_sources).
+    Returns (ok: bool, error_str: str).
     """
     from . import jcns_drivers
     from .modules_shim import get_mapping
@@ -123,19 +188,20 @@ def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
     if not usable:
         return False, "未设置驱动骨骼"
 
-    # The engine applies a bone's X channel first and Y / Z over it (measured in game
-    # 2026-09-30: q = rest * R(Y|Z) * R(X), 0.4 deg; the reverse was off by up to 29).
-    # Blender's XYZ / XZY Euler modes do the same; any other order, or a quaternion,
-    # would show a different pose.  Which of Y and Z goes first is not measured.
-    if data_path == 'rotation_euler' and pose_bone.rotation_mode not in _X_FIRST_EULER:
+    # The engine composes q = rest * Rz * Ry * Rx whatever order the file writes the
+    # axes in (measured in game 2026-09-30: 0.4 deg; every other order off by 52+).
+    # That is Blender's XYZ Euler mode; any other order, or a quaternion, shows a
+    # different pose once more than one axis turns.
+    if data_path == 'rotation_euler' and pose_bone.rotation_mode != 'XYZ':
         pose_bone.rotation_mode = 'XYZ'
 
     # In the driver's own units, so the namespace function converts nothing.
     maps = [jcns_drivers.source_map(s, target_q) for s in usable]
+    reads = [jcns_drivers.source_read(s) for s in usable]
 
     key = jcns_drivers.channel_id(armature_obj.name, target_bone_name,
                                   transform_type, _AXIS_NAME[target_axis_idx])
-    jcns_drivers.register_channel(key, maps)
+    jcns_drivers.register_channel(key, maps, reads)
 
     pose_bone.driver_remove(data_path, target_axis_idx)
     armature_obj.animation_data_create()
@@ -148,20 +214,30 @@ def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
         drv.variables.remove(drv.variables[0])
 
     names = []
-    for i, s in enumerate(usable):
-        var_name = 'v%d' % i
-        names.append(var_name)
+
+    def add_var(bone, transform_type, rotation_mode='AUTO'):
         var = drv.variables.new()
-        var.name = var_name
+        var.name = 'v%d' % len(names)
+        names.append(var.name)
         var.type = 'TRANSFORMS'
         tgt = var.targets[0]
         tgt.id = armature_obj
-        tgt.bone_target = s['bone']
-        tgt.transform_type = _SOURCE_VARS[get_mapping().source_quantity(
-            s.get('src_transform_id'))][min(s.get('axis_idx', 0), 2)]
+        tgt.bone_target = bone
+        tgt.transform_type = transform_type
+        tgt.rotation_mode = rotation_mode
         tgt.transform_space = 'LOCAL_SPACE'
 
-    expr = 'jcns_ch("%s",%s)' % (key, ",".join(names))
+    for s, read in zip(usable, reads):
+        if read[0] == 'c':
+            continue
+        if read[0] == 'tw':
+            for a in read[3]:
+                add_var(s['bone'], _ROT_TYPE[a], 'XYZ')
+            continue
+        add_var(s['bone'], _SOURCE_VARS[get_mapping().source_quantity(
+            s.get('src_transform_id'))][min(s.get('axis_idx', 0), 2)])
+
+    expr = 'jcns_ch("%s"%s)' % (key, "".join("," + n for n in names))
     drv.expression = expr
 
     if len(expr) > 255:
@@ -256,14 +332,20 @@ def refresh_channel_values(obj):
     target_q = entry[2]
 
     # Only the last constraint on the channel is live — see _apply_channel.
-    maps = [jcns_drivers.source_map(s, target_q)
-            for s in _sources_for_driver(members[-1].jcns_cns_props) if s['bone']]
-    if not maps:
+    sources = channel_sources(rp.target_armature, root_obj, members[-1])
+    if not sources:
         return False
 
     key = jcns_drivers.channel_id(rp.target_armature.name, p.target_bone,
                                   p.transform_type, p.target_axis)
-    jcns_drivers.register_channel(key, maps)
+    reads = [jcns_drivers.source_read(s) for s in sources]
+    if reads != jcns_drivers.channel_reads(key):
+        # The driver's variables no longer fit (a source's bone, axis or +25, or
+        # its place in the file, changed): rebuild it rather than patch numbers.
+        ok, _err, _label = _apply_channel(rp.target_armature, rp, members)
+        return ok
+    jcns_drivers.register_channel(
+        key, [jcns_drivers.source_map(s, target_q) for s in sources], reads)
     rp.target_armature.update_tag()
     return True
 
@@ -341,8 +423,10 @@ def _apply_channel(armature_obj, root_props, members):
     from . import AXIS_TO_INT
     bone, transform, axis = _channel_of(members[0])
 
+    from . import get_jcns_root_from_constraint
     winner = members[-1]
-    sources = _sources_for_driver(winner.jcns_cns_props)
+    root_obj, _ = get_jcns_root_from_constraint(winner)
+    sources = channel_sources(armature_obj, root_obj, winner)
 
     label = "%s(%s) <- %d source(s)" % (bone or '???', axis, len(sources))
     if len(members) > 1:
