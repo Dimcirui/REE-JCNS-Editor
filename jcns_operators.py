@@ -1251,6 +1251,15 @@ class JCNS_OT_MirrorConstraints(Operator):
                     failed = "%s 的 %s 轴无法确定镜像符号" % (sp.source_bone,
                                                              sp.source_axis)
                     break
+                if self.mirror_source:
+                    # The reference frame is a rotation in the source's local axes, so
+                    # it reflects like any rotation: its vector part flips by sigma.
+                    sg = src_sigma or mirror.SIGMA_DEFAULT
+                    comps = (sp.rest_quat_x, sp.rest_quat_y, sp.rest_quat_z)
+                    if any(abs(c) > 1e-9 and sg.get(a) is None for c, a in zip(comps, 'XYZ')):
+                        failed = "%s 的参考系四元数无法镜像" % sp.source_bone
+                        break
+                    vals['_frame'] = tuple(c * (sg.get(a) or 1) for c, a in zip(comps, 'XYZ'))
                 new_sources.append((mate, sp.source_axis, vals, sp, i_s, o_s))
             if failed:
                 problems.append(failed)
@@ -1290,11 +1299,14 @@ class JCNS_OT_MirrorConstraints(Operator):
                 ns.source_bone = bone
                 ns.source_axis = axis
                 for k, v in vals.items():
-                    setattr(ns, k, v)
+                    if not k.startswith('_'):
+                        setattr(ns, k, v)
                 for attr in ('rest_quat_x', 'rest_quat_y', 'rest_quat_z',
                              'rest_quat_w', 'update_timing', 'read_mode',
                              'euler_order', 'unknown_uint16', 'unknown_uint32_2'):
                     setattr(ns, attr, getattr(orig, attr))
+                if '_frame' in vals:
+                    ns.rest_quat_x, ns.rest_quat_y, ns.rest_quat_z = vals['_frame']
                 if jcns_cm.has_curve(orig):
                     jcns_cm.copy_keys(orig, ns, lambda k, i_s=i_s, o_s=o_s:
                                       jcns_cm.jcns_complex.mirrored(k, i_s, o_s))
