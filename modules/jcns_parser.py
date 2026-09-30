@@ -102,7 +102,13 @@ class JCNSParser:
                                              1 lays the value onto the rest pose (rest * R(v)),
                                              0 replaces it (a -2 deg rest vanished).  Either
                                              way the last writer of a channel still wins, and
-                                             the entry's output value is unchanged.  Agrees
+                                             the entry's output value is unchanged.
+                                             Translation (round 10): 1 adds in parent axes,
+                                             0 replaces only written position components;
+                                             unwritten components keep their rest offset.
+                                             Scale: bit0=0/1 agree at unit rest scale; written
+                                             axes equal output, unwritten axes stay 1.
+                                             Non-unit rest scale remains unmeasured. Agrees
                                              with bit0 of its sources' CurveMode in 93.5%, but
                                              that bit does nothing.  bit2/bit3: only on
                                              BlendShape / material targets.  bits 1/6/7: never.

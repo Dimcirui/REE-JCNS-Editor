@@ -275,6 +275,9 @@ def _install_driver(armature_obj, bone_name, data_path, index, key, sources, rea
     pose_bone.driver_remove(data_path, index)
     armature_obj.animation_data_create()
     fc = armature_obj.driver_add('pose.bones["%s"].%s' % (bone_name, data_path), index)
+    # The namespace function already returns the final value. Blender's default
+    # identity keyframes remap it again and snap values near 0/1 to those keys.
+    fc.keyframe_points.clear()
 
     drv = fc.driver
     drv.type = 'SCRIPTED'
@@ -319,6 +322,55 @@ def _install_driver(armature_obj, bone_name, data_path, index, key, sources, rea
 # ---------------------------------------------------------------------------
 
 _GROUP_TAG = 'Rot*'          # transform slot of a grouped driver's channel key
+_LOCATION_GROUP_TAG = 'Loc*'
+
+
+def translation_channels(root_obj, bone):
+    """Winning parent-axis translation channels; evaluated together in Blender."""
+    from . import AXIS_TO_INT, group_constraints_by_channel
+    return {AXIS_TO_INT[axis]: members
+            for (b, transform, axis), members in group_constraints_by_channel(root_obj).items()
+            if b == bone and transform == 'Translation' and axis != 'W'}
+
+
+def register_translation_group(armature_obj, root_obj, bone, chans):
+    from . import jcns_drivers, get_constraint_empties
+    order = {e.name: i for i, e in enumerate(get_constraint_empties(root_obj))}
+    parts, all_sources, all_reads = [], [], []
+    for axis in sorted(chans, key=lambda a: order.get(chans[a][-1].name, -1)):
+        members = chans[axis]
+        sources = channel_sources(armature_obj, root_obj, members[-1])
+        if not sources or any(s['axis_name'] == 'W' for s in sources):
+            return None
+        reads = [jcns_drivers.source_read(s) for s in sources]
+        parts.append((axis, 'location', _replaces(members),
+                      [jcns_drivers.source_map(s, 'Translation') for s in sources], reads))
+        all_sources += sources
+        all_reads += reads
+    rest, offset = _rest_transform(armature_obj, bone)
+    gid = jcns_drivers.channel_id(armature_obj.name, bone, _LOCATION_GROUP_TAG, '')
+    keys = [jcns_drivers.channel_id(armature_obj.name, bone, _LOCATION_GROUP_TAG, _AXIS_NAME[a])
+            for a in range(3)]
+    jcns_drivers.register_group(gid, rest, parts, keys, offset=offset)
+    return keys, all_sources, all_reads
+
+
+def _apply_translation_bone(armature_obj, root_obj, bone, chans):
+    if armature_obj.pose.bones.get(bone) is None:
+        return False, "找不到目标骨骼「%s」" % bone
+    made = register_translation_group(armature_obj, root_obj, bone, chans)
+    if made is None:
+        return False, "没有驱动源或 W 轴暂不支持"
+    keys, sources, reads = made
+    for a, key in enumerate(keys):
+        expr = _install_driver(armature_obj, bone, 'location', a, key, sources, reads)
+        if len(expr) > 255:
+            _drop_group_drivers(armature_obj, bone, 'location', _LOCATION_GROUP_TAG)
+            return False, "这根骨的源太多，驱动器表达式超过 255 字符"
+    for members in chans.values():
+        for e in members:
+            e.jcns_cns_props.preview_on = True
+    return True, ""
 
 
 def _replaces(members):
@@ -426,22 +478,22 @@ def _apply_bone(armature_obj, root_obj, bone, chans):
     return True, ""
 
 
-def _group_driver_axes(armature_obj, bone):
-    """Axes of `bone`'s rotation_euler that carry a grouped driver."""
+def _group_driver_axes(armature_obj, bone, data_path='rotation_euler', group_tag=_GROUP_TAG):
+    """Axes of the chosen bone data path that carry this group's drivers."""
     ad = armature_obj.animation_data
     if ad is None:
         return []
-    path = 'pose.bones["%s"].rotation_euler' % bone
-    tag = '|%s|' % _GROUP_TAG
+    path = 'pose.bones["%s"].%s' % (bone, data_path)
+    tag = '|%s|' % group_tag
     return [fc.array_index for fc in ad.drivers
             if fc.data_path == path and tag in fc.driver.expression]
 
 
-def _drop_group_drivers(armature_obj, bone):
+def _drop_group_drivers(armature_obj, bone, data_path='rotation_euler', group_tag=_GROUP_TAG):
     pose_bone = armature_obj.pose.bones.get(bone)
-    for a in _group_driver_axes(armature_obj, bone):
+    for a in _group_driver_axes(armature_obj, bone, data_path, group_tag):
         try:
-            pose_bone.driver_remove('rotation_euler', a)
+            pose_bone.driver_remove(data_path, a)
         except Exception:
             pass
 
@@ -526,7 +578,8 @@ def refresh_channel_values(obj):
     if entry is None:
         return False
     target_q = entry[2]
-    if entry[0] == 'rotation_euler' and _group_driver_axes(rp.target_armature, p.target_bone):
+    if (entry[0] == 'location' or
+            (entry[0] == 'rotation_euler' and _group_driver_axes(rp.target_armature, p.target_bone))):
         # Grouped bone: every driver on it depends on this value; rebuild the group.
         ok, _err, _label = _apply_channel(rp.target_armature, rp, members)
         return ok
@@ -628,6 +681,12 @@ def _apply_channel(armature_obj, root_props, members):
     root_obj, _ = get_jcns_root_from_constraint(winner)
 
     entry = _DRIVABLE.get(transform)
+    if entry is not None and entry[0] == 'location' and bone and root_obj is not None:
+        if axis == 'W':
+            return False, "W 轴暂不支持", bone
+        chans = translation_channels(root_obj, bone)
+        ok, err = _apply_translation_bone(armature_obj, root_obj, bone, chans)
+        return ok, err, "%s（整骨预览 %d 个平移通道）" % (bone, len(chans))
     if entry is not None and entry[0] == 'rotation_euler' and bone and root_obj is not None:
         chans = _rotation_channels(root_obj, bone)
         if _needs_group(armature_obj, bone, chans):
@@ -676,6 +735,15 @@ def _clear_channel(armature_obj, members):
     bone, transform, axis = _channel_of(members[0])
     entry = _DRIVABLE.get(transform)
     pose_bone = armature_obj.pose.bones.get(bone)
+    if (entry is not None and entry[0] == 'location' and pose_bone is not None
+            and _group_driver_axes(armature_obj, bone, 'location', _LOCATION_GROUP_TAG)):
+        _drop_group_drivers(armature_obj, bone, 'location', _LOCATION_GROUP_TAG)
+        pose_bone.location = (0.0, 0.0, 0.0)
+        root_obj, _ = get_jcns_root_from_constraint(members[0])
+        if root_obj is not None:
+            for other in translation_channels(root_obj, bone).values():
+                for e in other:
+                    e.jcns_cns_props.preview_on = False
     if (entry is not None and entry[0] == 'rotation_euler' and pose_bone is not None
             and _group_driver_axes(armature_obj, bone)):
         # A grouped bone comes down as a whole.

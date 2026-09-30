@@ -142,14 +142,20 @@ def clear_channels():
 
 # gid -> {'rest': (w, x, y, z), 'parts': [(axis, mode, replaces, maps, reads), ...]}
 # with parts in file order of their live entries
-# for a bone whose rotation drivers are built together; see the module docstring.
+# for a bone whose rotation/location drivers are built together. Location groups
+# also carry the parent-relative rest offset, in metres.
 # The channels of such a bone are in _CHANNELS as {'group': gid, 'axis': a}.
 _GROUPS = {}
 
 
-def register_group(gid, rest, parts, keys):
-    """One bone's rotation group; `keys` are its three drivers' channel keys."""
+def register_group(gid, rest, parts, keys, offset=None):
+    """One bone's group; optional offset selects parent-axis translation.
+
+    `keys` are the three driver channel keys; parts carry winning entries.
+    """
     _GROUPS[gid] = {'rest': tuple(rest), 'parts': list(parts)}
+    if offset is not None:
+        _GROUPS[gid]['offset'] = tuple(offset)
     for a, key in enumerate(keys):
         _CHANNELS[key] = {'group': gid, 'axis': a}
 
@@ -192,6 +198,9 @@ def _group_value(ch, values):
         total, used = _total(maps, reads, values[at:])
         at += used
         parts.append((axis, mode, replaces, total))
+    if 'offset' in g:
+        return jcns_source_read.translation_basis(
+            g['rest'], g['offset'], [(a, rep, val) for a, mode, rep, val in parts])[ch['axis']]
     return jcns_source_read.target_basis(g['rest'], parts)[ch['axis']]
 
 
@@ -221,7 +230,8 @@ def rebuild_all():
     the user having to press Apply again.
     """
     from . import group_constraints_by_channel
-    from .jcns_operators import channel_sources, replacing_bones, register_bone_group
+    from .jcns_operators import (channel_sources, replacing_bones, register_bone_group,
+                                 translation_channels, register_translation_group)
 
     clear_channels()
     rebuilt = 0
@@ -234,8 +244,15 @@ def rebuild_all():
         for bone, chans in grouped.items():
             if register_bone_group(arm, obj, bone, chans):
                 rebuilt += 1
+        translations = {b for b, transform, axis in group_constraints_by_channel(obj)
+                        if transform == 'Translation' and axis != 'W'}
+        for bone in translations:
+            if register_translation_group(arm, obj, bone, translation_channels(obj, bone)):
+                rebuilt += 1
         for (bone, transform, axis), members in group_constraints_by_channel(obj).items():
             if bone in grouped and transform_path(transform) == 'rotation_euler':
+                continue
+            if bone in translations and transform == 'Translation':
                 continue
             m = get_mapping()
             target_q = m.target_quantity(transform)

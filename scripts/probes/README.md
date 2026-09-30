@@ -1,7 +1,7 @@
 # 实机探测：xaihi 测试台
 
 这里的脚本用来在 MH Wilds 里实测 JCNS 字段的含义：生成测试用的 jcns，在游戏里录制，
-再分析录下的数据。到 2026-09-30 为止跑了 9 轮，结论都已经写进插件代码和
+再分析录下的数据。到 2026-09-30 为止跑了 10 轮，已成立的结论写进插件代码和
 `modules/jcns_parser.py` 的文档字符串。
 
 ## 测试台
@@ -16,7 +16,7 @@
   - 这个静止姿态正好用来区分"叠加 / 替换""左乘 / 右乘"。
   - 从第 4 轮起 mesh 没再改过。
 - **每轮的 jcns**：都从 `.orig` 起建，保留原版 [00]–[07]，从 [08] 起是测试条目。
-  - 当前游戏里的是第 9 轮。
+  - 当前游戏里的是第 10 轮（平移 / 缩放 bit0），录制保存在 `reframework/data/round10_keep/`。
   - 之前各轮存为 `xaihi_constraint.jcns.102.roundN`。
 - **录制脚本**：`reframework/autorun/jcns_cm_rig_sweep.lua`，副本 `jcns_cm_rig_sweep.lua` 在本目录。
   - F8 开始，F9 停止。
@@ -47,7 +47,7 @@
    - 在 `tests/test_source_read.py` 里加一个读 `roundN_keep` 的 capture 检查。`tests/` 不进 git。
 7. **验证预览**：在后台 Blender 里跑，不会碰用户开着的 Blender：
    ```
-   blender.exe --background --factory-startup --python scripts/probes/bg_check_preview.py -- --data <roundN_keep>
+   blender.exe --background --factory-startup --python scripts/probes/bg_check_preview.py -- --addon-dir <本仓库绝对路径> --data <roundN_keep> --stride 1
    ```
    Blender 在 `E:/Program/Steam/steamapps/common/Blender/blender.exe`。界面代码的检查同样用后台 Blender 跑
    `tests/test_bpy_ui.py`。它需要 `samples/` 里的两个样例文件，那个目录现在不在仓库里，
@@ -69,7 +69,7 @@
   RE Mesh Editor 要关掉 `showConsole`，否则 `wm.console_toggle` 在没有窗口时会崩。
 - bash 的 heredoc 里混用引号时容易被截断。较长的补丁先写成 .py 文件再运行。
 
-## 九轮结论一览
+## 十轮结论一览
 
 | 轮 | 脚本 | 结论 |
 |---|---|---|
@@ -79,13 +79,45 @@
 | 7 | `build_src_id_rig.py` | +25 ReadMode：0 位置，1 欧拉，2 缩放，3 摆动·扭转，4 扭转·摆动，5 旋转向量 |
 | 8 | `build_axis_bits_rig.py` | +27 = 欧拉顺序；Flags bit0 = 叠加 / 替换；rest_quat = 读取参考系；CurveMode bit0 无作用 |
 | 9 | `build_ttype_rig.py` | 旋转类变换类型：1 欧拉，4 摆动·扭转，5 扭转·摆动，6 旋转向量，13/14 每根骨一个单轴旋转、最后一条胜出 |
+| 10 | `build_pos_scale_rig.py` | 平移 bit0=1 按父骨轴叠加静止位置，bit0=0 仅替换所写轴；单位静止缩放下 bit0=0/1 相同，非单位缩放仍待测 |
+
+## 第 10 轮：已录制并验证
+
+- 生成：`build_pos_scale_rig.py --output <staging.jcns.102>`；分析：
+  `python scripts/probes/analyze_pos_scale_rig.py --data <round10_keep> --json <report.json>`。
+- 25 条条目，沿用原 mesh。Out8 / TestTgtA 是旋转控制；B/C 为三轴平移 F17/F16，
+  D/E 为三轴缩放 F17/F16，F/G 为仅 Y 平移 F17/F16，H/I 为仅 Y 缩放 F17/F16。
+  J/K 不驱动，记录静止位置和缩放基准。具体 Out 索引见生成脚本文档字符串。
+- 录制器新增 `jcns_cm_rig_trs.csv`：每根 TestTgt 骨的 `px/py/pz/sx/sy/sz`，
+  与 sweep/skel 同帧；缺少 getter 时记 NaN，分析必须拒绝。录制位置和 Out 平移值为米，
+  文件映射锚点为厘米；分析器把位置误差转换成厘米，缩放无量纲。
+- 三份 CSV 一起保存到 `reframework/data/round10_keep/`。分析按 Frame 对齐，拒绝空数据、
+  重复帧、缺帧、非有限数据，以及不足 30° 的输入跨度。旋转控制要求 ≤0.002°；
+  位置候选要求 ≤0.0001 cm，缩放候选要求 ≤0.00001，并检查候选区分度。
+- 现有骨静止缩放为 1，所以某些“乘静止缩放 / 直接替换”公式等价。候选并列不能作为
+  唯一结论；若要区分这些公式，还需非单位静止缩放测试。
+- 部署前备份：游戏 xaihi 目录中的 `xaihi_constraint.jcns.102.before_round10_20260930_035314`；
+  autorun 中的 `jcns_cm_rig_sweep.lua.before_round10_20260930_035314`；旧 CSV 存在
+  `reframework/data/before_round10_20260930_035314/`。备份与部署均已校验 SHA-256。
+- 本轮 2008 帧，反推输入覆盖 −90° 到 39.35°。旋转控制最大误差 0.000716°；
+  平移公式对 Out 的最大误差 0.00005 cm，缩放 0.0000005。
+  平移叠加候选的次优误差 ≥0.1548 cm；单轴替换 G 若丢掉整组静止位置则误差 1.34315 cm。
+- 预览已按父骨轴平移公式实现，换成 Blender basis 时逆转静止旋转；三个 location 驱动器
+  成组维护，支持缓存重建、编辑刷新和整组清除。缩放保持现有直接通道预览，只声明单位静止缩放实测范围。
+- `bg_check_preview.py` 已支持 TRS、Frame 对齐、本仓库代码加载与 JSON 报告。后台 Blender
+  对 2008 帧 / 11 根骨验证通过：位置 ≤0.0000287 cm，缩放 ≤0.000000644，旋转 ≤0.0007°。
+  第 9 轮回归（每 10 帧采样，254 帧）仍 ≤0.0011°。驱动器生成时清掉默认 identity 键，
+  避免 F-Curve 在接近 0/1 时把小值吸附到键值。
+- 本地 capture 检查在 `tests/test_source_read.py`，生命周期检查在 `tests/test_translation_preview.py`；
+  `tests/` 仍不进 git。完整分析和后台报告随录制保存在 `round10_keep/`。
 
 ## 还没做的
 
 1. **变换类型 1 的 bit0=0，在静止姿态有多轴分量时怎么替换**：
    - 预览现在只替换所写轴的欧拉分量；类型 13 的结果提示可能是整个静止姿态都丢掉。
    - 要测需要一根静止姿态绕 Y/Z 转过的测试骨，得改 mesh。
-2. **平移、缩放的 bit0**：替换时会不会把静止偏移也丢掉？现有 mesh 就能测，测试骨有偏移。预览目前一律按叠加。
+2. **非单位静止缩放的 bit0**：第 10 轮已确认平移只替换所写轴；单位静止缩放下 bit0=0/1 一样。
+   要区分缩放乘法和直接替换，需要非单位静止缩放骨，不能从本轮并列候选推出结论。
 3. **镜像**：`jcns_mirror` 的符号规则只按欧拉角推导过，没考虑变换类型 4/5/6/13/14 和读取方式 3/4/5，
    需要核对，或者用实测验证。
 4. **剩下的未知活字段**（都很少见）：Tail[0]（+74）、Tail[1]（+75，大多整份文件一个值）、+72、ParentFloat2、+28、+29=2。

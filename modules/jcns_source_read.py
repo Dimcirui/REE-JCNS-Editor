@@ -292,3 +292,19 @@ def position(rest, offset, loc, axis):
     """Component `axis` of the whole parent-relative position: offset + rest * loc."""
     p = qmul(qmul(rest, (0.0, loc[0], loc[1], loc[2])), _conj(rest))
     return offset[axis] + p[axis + 1]
+
+
+def translation_basis(rest, offset, parts):
+    """Blender location basis for parent-axis translations (round 10).
+
+    Parts are (axis, replaces, value) for winning channels in file order, in
+    the same length units as offset. Adding writes offset[axis] + value;
+    replacing writes value on that axis alone. Untouched axes retain offset.
+    Blender's location basis is rest-rotated, so convert the parent-axis delta
+    back through inverse rest. Do not rotate the engine's output before adding.
+    """
+    delta = [0.0, 0.0, 0.0]
+    for axis, replaces, value in parts:
+        delta[axis] = value - offset[axis] if replaces else value
+    p = qmul(qmul(_conj(rest), (0.0, *delta)), rest)
+    return tuple(p[1:])

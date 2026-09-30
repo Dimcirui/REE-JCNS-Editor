@@ -48,6 +48,11 @@ local OUT_SCAN_MAX = 80
 local skel_file_name = "jcns_cm_rig_skel.csv"
 local skel_handle = nil
 local all_joints = {}
+-- Round 10: parent-relative translation (metres) and scale, alongside rotations.
+-- Missing getters stay NaN; they must never masquerade as a zero/unit pose.
+local trs_handle = nil
+local trs_file_name = "jcns_cm_rig_trs.csv"
+local trs_joints = {}
 
 local function try(fn, default)
     local ok, v = pcall(fn)
@@ -162,6 +167,24 @@ local function start_recording()
         skel_handle:write("Frame," .. table.concat(names, ",") .. "\n")
     end
 
+    trs_handle = io.open(trs_file_name, "w")
+    if not trs_handle then
+        if file_handle then file_handle:close(); file_handle = nil end
+        if skel_handle then skel_handle:close(); skel_handle = nil end
+        status_msg = "无法创建 " .. trs_file_name
+        return
+    end
+    trs_joints = {}
+    local trs_names = { "Frame" }
+    for _, e in ipairs(all_joints) do
+        if string.match(e.name, "^TestTgt[A-K]$") then
+            table.insert(trs_joints, e)
+            for _, c in ipairs({ "px", "py", "pz", "sx", "sy", "sz" }) do
+                table.insert(trs_names, e.name .. "_" .. c)
+            end
+        end
+    end
+    trs_handle:write(table.concat(trs_names, ",") .. "\n")
     recording = true
     frame_count = 0
     status_msg = "记录中…（在游戏里跑动、转向、蹲起）"
@@ -172,6 +195,7 @@ local function stop_recording()
     recording = false
     if file_handle then file_handle:close(); file_handle = nil end
     if skel_handle then skel_handle:close(); skel_handle = nil end
+    if trs_handle then trs_handle:close(); trs_handle = nil end
     status_msg = string.format("完成，%d 帧 → %s", frame_count, record_file_name)
 end
 
@@ -238,6 +262,16 @@ re.on_frame(function()
             table.insert(vals, q and string.format("%.5f,%.5f,%.5f,%.5f", q.x, q.y, q.z, q.w) or "nan,nan,nan,nan")
         end
         skel_handle:write(table.concat(vals, ",") .. "\n")
+    end
+    if trs_handle then
+        local vals = { tostring(frame_count) }
+        for _, e in ipairs(trs_joints) do
+            local p = try(function() return e.joint:call("get_LocalPosition") end, nil)
+            local s = try(function() return e.joint:call("get_LocalScale") end, nil)
+            table.insert(vals, p and string.format("%.7f,%.7f,%.7f", p.x, p.y, p.z) or "nan,nan,nan")
+            table.insert(vals, s and string.format("%.7f,%.7f,%.7f", s.x, s.y, s.z) or "nan,nan,nan")
+        end
+        trs_handle:write(table.concat(vals, ",") .. "\n")
     end
     frame_count = frame_count + 1
     if frame_count >= MAX_FRAMES then stop_recording() end
