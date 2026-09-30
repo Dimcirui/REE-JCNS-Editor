@@ -54,7 +54,7 @@ def references(W):
     return refs
 
 
-def analyze_aim(W, rests, target, spec):
+def analyze_aim(W, rests, target, spec, up=None):
     bone, typ, v1, v2, v3, infl = spec
     tag = f'e.TestTgt{bone}'
     P, R = pos_cols(W, tag), quat_cols(W, tag)
@@ -75,6 +75,12 @@ def analyze_aim(W, rests, target, spec):
     refs['target_bone_x'] = quat_cols(W, f'b.{target}').apply([1.0, 0, 0])
     refs['target_bone_y'] = quat_cols(W, f'b.{target}').apply([0, 1.0, 0])
     refs['target_bone_z'] = quat_cols(W, f'b.{target}').apply([0, 0, 1.0])
+    if up:
+        ur = quat_cols(W, f'b.{up}')
+        for k, a in enumerate('xyz'):
+            refs[f'up_bone_{a}'] = ur.apply(np.eye(3)[k])
+            refs[f'up_bone_-{a}'] = -ur.apply(np.eye(3)[k])
+        refs['up_bone_position'] = pos_cols(W, f'b.{up}') - P
     refs['vec3_as_world_dir'] = np.tile(np.array(v3, float), (len(d), 1))
     errs, preds, valid = {}, {}, {}
     for sec_name, sec in (('vec2', v2), ('vec3', v3)):
