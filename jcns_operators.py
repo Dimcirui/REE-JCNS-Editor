@@ -115,26 +115,31 @@ def _written_from(root_obj, owner):
     return out
 
 
-def _rest_rotation(armature_obj, bone_name):
-    """A bone's rest rotation relative to its parent, as (w, x, y, z)."""
+def _rest_transform(armature_obj, bone_name):
+    """A bone's rest rotation (w, x, y, z) and offset (metres) relative to its parent.
+
+    A bone without a parent counts as identity: its matrix is in armature space,
+    which carries the importer's axis conversion rather than an engine transform.
+    """
     b = armature_obj.data.bones.get(bone_name)
     if b is None or b.parent is None:
-        return (1.0, 0.0, 0.0, 0.0)
-    q = (b.parent.matrix_local.inverted() @ b.matrix_local).to_quaternion()
-    return (q.w, q.x, q.y, q.z)
+        return (1.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0)
+    m = b.parent.matrix_local.inverted() @ b.matrix_local
+    q = m.to_quaternion()
+    return (q.w, q.x, q.y, q.z), tuple(m.translation)
 
 
 def channel_sources(armature_obj, root_obj, owner):
     """The source dicts of constraint Empty `owner`, each with the 'read' that tells
     the driver how to feed it (see jcns_drivers._CHANNELS).
 
-    Measured in game 2026-09-30 (xaihi rig round 6):
-      * a +25=3 rotation source is the twist of the bone's whole parent-relative
-        rotation, rest pose included, so the driver takes the three Euler channels
-        and the rest rotation goes into the channel table;
+    Measured in game 2026-09-30 (xaihi rig rounds 6-7):
+      * rotation (+25 = 1/3/4/5) and translation (+25 = 0) sources read the bone's
+        whole parent-relative transform, rest included, decomposed as
+        modules/jcns_source_read.py says, so the driver takes all three channels and
+        the rest transform goes into the channel table;
       * a channel written by this entry or a later one is read at its rest value.
-    +25=1/4/5 rotations and translation / scale sources keep the single LOCAL_SPACE
-    variable: what they read beyond that is not measured.
+    Scale (+25 = 2) reads 1 at rest like Blender, so it keeps a single variable.
     """
     from . import jcns_drivers
     from .modules_shim import get_mapping
@@ -142,12 +147,18 @@ def channel_sources(armature_obj, root_obj, owner):
     sources = [s for s in _sources_for_driver(owner.jcns_cns_props) if s['bone']]
     later = _written_from(root_obj, owner) if root_obj is not None else set()
     for s in sources:
-        q = mp.source_quantity(s.get('src_transform_id'))
+        sid = s.get('src_transform_id')
+        q = mp.source_quantity(sid)
         path = _DRIVABLE[q][0]
         axis = min(s.get('axis_idx', 0), 2)
-        if q == 'Rotation' and s.get('src_transform_id') == 3:
-            live = tuple(a for a in range(3) if (s['bone'], path, a) not in later)
-            s['read'] = ('tw', axis, _rest_rotation(armature_obj, s['bone']), live)
+        live = tuple(a for a in range(3) if (s['bone'], path, a) not in later)
+        mode = jcns_drivers.jcns_source_read.ROTATION_MODES.get(sid)
+        if q == 'Rotation' and mode:
+            rest, _off = _rest_transform(armature_obj, s['bone'])
+            s['read'] = ('rot', mode, axis, rest, live)
+        elif q == 'Translation' and sid == 0:
+            rest, off = _rest_transform(armature_obj, s['bone'])
+            s['read'] = ('loc', axis, rest, off, live)
         elif (s['bone'], path, axis) in later:
             s['read'] = ('c', _REST_VALUE[q])
         else:
@@ -230,9 +241,13 @@ def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
     for s, read in zip(usable, reads):
         if read[0] == 'c':
             continue
-        if read[0] == 'tw':
-            for a in read[3]:
+        if read[0] == 'rot':
+            for a in read[-1]:
                 add_var(s['bone'], _ROT_TYPE[a], 'XYZ')
+            continue
+        if read[0] == 'loc':
+            for a in read[-1]:
+                add_var(s['bone'], _LOC_TYPE[a])
             continue
         add_var(s['bone'], _SOURCE_VARS[get_mapping().source_quantity(
             s.get('src_transform_id'))][min(s.get('axis_idx', 0), 2)])

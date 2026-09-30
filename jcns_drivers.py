@@ -21,18 +21,17 @@ Values in _CHANNELS are pre-converted to the driver's own units (radians for
 rotation), so the function does no unit conversion.
 
 How a source is read is part of the channel too (measured in game 2026-09-30, xaihi
-rig round 6):
+rig rounds 6-7):
 
-  * a +25=3 rotation source is the twist angle 2*atan2(q_axis, q_w) of the bone's
-    whole parent-relative rotation, rest pose included -- not an Euler component, and
-    not relative to rest.  The driver hands over the bone's three XYZ Euler channels
-    and jcns_ch rebuilds rest * Rz * Ry * Rx from them.
+  * the engine reads a rotation source off the bone's whole parent-relative rotation,
+    rest pose included, and a translation source off its whole position, rest offset
+    included; +25 picks the decomposition (modules/jcns_source_read.py).  The driver
+    hands over the bone's three XYZ Euler (or location) channels and jcns_ch rebuilds
+    the whole transform from them.
   * entries run in file order within one frame, so a source whose channel is only
     written by a LATER entry is still at its unconstrained pose when it is read.  Such
     a channel gets no variable and reads its rest value.
 """
-
-import math
 
 import bpy
 
@@ -40,6 +39,7 @@ from .modules_shim import get_mapping, ensure_path
 
 ensure_path()
 import jcns_complex  # noqa: E402
+import jcns_source_read  # noqa: E402
 
 
 # key -> {'maps': [map, …], 'reads': [read, …]}, one of each per source of the
@@ -49,8 +49,13 @@ import jcns_complex  # noqa: E402
 # variables feed the source:
 #   ('v',)                        one variable, used as is
 #   ('c', value)                  none; the source is not live yet, use value
-#   ('tw', axis, rest, live)      one variable per axis in `live` (XYZ Euler, radians,
-#                                 the others read 0); rest is (w, x, y, z)
+#   ('rot', mode, axis, rest, live)
+#                                 one variable per axis in `live` (XYZ Euler, radians,
+#                                 the others read 0); rest is (w, x, y, z); mode is a
+#                                 jcns_source_read.ROTATION_MODES value
+#   ('loc', axis, rest, offset, live)
+#                                 one variable per axis in `live` (location, metres);
+#                                 offset is the rest offset from the parent, metres
 _CHANNELS = {}
 
 READ_VALUE = ('v',)
@@ -70,29 +75,22 @@ def read_width(read):
     """How many driver variables a read consumes."""
     if read[0] == 'c':
         return 0
-    if read[0] == 'tw':
-        return len(read[3])
+    if read[0] in ('rot', 'loc'):
+        return len(read[-1])
     return 1
 
 
-def _qmul(a, b):
-    aw, ax, ay, az = a
-    bw, bx, by, bz = b
-    return (aw * bw - ax * bx - ay * by - az * bz, aw * bx + ax * bw + ay * bz - az * by,
-            aw * by - ax * bz + ay * bw + az * bx, aw * bz + ax * by - ay * bx + az * bw)
-
-
-def twist(rest, euler, axis):
-    """Twist angle about `axis` of rest * Rz * Ry * Rx (Blender XYZ Euler), radians."""
-    q = rest
-    for a in (2, 1, 0):
-        h = euler[a] * 0.5
-        r = [math.cos(h), 0.0, 0.0, 0.0]
-        r[a + 1] = math.sin(h)
-        q = _qmul(q, r)
-    if q[0] < 0.0:
-        q = tuple(-c for c in q)
-    return 2.0 * math.atan2(q[axis + 1], q[0])
+def _read(read, vals):
+    """The source value for one 'rot' / 'loc' read from its live channels."""
+    chans = [0.0, 0.0, 0.0]
+    for a, val in zip(read[-1], vals):
+        chans[a] = val
+    if read[0] == 'rot':
+        _, mode, axis, rest, _live = read
+        return jcns_source_read.rotation(
+            mode, jcns_source_read.pose_rotation(rest, chans), axis)
+    _, axis, rest, offset, _live = read
+    return jcns_source_read.position(rest, offset, chans, axis)
 
 
 def source_map(s, target_q):
@@ -154,11 +152,8 @@ def jcns_ch(key, *values):
             break                  # the driver predates this layout; Apply rebuilds it
         if read[0] == 'c':
             v = read[1]
-        elif read[0] == 'tw':
-            euler = [0.0, 0.0, 0.0]
-            for a, val in zip(read[3], values[at:at + width]):
-                euler[a] = val
-            v = twist(read[2], euler, read[1])
+        elif read[0] in ('rot', 'loc'):
+            v = _read(read, values[at:at + width])
         else:
             v = values[at]
         at += width

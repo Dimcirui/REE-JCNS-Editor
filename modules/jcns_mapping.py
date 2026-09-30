@@ -93,7 +93,13 @@ def source_quantity_of(source):
 
 
 def source_rest_input(source):
-    """The source value with the bone at rest: 1 for a scale, 0 otherwise."""
+    """The source value with the bone at rest, assuming an identity rest transform:
+    1 for a scale, 0 otherwise.
+
+    The engine reads the whole parent-relative transform, rest included (see
+    jcns_source_read), so a bone with a rest rotation or offset really reads that
+    instead; this module has no skeleton to know it.
+    """
     return 1.0 if source_quantity_of(source) == 'Scale' else 0.0
 
 
