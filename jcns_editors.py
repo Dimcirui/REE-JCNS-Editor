@@ -280,6 +280,32 @@ def draw_keyframes(layout, m, sp, cm_ok, reason):
               icon='INFO')
 
 
+def _draw_rules(layout, lines):
+    """Measured-behaviour lines from jcns_source_read: a tick when measured in game,
+    a question mark when the preview only infers it."""
+    col = layout.column(align=True)
+    for text, measured in lines:
+        col.label(text=text, icon='CHECKMARK' if measured else 'QUESTION')
+
+
+def _source_read_notes(c, p, sp):
+    """What the engine reads off this source, and whether it reads it too early."""
+    from . import jcns_operators
+    from .jcns_drivers import jcns_source_read as sr
+    lines = sr.read_rule(sp.read_mode, sr.euler_order_value(sp.euler_order),
+                         abs(sp.rest_quat_w) >= 1.0 - 1e-9)
+    if c.root is not None and sp.source_bone:
+        later = jcns_operators._written_from(c.root, c.obj)
+        q = _mapping().source_quantity(sp.read_mode)
+        path = jcns_operators._DRIVABLE[q][0]
+        axes = (0, 1, 2) if q != 'Scale' else ({'X': 0, 'Y': 1, 'Z': 2}.get(sp.source_axis, 0),)
+        early = [a for a in axes if (sp.source_bone, path, a) in later]
+        if early:
+            lines.append(("源骨的 %s 轴由本条或后面的条目驱动：条目按文件顺序求值，引擎读到的是它未被约束的姿态"
+                          % "/".join("XYZ"[a] for a in early), True))
+    return lines
+
+
 class JCNS_PT_Ed_Ranges(_EditorMain, Panel):
     """目标骨骼、通道，以及和别的约束抢同一通道时谁生效。"""
     bl_label  = "范围约束"
@@ -299,6 +325,9 @@ class JCNS_PT_Ed_Ranges(_EditorMain, Panel):
         _field_row(col, "骨骼：", p, "target_bone")
         _field_row(col, "局部轴向：", p, "target_axis")
         _field_row(col, "变换：", p, "transform_type")
+        from .jcns_drivers import jcns_source_read as sr
+        from .jcns_exporter import _transform_int
+        _draw_rules(box, sr.target_rule(_transform_int(p.transform_type), bool(p.cns_flags & 1)))
 
         # 顺序不是装饰：导出时按 [N] 前缀排列，同一根骨骼同一轴上有多条时后写的
         # 那条会盖掉前面的。换序的按钮在列表右侧。
@@ -363,6 +392,7 @@ class JCNS_PT_Ed_Ranges_Sources(_Editor, Panel):
         row = col.row(align=True)
         row.active = sp.read_mode == 'EULER'          # the other reads ignore it
         _field_row(row, "欧拉顺序：", sp, "euler_order")
+        _draw_rules(c.body, _source_read_notes(c, p, sp))
 
 
 class JCNS_PT_Ed_Ranges_Mapping(_Editor, Panel):
@@ -524,7 +554,7 @@ class JCNS_PT_Ed_Ranges_Advanced(_Editor, _Sub, Panel):
         if p.flags_expanded:
             bits = col.column(align=True)
             for attr, desc in (
-                ("flag_bit_0", "位0 —— 叠加：1 叠在静止姿态上，0 替换静止姿态（实测）"),
+                ("flag_bit_0", "位0 —— 叠加：1 叠在静止姿态上，0 替换所写轴（实测；缩放不受影响）"),
                 ("flag_bit_1", "位1"),
                 ("flag_bit_2", "位2"),
                 ("flag_bit_3", "位3"),

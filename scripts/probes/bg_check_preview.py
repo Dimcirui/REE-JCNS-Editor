@@ -103,6 +103,11 @@ def recorded(r, nm):
 
 
 bones = [b.name for b in arm.pose.bones if b.name.startswith('TestTgt') and b.name in names]
+# Blender pose scale is relative to the rest scale Blender bones cannot hold, so the
+# engine's absolute scale is pose scale * rest scale (jcns_operators.target_post_factor).
+ops = sys.modules[('jcns_probe_addon' if args.addon_dir else 'bl_ext.user_default.wilds_jcns_editor')
+                  + '.jcns_operators']
+rest_scale = {b: ops.mesh_rest_scale(arm.data.bones[b]) for b in bones}
 thigh = arm.pose.bones['L_Thigh']
 thigh.rotation_mode = 'XYZ'
 scn = bpy.context.scene
@@ -121,7 +126,7 @@ for t in range(0, len(S), args.stride):
         if trs is not None:
             matrix = p.parent.matrix.inverted() @ p.matrix
             for kind, value, errors, factor in (('p',matrix.translation,pos_err,100),
-                                               ('s',matrix.to_scale(),scale_err,1)):
+                                               ('s',[v * k for v, k in zip(matrix.to_scale(), rest_scale[b])],scale_err,1)):
                 want = [float(trs[t][b+'_'+kind+a]) for a in 'xyz']
                 if not all(math.isfinite(v) for v in want):
                     raise ValueError('Missing/nonfinite TRS capture: '+b)

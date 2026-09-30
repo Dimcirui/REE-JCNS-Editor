@@ -271,18 +271,18 @@ def target_basis(rest, parts):
     return tuple(_euler(_pos_w(qmul(_conj(rest), q)), 0))
 
 
-def rest_input(mode, axis, rest, offset_cm, order=0, frame=None):
+def rest_input(mode, axis, rest, offset_cm, order=0, frame=None, scale=None):
     """What a source reads with its bone at rest, in the file's units (degrees,
     centimetres, or 1 for a scale).
 
     `mode` is a ReadMode value or identifier, `rest` the bone's parent-relative rest
     rotation (w, x, y, z), `offset_cm` its rest offset from the parent; `order` and
-    `frame` as for rotation().
+    `frame` as for rotation(); `scale` its rest scale (default 1).
     """
     value = read_mode_value(mode)
     q = read_quantity(value)
     if q == 'Scale':
-        return 1.0
+        return float(scale[axis]) if scale is not None else 1.0
     if q == 'Translation':
         return float(offset_cm[axis])
     return math.degrees(rotation(ROTATION_MODES.get(value, 'swing_twist'), rest, axis,
@@ -309,3 +309,57 @@ def translation_basis(rest, offset, parts):
         delta[axis] = value - offset[axis] if replaces else value
     p = qmul(qmul(_conj(rest), (0.0, *delta)), rest)
     return tuple(p[1:])
+
+
+# ---------------------------------------------------------------------------
+# What the measurements mean, in words, for the panels (rounds 5-11)
+# ---------------------------------------------------------------------------
+# Each line is (text, measured).  measured = False marks a rule the preview follows
+# by inference; the UI shows those with a question mark.
+
+_UNMEASURED_REPLACE = ("替换：丢掉静止旋转，只剩合成出的旋转（未实测，按类型 13 推断）", False)
+_TARGET_RULES = {
+    0: {True: [("叠加：位置 = 静止偏移 + 输出，沿父骨的轴", True)],
+        False: [("替换：所写轴的位置 = 输出，其余轴保留静止偏移", True)]},
+    1: {True: [("叠加：静止姿态 · Rz·Ry·Rx（XYZ 欧拉，与文件里各轴先后无关）", True)],
+        False: [("替换：静止姿态的 XYZ 欧拉角里换掉所写的轴，其余轴保留", True)]},
+    2: {None: [("所写轴的缩放 = 输出，其余轴保留静止缩放；bit0 不起作用", True)]},
+    4: {True: [("叠加：静止姿态 · 摆动(Y,Z) · 扭转(X)", True)], False: [_UNMEASURED_REPLACE]},
+    5: {True: [("叠加：静止姿态 · 扭转(X) · 摆动(Y,Z)", True)], False: [_UNMEASURED_REPLACE]},
+    6: {True: [("叠加：静止姿态 · 旋转向量（转轴 × 角度）", True)], False: [_UNMEASURED_REPLACE]},
+    13: {True: [("叠加：静止姿态 · 绕所写轴转「输出」角", True),
+                ("每根骨只有一个：骨上最后一条 13/14 整条胜出，与它写哪个轴无关", True)],
+         False: [("替换：丢掉整个静止旋转，只剩绕所写轴的「输出」角", True),
+                 ("每根骨只有一个：骨上最后一条 13/14 整条胜出，与它写哪个轴无关", True)]},
+    14: {True: [("与 13 实测完全相同：静止姿态 · 绕所写轴转「输出」角，骨上最后一条 13/14 胜出", True)],
+         False: [("同 13：丢掉整个静止旋转（14 的 bit0=0 未单独实测）", False)]},
+}
+
+
+def target_rule(transform_type, additive):
+    """Lines saying how the engine applies an entry of this TransformType, with
+    Flags bit0 = `additive`.  -> [(text, measured), ...]"""
+    rules = _TARGET_RULES.get(int(transform_type))
+    if rules is None:
+        return [("形变 / 材质类目标：引擎行为未实测，没有预览", False)]
+    return list(rules.get(None) or rules[bool(additive)])
+
+
+def read_rule(read_mode, euler_order=0, frame_is_identity=True):
+    """Lines saying what the engine reads off the source bone.  -> [(text, measured)]"""
+    v = read_mode_value(read_mode)
+    base = {
+        0: "读相对父骨的位置分量（厘米），静止偏移算在内",
+        1: "读相对父骨完整旋转的欧拉分量（顺序 %s），静止姿态算在内"
+           % EULER_ORDER_NAMES.get(int(euler_order), 'XYZ'),
+        2: "读缩放分量，静止缩放算在内（静止时就是静止缩放）",
+        3: "读相对父骨完整旋转绕 X 的摆动·扭转分解：X = 扭转角，Y/Z = 摆动",
+        4: "同摆动·扭转，但先摆动后扭转：X 相同，Y/Z 不同",
+        5: "读相对父骨完整旋转的旋转向量（转轴 × 角度）分量",
+    }.get(v)
+    if base is None:
+        return [("未知的读取方式 %r" % (read_mode,), False)]
+    lines = [(base, True)]
+    if v in (3, 4, 5) and not frame_is_identity:
+        lines.append(("按参考系四元数 f 分解 f^-1·q·f：扭转轴变成 f·X", True))
+    return lines

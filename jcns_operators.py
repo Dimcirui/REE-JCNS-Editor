@@ -131,30 +131,25 @@ def mesh_rest_scale(bone):
     return scale if max(abs(v-1) for v in scale) > 1e-5 else (1.0, 1.0, 1.0)
 
 
-def initialize_mesh_rest_scales(arm):
-    """Restore missing scale on neutral imported poses, preserving authored poses.
+# Scale lives in two spaces.  The engine's scale is absolute -- a written axis
+# takes the value, an unwritten one keeps the rest scale (round 11) -- while a
+# Blender bone has no rest scale at all: the mesh is bound at the rest pose, so
+# pose scale 1 already *is* the rest scale, and anything else deforms the mesh and
+# moves the children.  So a scale target drives pose scale = engine value / rest
+# scale, and a scale source reads pose scale * rest scale.
 
-    Skip animated rigs and any bone already posed, constrained or driven. This
-    runs once on JCNS import; drivers then write absolute native scale per axis.
-    """
-    if arm is None:
-        return
-    animation = arm.animation_data
-    if animation and (animation.action or len(animation.nla_tracks)):
-        return
-    driven = {f.data_path for f in animation.drivers} if animation else set()
-    from mathutils import Matrix
-    identity = Matrix.Identity(4)
-    for pb in arm.pose.bones:
-        scale = mesh_rest_scale(pb.bone)
-        if scale == (1.0, 1.0, 1.0) or pb.constraints:
-            continue
-        if any(path.startswith(pb.path_from_id()+'.') for path in driven):
-            continue
-        if max(abs(v) for row in pb.matrix_basis-identity for v in row) > 1e-6:
-            continue
-        pb.scale = scale
-    arm.update_tag()
+def _rest_scale_axis(armature_obj, bone_name, axis):
+    b = armature_obj.data.bones.get(bone_name)
+    return mesh_rest_scale(b)[axis] if b is not None else 1.0
+
+
+def target_post_factor(armature_obj, bone_name, transform, axis):
+    """What a target channel's engine value is multiplied by to give the Blender
+    pose value: 1 / rest scale for a scale channel, 1 otherwise."""
+    entry = _DRIVABLE.get(transform)
+    if entry is None or entry[0] != 'scale' or not 0 <= axis <= 2:
+        return 1.0
+    return 1.0 / _rest_scale_axis(armature_obj, bone_name, axis)
 
 
 def _written_from(root_obj, owner):
@@ -217,7 +212,8 @@ def source_rest_input_of(sp):
     sr = jcns_drivers.jcns_source_read
     return sr.rest_input(sp.read_mode, axis, rest, tuple(v / per_cm for v in off),
                          order=sr.euler_order_value(sp.euler_order),
-                         frame=(sp.rest_quat_w, sp.rest_quat_x, sp.rest_quat_y, sp.rest_quat_z))
+                         frame=(sp.rest_quat_w, sp.rest_quat_x, sp.rest_quat_y, sp.rest_quat_z),
+                         scale=mesh_rest_scale(arm.data.bones[sp.source_bone]))
 
 
 def channel_sources(armature_obj, root_obj, owner):
@@ -230,7 +226,8 @@ def channel_sources(armature_obj, root_obj, owner):
         modules/jcns_source_read.py says, so the driver takes all three channels and
         the rest transform goes into the channel table;
       * a channel written by this entry or a later one is read at its rest value.
-    Scale (+25 = 2) reads 1 at rest like Blender, so it keeps a single variable.
+    Scale (+25 = 2) keeps a single variable, multiplied back by the bone's rest
+    scale (see target_post_factor).
     """
     from . import jcns_drivers
     from .modules_shim import get_mapping
@@ -250,6 +247,9 @@ def channel_sources(armature_obj, root_obj, owner):
         elif q == 'Translation' and sid == 0:
             rest, off = _rest_transform(armature_obj, s['bone'])
             s['read'] = ('loc', axis, rest, off, live)
+        elif q == 'Scale':
+            k = _rest_scale_axis(armature_obj, s['bone'], axis)
+            s['read'] = ('c', k) if (s['bone'], path, axis) in later else ('sc', k)
         elif (s['bone'], path, axis) in later:
             s['read'] = ('c', _REST_VALUE[q])
         else:
@@ -303,7 +303,8 @@ def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
 
     key = jcns_drivers.channel_id(armature_obj.name, target_bone_name,
                                   transform_type, _AXIS_NAME[target_axis_idx])
-    jcns_drivers.register_channel(key, maps, reads)
+    jcns_drivers.register_channel(key, maps, reads, post=target_post_factor(
+        armature_obj, target_bone_name, transform_type, target_axis_idx))
 
     expr = _install_driver(armature_obj, target_bone_name, data_path, target_axis_idx,
                            key, usable, reads)
@@ -647,8 +648,11 @@ def refresh_channel_values(obj):
         # its place in the file, changed): rebuild it rather than patch numbers.
         ok, _err, _label = _apply_channel(rp.target_armature, rp, members)
         return ok
+    from . import AXIS_TO_INT
     jcns_drivers.register_channel(
-        key, [jcns_drivers.source_map(s, target_q) for s in sources], reads)
+        key, [jcns_drivers.source_map(s, target_q) for s in sources], reads,
+        post=target_post_factor(rp.target_armature, p.target_bone, p.transform_type,
+                                AXIS_TO_INT.get(p.target_axis, 0)))
     rp.target_armature.update_tag()
     return True
 
@@ -809,7 +813,7 @@ def _clear_channel(armature_obj, members):
         except Exception:
             pass
         if entry[0] == 'scale' and axis != 'W':
-            pose_bone.scale[AXIS_TO_INT.get(axis, 0)] = mesh_rest_scale(pose_bone.bone)[AXIS_TO_INT.get(axis, 0)]
+            pose_bone.scale[AXIS_TO_INT.get(axis, 0)] = 1.0    # the rest scale, in Blender
     for e in members:
         e.jcns_cns_props.preview_on = False
 

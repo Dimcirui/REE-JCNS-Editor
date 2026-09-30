@@ -396,10 +396,6 @@ def do_import(filepath, context, armature_obj=None):
                 all_bone_names.add(src)
     root.jcns_root_props.available_bones_json = json.dumps(sorted(all_bone_names))
 
-    # Blender edit bones discard rest scale. Restore the importer's preserved
-    # native matrix scale only on neutral, unanimated poses (round 11).
-    from .jcns_operators import initialize_mesh_rest_scales
-    initialize_mesh_rest_scales(armature_obj)
     return root, len(constraints), ''
 
 

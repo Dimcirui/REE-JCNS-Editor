@@ -58,6 +58,7 @@ import jcns_source_read  # noqa: E402
 # variables feed the source:
 #   ('v',)                        one variable, used as is
 #   ('c', value)                  none; the source is not live yet, use value
+#   ('sc', rest_scale)            one variable (pose scale), times the bone's rest scale
 #   ('rot', mode, axis, rest, order, frame, live)
 #                                 one variable per axis in `live` (XYZ Euler, radians,
 #                                 the others read 0); rest and frame are (w, x, y, z);
@@ -125,9 +126,12 @@ def channel_id(armature_name, bone, transform, axis):
     return "|".join(parts)
 
 
-def register_channel(key, maps, reads=None):
+def register_channel(key, maps, reads=None, post=1.0):
+    """`post` multiplies the summed engine value into the Blender channel's space
+    (1 / rest scale for a scale target; see jcns_operators.target_post_factor)."""
     maps = list(maps)
-    _CHANNELS[key] = {'maps': maps, 'reads': list(reads or [READ_VALUE] * len(maps))}
+    _CHANNELS[key] = {'maps': maps, 'reads': list(reads or [READ_VALUE] * len(maps)),
+                      'post': float(post)}
 
 
 def channel_reads(key):
@@ -178,6 +182,8 @@ def _total(maps, reads, values):
             v = read[1]
         elif read[0] in ('rot', 'loc'):
             v = _read(read, values[at:at + width])
+        elif read[0] == 'sc':
+            v = values[at] * read[1]       # Blender pose scale -> engine scale
         else:
             v = values[at]
         at += width
@@ -220,7 +226,7 @@ def jcns_ch(key, *values):
     # A map entry is (fs, fk, fe, ts, tk, te, two_point).  Entries registered by
     # an older build are 6-long; treat those as three-point, which is what the
     # shipped data uses in ~86% of sources.
-    return _total(ch['maps'], ch['reads'], values)[0]
+    return _total(ch['maps'], ch['reads'], values)[0] * ch.get('post', 1.0)
 
 
 def rebuild_all():
@@ -259,9 +265,12 @@ def rebuild_all():
             # Only the last constraint on a channel is live; see _apply_channel.
             sources = channel_sources(arm, obj, members[-1])
             if sources:
+                from .jcns_operators import target_post_factor
                 register_channel(channel_id(arm.name, bone, transform, axis),
                                  [source_map(s, target_q) for s in sources],
-                                 [source_read(s) for s in sources])
+                                 [source_read(s) for s in sources],
+                                 post=target_post_factor(arm, bone, transform,
+                                                         {'X': 0, 'Y': 1, 'Z': 2}.get(axis, 3)))
                 rebuilt += 1
     return rebuilt
 
