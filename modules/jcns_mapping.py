@@ -340,9 +340,18 @@ def plain_description(source, unit="°"):
     pts = [(lo + i * step, eval_piecewise(fs, fk, fe, ts, tk, te, lo + i * step, two_point=tp, smooth=sm))
            for i in range(n)]
 
-    # Merge samples into straight runs; a slope change starts a new run.
+    # Merge samples into straight runs; a slope change starts a new run.  An eased curve has
+    # a new slope everywhere, so it is described per anchor-to-anchor stretch instead.
     runs = []
-    i = 0
+    if sm:
+        marks = {lo, hi, r, fs, fe}
+        if not tp and not is_folded(fs, fk, fe):
+            marks.add(fk)
+        marks = sorted(m for m in marks if lo - 1e-9 <= m <= hi + 1e-9)
+        for x0, x1 in zip(marks, marks[1:]):
+            if x1 - x0 > 1e-9:
+                runs.append((x0, x1, 0.0, 0.0))
+    i = 0 if not sm else len(pts)
     while i < len(pts) - 1:
         x0, y0 = pts[i]
         j = i + 1

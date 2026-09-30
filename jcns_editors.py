@@ -170,6 +170,8 @@ def draw_plain(layout, p, sp, m):
     else:
         head.label(text="静止时 %s 不动" % tgt, icon='CHECKMARK')
 
+    if d.get('smooth'):
+        col.label(text="每段缓入缓出：段首段尾变化最慢，中间最快", icon='IPO_EASE_IN_OUT')
     for leg in d['legs']:
         col.separator(factor=0.4)
         for (x0, x1, y0, y1, kind) in leg['steps']:
