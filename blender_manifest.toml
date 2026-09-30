@@ -7,7 +7,7 @@ tagline = "导入、编辑并导出怪物猎人荒野的关节约束文件"
 maintainer = "Dimcirui"
 type = "add-on"
 
-website = "https://github.com/Dimcirui/Wilds-JCNS-Editor"
+website = "https://github.com/Dimcirui/REE-JCNS-Editor"
 
 tags = ["Animation", "Import-Export", "Rigging"]
 
