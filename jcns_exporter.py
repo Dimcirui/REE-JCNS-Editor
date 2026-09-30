@@ -369,7 +369,7 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
     value when absent (the writer appends it).  The writer recomputes TargetHash
     and ObjectHashIndex from ObjectName.
     """
-    from . import AXIS_TO_INT, flags_byte
+    from . import AXIS_TO_INT, INTERPOLATION_TO_INT, flags_byte
     _ensure_modules_path()
     try:
         from hashing.mmh3.pymmh3 import hashUTF16
@@ -415,7 +415,7 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
         base['ReadMode']        = jcns_source_read.read_mode_value(sp.read_mode)
         base['EulerOrder']      = jcns_source_read.euler_order_value(sp.euler_order)
         base['UnknownUInt16_22']   = sp.unknown_uint16_22
-        base['UnknownUInt32_28'] = sp.unknown_uint32_28
+        base['UnknownUInt32_28'] = INTERPOLATION_TO_INT[sp.interpolation] | (sp.unknown_uint32_29 << 8)
         if sections_cached:
             # The F-Curve is the data; the count follows it.
             from . import jcns_cm

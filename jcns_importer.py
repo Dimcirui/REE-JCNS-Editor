@@ -97,7 +97,7 @@ def do_import(filepath, context, armature_obj=None):
     Returns (root_empty, count, error_str).  error_str is '' on success.
     """
     from . import (
-        AXIS_TO_INT, INT_TO_AXIS, TRANSFORM_TYPE_MAP, INT_TO_AIM_TYPE, INT_TO_ROT_REST,
+        AXIS_TO_INT, INT_TO_AXIS, TRANSFORM_TYPE_MAP, INT_TO_AIM_TYPE, INT_TO_ROT_REST, INT_TO_INTERPOLATION,
         make_constraint_empty_name,
     )
 
@@ -222,7 +222,14 @@ def do_import(filepath, context, armature_obj=None):
             sp.euler_order = order
             sp.complex_mapping_info_count = s.get('ComplexMappingInfoCount', 0)
             sp.unknown_uint16_22   = s.get('UnknownUInt16_22', 0)
-            sp.unknown_uint32_28 = s.get('UnknownUInt32_28', 0)
+            word = s.get('UnknownUInt32_28', 0)
+            interp = INT_TO_INTERPOLATION.get(word & 0xFF)
+            if interp is None:
+                print("[JCNS] %s <- %s: interpolation byte %r is unknown, read as 0"
+                      % (c.get('ObjectName', '?'), s.get('SourceName', '?'), word & 0xFF))
+                interp = 'LINEAR'
+            sp.interpolation = interp
+            sp.unknown_uint32_29 = word >> 8
             if s.get('ComplexMapping'):
                 jcns_cm.load(sp, s['ComplexMapping'])
 

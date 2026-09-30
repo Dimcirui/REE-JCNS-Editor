@@ -76,6 +76,16 @@ def _euler_order_items():
 # +27 EulerOrder, Blender order names.
 _EULER_ORDER_ITEMS = _euler_order_items()
 
+# Source byte +28: how a segment of the mapping runs between its anchors.
+INTERPOLATION_ITEMS = [
+    ('LINEAR', "0 线性", "每段是直线"),
+    ('UNKNOWN_1', "1 未知", "含义未知，极少见"),
+    ('UNKNOWN_2', "2 未知", "含义未知，极少见"),
+    ('SMOOTHSTEP', "3 缓入缓出", "每段按三次平滑阶跃过渡，段首段尾斜率为 0"),
+]
+INTERPOLATION_TO_INT = {item[0]: i for i, item in enumerate(INTERPOLATION_ITEMS)}
+INT_TO_INTERPOLATION = {i: ident for ident, i in INTERPOLATION_TO_INT.items()}
+
 # Aim RotationType: how the roll around the aim axis is fixed.
 AIM_TYPE_ITEMS = [
     ('WORLD_UP', "0 世界上方向", "上方向取世界 +Y，上方向向量无效"),
@@ -431,8 +441,15 @@ class JCNSSourceProperties(PropertyGroup):
         name="未知 UInt16 (+22)", description="具体作用未知。通常为 0",
         default=0, min=0, max=65535,
     )
-    unknown_uint32_28: IntProperty(
-        name="未知 UInt32 (+28)", description="具体作用未知。低字节通常为 0（约 92%）；次字节在有复杂映射时为 1",
+    interpolation: EnumProperty(
+        update=_refresh_preview_values,
+        name="插值 (+28)",
+        description="每段映射怎么过渡。线性：直线；缓入缓出：每段按三次平滑阶跃。"
+                    "1 和 2 极少见，含义未知",
+        items=INTERPOLATION_ITEMS, default='LINEAR',
+    )
+    unknown_uint32_29: IntProperty(
+        name="未知 (+29..+31)", description="次字节在有复杂映射时为 1，导出时自动设置；其余含义未知。通常为 0",
         default=0, min=0,
     )
     # ComplexMapping: the curve is an F-Curve on the constraint Empty, on the custom

@@ -159,6 +159,17 @@ def source_two_point(source):
     return is_two_point(curve_mode_value(source))
 
 
+INTERPOLATION_SMOOTHSTEP = 3
+
+
+def source_smooth(source):
+    """Does this source ease each segment (interpolation byte +28 = 3)?  Parser dicts carry it
+    in the low byte of `UnknownUInt32_28`, the PropertyGroup in `interpolation`."""
+    if isinstance(source, dict):
+        return (int(source.get('UnknownUInt32_28', 0)) & 0xFF) == INTERPOLATION_SMOOTHSTEP
+    return getattr(source, 'interpolation', 'LINEAR') == 'SMOOTHSTEP'
+
+
 def is_folded(from_start, from_kink, from_end):
     """Does the polyline double back on itself along x?
 
@@ -171,13 +182,20 @@ def is_folded(from_start, from_kink, from_end):
 
 
 def eval_piecewise(from_start, from_kink, from_end,
-                   to_start, to_kink, to_end, x, two_point=False):
-    """Output of the transfer function for a source value of `x`."""
+                   to_start, to_kink, to_end, x, two_point=False, smooth=False):
+    """Output of the transfer function for a source value of `x`.
+
+    `smooth` is the source's interpolation byte +28 = 3: each segment eases in and out
+    (cubic smoothstep, measured on a two-point source) instead of running straight.
+    """
     span1 = from_kink - from_start
     span2 = from_end - from_kink
     total = from_end - from_start
 
     def seg(x0, y0, x1, y1, span):
+        if smooth:
+            t = max(0.0, min(1.0, (x - x0) / span))
+            return y0 + (y1 - y0) * t * t * (3.0 - 2.0 * t)
         k = (y1 - y0) / span
         lo, hi = min(y0, y1), max(y0, y1)
         return max(lo, min(hi, y0 + (x - x0) * k))
@@ -229,16 +247,18 @@ def describe(source):
     ts, tk, te = g('to_start'), g('to_kink'), g('to_end')
 
     tp = source_two_point(source)
+    sm = source_smooth(source)
     r = source_rest_input(source)
-    at_rest = eval_piecewise(fs, fk, fe, ts, tk, te, r, two_point=tp)
+    at_rest = eval_piecewise(fs, fk, fe, ts, tk, te, r, two_point=tp, smooth=sm)
     return {
         'at_rest':    at_rest,
         'rest_input': r,
-        'at_start':   eval_piecewise(fs, fk, fe, ts, tk, te, fs, two_point=tp),
-        'at_kink':    eval_piecewise(fs, fk, fe, ts, tk, te, fk, two_point=tp),
-        'at_end':     eval_piecewise(fs, fk, fe, ts, tk, te, fe, two_point=tp),
+        'at_start':   eval_piecewise(fs, fk, fe, ts, tk, te, fs, two_point=tp, smooth=sm),
+        'at_kink':    eval_piecewise(fs, fk, fe, ts, tk, te, fk, two_point=tp, smooth=sm),
+        'at_end':     eval_piecewise(fs, fk, fe, ts, tk, te, fe, two_point=tp, smooth=sm),
         'rest_pos':   rest_position(fs - r, fk - r, fe - r),
         'two_point':  tp,
+        'smooth':     sm,
         'folded_dead': (not tp) and is_folded(fs, fk, fe),
         # Deflected before anything moves; usually a hand-editing mistake.
         'offset_at_rest': abs(at_rest) > 1e-4,
@@ -300,9 +320,10 @@ def plain_description(source, unit="°"):
     fs, fk, fe = g('from_start'), g('from_kink'), g('from_end')
     ts, tk, te = g('to_start'), g('to_kink'), g('to_end')
     tp = source_two_point(source)
+    sm = source_smooth(source)
     r = source_rest_input(source)
 
-    at_rest = eval_piecewise(fs, fk, fe, ts, tk, te, r, two_point=tp)
+    at_rest = eval_piecewise(fs, fk, fe, ts, tk, te, r, two_point=tp, smooth=sm)
     inert = abs(ts) < 1e-9 and abs(tk) < 1e-9 and abs(te) < 1e-9
 
     # Sample eval_piecewise rather than joining sorted anchors: unordered
@@ -316,7 +337,7 @@ def plain_description(source, unit="°"):
 
     n = 401
     step = (hi - lo) / (n - 1)
-    pts = [(lo + i * step, eval_piecewise(fs, fk, fe, ts, tk, te, lo + i * step, two_point=tp))
+    pts = [(lo + i * step, eval_piecewise(fs, fk, fe, ts, tk, te, lo + i * step, two_point=tp, smooth=sm))
            for i in range(n)]
 
     # Merge samples into straight runs; a slope change starts a new run.
@@ -343,8 +364,8 @@ def plain_description(source, unit="°"):
         return x
 
     runs = [(snap(x0), snap(x1),
-             eval_piecewise(fs, fk, fe, ts, tk, te, snap(x0), two_point=tp),
-             eval_piecewise(fs, fk, fe, ts, tk, te, snap(x1), two_point=tp))
+             eval_piecewise(fs, fk, fe, ts, tk, te, snap(x0), two_point=tp, smooth=sm),
+             eval_piecewise(fs, fk, fe, ts, tk, te, snap(x1), two_point=tp, smooth=sm))
             for x0, x1, y0, y1 in runs]
 
     legs = []
@@ -359,7 +380,7 @@ def plain_description(source, unit="°"):
             a = max(a, r) if direction > 0 else min(a, r)
             if abs(b - a) < 1e-6:
                 continue                       # zero-width run at a breakpoint
-            u = eval_piecewise(fs, fk, fe, ts, tk, te, a, two_point=tp)
+            u = eval_piecewise(fs, fk, fe, ts, tk, te, a, two_point=tp, smooth=sm)
             kind = 'dead' if abs(v - u) < 1e-4 else 'move'
             if steps and steps[-1][4] == kind == 'dead':
                 steps[-1] = (steps[-1][0], b, steps[-1][2], v, 'dead')
@@ -375,7 +396,7 @@ def plain_description(source, unit="°"):
     unreachable = None
     if not ordered_anchors and not folded_dead:
         for name, ax, ay in (('A', fs, ts), ('B', fk, tk), ('C', fe, te)):
-            if abs(eval_piecewise(fs, fk, fe, ts, tk, te, ax, two_point=tp) - ay) > 1e-4:
+            if abs(eval_piecewise(fs, fk, fe, ts, tk, te, ax, two_point=tp, smooth=sm) - ay) > 1e-4:
                 unreachable = name
                 break
 
@@ -383,6 +404,7 @@ def plain_description(source, unit="°"):
             'offset_at_rest': abs(at_rest) > 1e-4,
             'anchors_ordered': ordered_anchors,
             'two_point': tp,
+            'smooth': sm,
             'folded_dead': folded_dead,
             'unreachable_anchor': unreachable}
 
@@ -397,6 +419,7 @@ def sample(source, n=48):
     fs, fk, fe = g('from_start'), g('from_kink'), g('from_end')
     ts, tk, te = g('to_start'), g('to_kink'), g('to_end')
     tp = source_two_point(source)
+    sm = source_smooth(source)
 
     lo, hi = min(fs, fe, 0.0), max(fs, fe, 0.0)
     if hi - lo < 1e-9:
@@ -405,5 +428,5 @@ def sample(source, n=48):
     lo, hi = lo - pad, hi + pad
     step = (hi - lo) / float(n - 1)
     return [(lo + i * step,
-             eval_piecewise(fs, fk, fe, ts, tk, te, lo + i * step, two_point=tp))
+             eval_piecewise(fs, fk, fe, ts, tk, te, lo + i * step, two_point=tp, smooth=sm))
             for i in range(n)]

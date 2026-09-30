@@ -77,6 +77,8 @@ def _sources_for_driver(cns_props):
             'to_start':   sp.to_start,   'to_kink':   sp.to_kink,   'to_end':   sp.to_end,
             # Curve mode byte (bit 1 = three-point); see modules.jcns_mapping.is_two_point.
             'curve_mode': get_mapping().curve_mode_value(sp),
+            # Interpolation byte +28: 3 eases each segment in and out.
+            'smooth': get_mapping().source_smooth(sp),
             # +25 ReadMode, as its byte value: how the source bone is read
             # (modules/jcns_source_read.py).
             'read_mode': get_mapping().read_mode_value(sp.read_mode),
@@ -1034,7 +1036,7 @@ class JCNS_OT_AddSource(Operator):
         if len(p.sources) > 1:
             prev = p.sources[len(p.sources) - 2]
             for attr in ('source_axis', 'from_start', 'from_kink', 'from_end',
-                         'to_start', 'to_kink', 'to_end', 'three_point', 'curve_mode_extra',
+                         'to_start', 'to_kink', 'to_end', 'three_point', 'curve_mode_extra', 'interpolation',
                          'read_mode', 'ref_frame_w'):
                 setattr(sp, attr, getattr(prev, attr))
         p.active_source_index = len(p.sources) - 1
@@ -1303,7 +1305,7 @@ class JCNS_OT_MirrorConstraints(Operator):
                         setattr(ns, k, v)
                 for attr in ('ref_frame_x', 'ref_frame_y', 'ref_frame_z',
                              'ref_frame_w', 'three_point', 'curve_mode_extra', 'read_mode',
-                             'euler_order', 'unknown_uint16_22', 'unknown_uint32_28'):
+                             'euler_order', 'unknown_uint16_22', 'interpolation', 'unknown_uint32_29'):
                     setattr(ns, attr, getattr(orig, attr))
                 if '_frame' in vals:
                     ns.ref_frame_x, ns.ref_frame_y, ns.ref_frame_z = vals['_frame']
@@ -1528,7 +1530,7 @@ class JCNS_OT_CMCreate(Operator):
         m = get_mapping()
         keys = jcns_cm.jcns_complex.from_three_point(
             sp.from_start, sp.from_kink, sp.from_end, sp.to_start, sp.to_kink, sp.to_end,
-            two_point=m.is_two_point(m.curve_mode_value(sp)))
+            two_point=m.is_two_point(m.curve_mode_value(sp)), smooth=m.source_smooth(sp))
         sp.cm_cache.clear()
         jcns_cm.set_keys(sp, keys)
         # Shipped keyframed sources carry all-zero anchors.
