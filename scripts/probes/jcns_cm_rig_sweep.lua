@@ -11,6 +11,8 @@
 --   另写 jcns_cm_rig_skel.csv：0012 全骨架每根骨头的局部四元数
 --   第三轮（build_map_rig.py）：[08]-[18] A..K.X = L_Thigh.X * k/12，[19] A.Y*-0.3 [20] B.Z*-0.6 [21] C.Y*-0.9
 --
+--   第 12 轮（build_sections_rig.py）：Aim / RotExpression / Skin；另写 jcns_cm_rig_world.csv（世界坐标）
+--
 -- 用法：放进 reframework/autorun。按 F8 开始记录，跑动、转向、蹲起、抬腿，
 -- 让 L_Thigh 大范围摆动，二三十秒即可；按 F9 停止。输出 reframework/data/jcns_cm_rig_sweep.csv
 -- 读的是 getOutputUserValue(i)，i = jcns 条目顺序。
@@ -53,6 +55,15 @@ local all_joints = {}
 local trs_handle = nil
 local trs_file_name = "jcns_cm_rig_trs.csv"
 local trs_joints = {}
+-- Round 12: world position / rotation, for Aim / Skin / RotExpression targets and their
+-- sources.  "b." = the body's joint (what find_joint_anywhere returns), "e." = the
+-- equipment piece's own joint of that name; a getter that is missing gives NaN.
+local world_handle = nil
+local world_file_name = "jcns_cm_rig_world.csv"
+local world_joints = {}
+local root_transform = nil
+local WORLD_BODY = { "L_Thigh", "R_Thigh", "L_Hand", "R_Hand", "Head" }
+local WORLD_EQUIP = { "Ear_SCL", "L_Thigh", "L_Hand", "R_Hand", "Head" }
 
 local function try(fn, default)
     local ok, v = pcall(fn)
@@ -93,6 +104,7 @@ local function resolve()
     if not obj then status_msg = "没有 Object"; return false end
     local root_tr = obj:call("get_Transform")
     if not root_tr then status_msg = "没有 Transform"; return false end
+    root_transform = root_tr
 
     joints = {}
     for _, n in ipairs(SRC_BONES) do joints[n] = find_joint_anywhere(root_tr, n) end
@@ -185,9 +197,38 @@ local function start_recording()
         end
     end
     trs_handle:write(table.concat(trs_names, ",") .. "\n")
+
+    world_handle = io.open(world_file_name, "w")
+    if not world_handle then status_msg = "无法创建 " .. world_file_name; return end
+    world_joints = {}
+    local by_name = {}
+    for _, e in ipairs(all_joints) do by_name[e.name] = e.joint end
+    for _, n in ipairs(WORLD_BODY) do
+        local bj = joints[n] or find_joint_anywhere(root_transform, n)
+        if bj then table.insert(world_joints, { name = "b." .. n, joint = bj }) end
+    end
+    for _, n in ipairs(WORLD_EQUIP) do
+        if by_name[n] then table.insert(world_joints, { name = "e." .. n, joint = by_name[n] }) end
+    end
+    for _, e in ipairs(all_joints) do
+        if string.match(e.name, "^TestTgt[A-K]$") then
+            table.insert(world_joints, { name = "e." .. e.name, joint = e.joint })
+        end
+    end
+    local wnames = { "Frame" }
+    for _, e in ipairs(world_joints) do
+        for _, c in ipairs({ "px", "py", "pz", "qx", "qy", "qz", "qw" }) do
+            table.insert(wnames, e.name .. "_" .. c)
+        end
+    end
+    world_handle:write(table.concat(wnames, ",") .. "\n")
+    local probe = world_joints[#world_joints]
+    local wp = probe and try(function() return probe.joint:call("get_Position") end, nil)
+    local wq = probe and try(function() return probe.joint:call("get_Rotation") end, nil)
     recording = true
     frame_count = 0
-    status_msg = "记录中…（在游戏里跑动、转向、蹲起）"
+    status_msg = string.format("记录中…（世界坐标 %d 根骨，get_Position=%s get_Rotation=%s）",
+        #world_joints, tostring(wp ~= nil), tostring(wq ~= nil))
 end
 
 local function stop_recording()
@@ -196,6 +237,7 @@ local function stop_recording()
     if file_handle then file_handle:close(); file_handle = nil end
     if skel_handle then skel_handle:close(); skel_handle = nil end
     if trs_handle then trs_handle:close(); trs_handle = nil end
+    if world_handle then world_handle:close(); world_handle = nil end
     status_msg = string.format("完成，%d 帧 → %s", frame_count, record_file_name)
 end
 
@@ -272,6 +314,16 @@ re.on_frame(function()
             table.insert(vals, s and string.format("%.7f,%.7f,%.7f", s.x, s.y, s.z) or "nan,nan,nan")
         end
         trs_handle:write(table.concat(vals, ",") .. "\n")
+    end
+    if world_handle then
+        local vals = { tostring(frame_count) }
+        for _, e in ipairs(world_joints) do
+            local p = try(function() return e.joint:call("get_Position") end, nil)
+            local q = try(function() return e.joint:call("get_Rotation") end, nil)
+            table.insert(vals, p and string.format("%.6f,%.6f,%.6f", p.x, p.y, p.z) or "nan,nan,nan")
+            table.insert(vals, q and string.format("%.6f,%.6f,%.6f,%.6f", q.x, q.y, q.z, q.w) or "nan,nan,nan,nan")
+        end
+        world_handle:write(table.concat(vals, ",") .. "\n")
     end
     frame_count = frame_count + 1
     if frame_count >= MAX_FRAMES then stop_recording() end
