@@ -14,7 +14,7 @@ a flat RGBA float list, row 0 at the BOTTOM.
 """
 
 from jcns_mapping import (eval_piecewise, describe, source_rest_input, is_two_point, curve_mode_value,
-                          source_smooth)
+                          source_interpolation)
 import jcns_complex
 
 
@@ -168,7 +168,7 @@ def render(sources, width=180, height=110, samples=None):
         prev = None
         for i in range(samples):
             xv = x0 + (x1 - x0) * i / float(samples - 1)
-            yv = eval_piecewise(fs, fk, fe, ts, tk, te, xv, two_point=d['two_point'], smooth=d['smooth'])
+            yv = eval_piecewise(fs, fk, fe, ts, tk, te, xv, two_point=d['two_point'], interp=d['interpolation'])
             cur = (sx(xv), sy(yv))
             if prev is not None:
                 cv.line(prev[0], prev[1], cur[0], cur[1], colour)
@@ -212,7 +212,7 @@ def cache_key(sources, width, height):
             parts.append(round(float(v), 4))
         parts.append(round(source_rest_input(s), 4))
         parts.append(is_two_point(curve_mode_value(s)))
-        parts.append(source_smooth(s))
+        parts.append(source_interpolation(s))
     return tuple(parts)
 
 

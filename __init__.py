@@ -79,8 +79,8 @@ _EULER_ORDER_ITEMS = _euler_order_items()
 # Source byte +28: how a segment of the mapping runs between its anchors.
 INTERPOLATION_ITEMS = [
     ('LINEAR', "0 线性", "每段是直线"),
-    ('UNKNOWN_1', "1 未知", "含义未知，极少见"),
-    ('UNKNOWN_2', "2 未知", "含义未知，极少见"),
+    ('CUBIC_IN', "1 缓入", "每段先慢后快，t³"),
+    ('CUBIC_OUT', "2 缓出", "每段先快后慢，1−(1−t)³"),
     ('SMOOTHSTEP', "3 缓入缓出", "每段按三次平滑阶跃过渡，段首段尾斜率为 0"),
 ]
 INTERPOLATION_TO_INT = {item[0]: i for i, item in enumerate(INTERPOLATION_ITEMS)}

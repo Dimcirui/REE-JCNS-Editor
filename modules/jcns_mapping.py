@@ -159,15 +159,22 @@ def source_two_point(source):
     return is_two_point(curve_mode_value(source))
 
 
-INTERPOLATION_SMOOTHSTEP = 3
+# Source byte +28, how a segment runs between its anchors (measured, rounds 15 and 16; the
+# three-point form is per segment): 0 straight, 1 cubic ease in, 2 cubic ease out, 3 smoothstep.
+EASING = {
+    1: lambda t: t * t * t,
+    2: lambda t: 1.0 - (1.0 - t) ** 3,
+    3: lambda t: t * t * (3.0 - 2.0 * t),
+}
+_INTERPOLATION_IDS = {'LINEAR': 0, 'CUBIC_IN': 1, 'CUBIC_OUT': 2, 'SMOOTHSTEP': 3}
 
 
-def source_smooth(source):
-    """Does this source ease each segment (interpolation byte +28 = 3)?  Parser dicts carry it
-    in the low byte of `UnknownUInt32_28`, the PropertyGroup in `interpolation`."""
+def source_interpolation(source):
+    """The interpolation byte +28 of a source.  Parser dicts carry it in the low byte of
+    `UnknownUInt32_28`, the PropertyGroup in `interpolation`."""
     if isinstance(source, dict):
-        return (int(source.get('UnknownUInt32_28', 0)) & 0xFF) == INTERPOLATION_SMOOTHSTEP
-    return getattr(source, 'interpolation', 'LINEAR') == 'SMOOTHSTEP'
+        return int(source.get('UnknownUInt32_28', 0)) & 0xFF
+    return _INTERPOLATION_IDS.get(getattr(source, 'interpolation', 'LINEAR'), 0)
 
 
 def is_folded(from_start, from_kink, from_end):
@@ -182,20 +189,20 @@ def is_folded(from_start, from_kink, from_end):
 
 
 def eval_piecewise(from_start, from_kink, from_end,
-                   to_start, to_kink, to_end, x, two_point=False, smooth=False):
+                   to_start, to_kink, to_end, x, two_point=False, interp=0):
     """Output of the transfer function for a source value of `x`.
 
-    `smooth` is the source's interpolation byte +28 = 3: each segment eases in and out
-    (cubic smoothstep, measured on a two-point source) instead of running straight.
+    `interp` is the source's interpolation byte +28: each segment runs straight (0) or
+    follows an easing curve (see EASING).
     """
     span1 = from_kink - from_start
     span2 = from_end - from_kink
     total = from_end - from_start
 
     def seg(x0, y0, x1, y1, span):
-        if smooth:
+        if interp in EASING:
             t = max(0.0, min(1.0, (x - x0) / span))
-            return y0 + (y1 - y0) * t * t * (3.0 - 2.0 * t)
+            return y0 + (y1 - y0) * EASING[interp](t)
         k = (y1 - y0) / span
         lo, hi = min(y0, y1), max(y0, y1)
         return max(lo, min(hi, y0 + (x - x0) * k))
@@ -247,18 +254,18 @@ def describe(source):
     ts, tk, te = g('to_start'), g('to_kink'), g('to_end')
 
     tp = source_two_point(source)
-    sm = source_smooth(source)
+    sm = source_interpolation(source)
     r = source_rest_input(source)
-    at_rest = eval_piecewise(fs, fk, fe, ts, tk, te, r, two_point=tp, smooth=sm)
+    at_rest = eval_piecewise(fs, fk, fe, ts, tk, te, r, two_point=tp, interp=sm)
     return {
         'at_rest':    at_rest,
         'rest_input': r,
-        'at_start':   eval_piecewise(fs, fk, fe, ts, tk, te, fs, two_point=tp, smooth=sm),
-        'at_kink':    eval_piecewise(fs, fk, fe, ts, tk, te, fk, two_point=tp, smooth=sm),
-        'at_end':     eval_piecewise(fs, fk, fe, ts, tk, te, fe, two_point=tp, smooth=sm),
+        'at_start':   eval_piecewise(fs, fk, fe, ts, tk, te, fs, two_point=tp, interp=sm),
+        'at_kink':    eval_piecewise(fs, fk, fe, ts, tk, te, fk, two_point=tp, interp=sm),
+        'at_end':     eval_piecewise(fs, fk, fe, ts, tk, te, fe, two_point=tp, interp=sm),
         'rest_pos':   rest_position(fs - r, fk - r, fe - r),
         'two_point':  tp,
-        'smooth':     sm,
+        'interpolation': sm,
         'folded_dead': (not tp) and is_folded(fs, fk, fe),
         # Deflected before anything moves; usually a hand-editing mistake.
         'offset_at_rest': abs(at_rest) > 1e-4,
@@ -320,10 +327,10 @@ def plain_description(source, unit="°"):
     fs, fk, fe = g('from_start'), g('from_kink'), g('from_end')
     ts, tk, te = g('to_start'), g('to_kink'), g('to_end')
     tp = source_two_point(source)
-    sm = source_smooth(source)
+    sm = source_interpolation(source)
     r = source_rest_input(source)
 
-    at_rest = eval_piecewise(fs, fk, fe, ts, tk, te, r, two_point=tp, smooth=sm)
+    at_rest = eval_piecewise(fs, fk, fe, ts, tk, te, r, two_point=tp, interp=sm)
     inert = abs(ts) < 1e-9 and abs(tk) < 1e-9 and abs(te) < 1e-9
 
     # Sample eval_piecewise rather than joining sorted anchors: unordered
@@ -337,13 +344,13 @@ def plain_description(source, unit="°"):
 
     n = 401
     step = (hi - lo) / (n - 1)
-    pts = [(lo + i * step, eval_piecewise(fs, fk, fe, ts, tk, te, lo + i * step, two_point=tp, smooth=sm))
+    pts = [(lo + i * step, eval_piecewise(fs, fk, fe, ts, tk, te, lo + i * step, two_point=tp, interp=sm))
            for i in range(n)]
 
     # Merge samples into straight runs; a slope change starts a new run.  An eased curve has
     # a new slope everywhere, so it is described per anchor-to-anchor stretch instead.
     runs = []
-    if sm:
+    if sm in EASING:
         marks = {lo, hi, r, fs, fe}
         if not tp and not is_folded(fs, fk, fe):
             marks.add(fk)
@@ -351,7 +358,7 @@ def plain_description(source, unit="°"):
         for x0, x1 in zip(marks, marks[1:]):
             if x1 - x0 > 1e-9:
                 runs.append((x0, x1, 0.0, 0.0))
-    i = 0 if not sm else len(pts)
+    i = 0 if sm not in EASING else len(pts)
     while i < len(pts) - 1:
         x0, y0 = pts[i]
         j = i + 1
@@ -373,8 +380,8 @@ def plain_description(source, unit="°"):
         return x
 
     runs = [(snap(x0), snap(x1),
-             eval_piecewise(fs, fk, fe, ts, tk, te, snap(x0), two_point=tp, smooth=sm),
-             eval_piecewise(fs, fk, fe, ts, tk, te, snap(x1), two_point=tp, smooth=sm))
+             eval_piecewise(fs, fk, fe, ts, tk, te, snap(x0), two_point=tp, interp=sm),
+             eval_piecewise(fs, fk, fe, ts, tk, te, snap(x1), two_point=tp, interp=sm))
             for x0, x1, y0, y1 in runs]
 
     legs = []
@@ -389,7 +396,7 @@ def plain_description(source, unit="°"):
             a = max(a, r) if direction > 0 else min(a, r)
             if abs(b - a) < 1e-6:
                 continue                       # zero-width run at a breakpoint
-            u = eval_piecewise(fs, fk, fe, ts, tk, te, a, two_point=tp, smooth=sm)
+            u = eval_piecewise(fs, fk, fe, ts, tk, te, a, two_point=tp, interp=sm)
             kind = 'dead' if abs(v - u) < 1e-4 else 'move'
             if steps and steps[-1][4] == kind == 'dead':
                 steps[-1] = (steps[-1][0], b, steps[-1][2], v, 'dead')
@@ -405,7 +412,7 @@ def plain_description(source, unit="°"):
     unreachable = None
     if not ordered_anchors and not folded_dead:
         for name, ax, ay in (('A', fs, ts), ('B', fk, tk), ('C', fe, te)):
-            if abs(eval_piecewise(fs, fk, fe, ts, tk, te, ax, two_point=tp, smooth=sm) - ay) > 1e-4:
+            if abs(eval_piecewise(fs, fk, fe, ts, tk, te, ax, two_point=tp, interp=sm) - ay) > 1e-4:
                 unreachable = name
                 break
 
@@ -413,7 +420,7 @@ def plain_description(source, unit="°"):
             'offset_at_rest': abs(at_rest) > 1e-4,
             'anchors_ordered': ordered_anchors,
             'two_point': tp,
-            'smooth': sm,
+            'interpolation': sm,
             'folded_dead': folded_dead,
             'unreachable_anchor': unreachable}
 
@@ -428,7 +435,7 @@ def sample(source, n=48):
     fs, fk, fe = g('from_start'), g('from_kink'), g('from_end')
     ts, tk, te = g('to_start'), g('to_kink'), g('to_end')
     tp = source_two_point(source)
-    sm = source_smooth(source)
+    sm = source_interpolation(source)
 
     lo, hi = min(fs, fe, 0.0), max(fs, fe, 0.0)
     if hi - lo < 1e-9:
@@ -437,5 +444,5 @@ def sample(source, n=48):
     lo, hi = lo - pad, hi + pad
     step = (hi - lo) / float(n - 1)
     return [(lo + i * step,
-             eval_piecewise(fs, fk, fe, ts, tk, te, lo + i * step, two_point=tp, smooth=sm))
+             eval_piecewise(fs, fk, fe, ts, tk, te, lo + i * step, two_point=tp, interp=sm))
             for i in range(n)]

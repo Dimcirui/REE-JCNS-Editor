@@ -177,11 +177,11 @@ class JCNSParser:
                                               order, stored even where the read ignores it.
       +28:  UnknownUInt32_28           uint32   Two live bytes; +30/+31 always 0.
                                               +28 is the interpolation of each mapping segment
-                                              (measured, round 15): 0 straight, 3 eases in and out
-                                              (cubic smoothstep, exact on a two-point source; the
-                                              per-segment form for three points is assumed).
-                                              1 and 2 (rare) are unknown.  0 92%, 3 8%, mostly on
-                                              non-joint targets and ReadMode 1/4.
+                                              (measured, rounds 15 and 16; per segment also on a
+                                              three-point map): 0 straight, 1 cubic ease in (t^3),
+                                              2 cubic ease out (1-(1-t)^3), 3 smoothstep (3t^2-2t^3).
+                                              0 92%, 3 8%, 1 / 2 rare, mostly on non-joint targets
+                                              and ReadMode 1/4.
                                               +29: 1 exactly when ComplexMappingInfoCount > 0; 2 in
                                               90 further sources, all material 2D/3D targets with
                                               ReadMode 1 and CurveMode 1/5.  +29 = 2 on a rotation

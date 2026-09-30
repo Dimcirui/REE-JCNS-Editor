@@ -32,7 +32,7 @@ import jcns_source_read  # noqa: E402
 
 # key -> {'maps': [map, …], 'reads': [read, …]}, one of each per source of the
 # single constraint that owns the channel; their outputs are summed.  A map is
-# either the three-point (fs, fk, fe, ts, tk, te, two_point, smooth) or ('CM', keys) for a
+# either the three-point (fs, fk, fe, ts, tk, te, two_point, interpolation) or ('CM', keys) for a
 # ComplexMapping, both already in the driver's units.  A read says which driver
 # variables feed the source:
 #   ('v',)                        one variable, used as is
@@ -96,7 +96,7 @@ def source_map(s, target_q):
     vals = (s['from_start'], s['from_kink'], s['from_end'],
             s['to_start'],   s['to_kink'],   s['to_end'])
     return tuple(m.driver_anchors(vals, src_q, target_q)) + (m.is_two_point(s.get('curve_mode')),
-                                                              bool(s.get('smooth')))
+                                                              s.get('interp', 0))
 
 
 def channel_id(armature_name, bone, transform, axis):
@@ -170,7 +170,7 @@ def _total(maps, reads, values):
         if m[0] == 'CM':
             total += jcns_complex.evaluate(m[1], v)
         else:
-            total += ev(*m[:6], v, two_point=(len(m) > 6 and m[6]), smooth=(len(m) > 7 and m[7]))
+            total += ev(*m[:6], v, two_point=(len(m) > 6 and m[6]), interp=(m[7] if len(m) > 7 else 0))
     return total, at
 
 

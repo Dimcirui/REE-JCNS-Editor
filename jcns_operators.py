@@ -77,8 +77,8 @@ def _sources_for_driver(cns_props):
             'to_start':   sp.to_start,   'to_kink':   sp.to_kink,   'to_end':   sp.to_end,
             # Curve mode byte (bit 1 = three-point); see modules.jcns_mapping.is_two_point.
             'curve_mode': get_mapping().curve_mode_value(sp),
-            # Interpolation byte +28: 3 eases each segment in and out.
-            'smooth': get_mapping().source_smooth(sp),
+            # Interpolation byte +28: how each segment runs between its anchors.
+            'interp': get_mapping().source_interpolation(sp),
             # +25 ReadMode, as its byte value: how the source bone is read
             # (modules/jcns_source_read.py).
             'read_mode': get_mapping().read_mode_value(sp.read_mode),
@@ -1530,7 +1530,7 @@ class JCNS_OT_CMCreate(Operator):
         m = get_mapping()
         keys = jcns_cm.jcns_complex.from_three_point(
             sp.from_start, sp.from_kink, sp.from_end, sp.to_start, sp.to_kink, sp.to_end,
-            two_point=m.is_two_point(m.curve_mode_value(sp)), smooth=m.source_smooth(sp))
+            two_point=m.is_two_point(m.curve_mode_value(sp)), interp=m.source_interpolation(sp))
         sp.cm_cache.clear()
         jcns_cm.set_keys(sp, keys)
         # Shipped keyframed sources carry all-zero anchors.

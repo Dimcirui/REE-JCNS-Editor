@@ -123,6 +123,10 @@ class _PreviewSub(_Editor, _Sub):
 # Ranges —— 映射曲线
 # ---------------------------------------------------------------------------
 
+_EASING_TEXT = {1: "每段缓入：先慢后快（三次）", 2: "每段缓出：先快后慢（三次）",
+                3: "每段缓入缓出：段首段尾变化最慢，中间最快"}
+
+
 def draw_plain(layout, p, sp, m):
     """用文字描述这条映射，从静止姿态出发逐段讲。
 
@@ -170,8 +174,8 @@ def draw_plain(layout, p, sp, m):
     else:
         head.label(text="静止时 %s 不动" % tgt, icon='CHECKMARK')
 
-    if d.get('smooth'):
-        col.label(text="每段缓入缓出：段首段尾变化最慢，中间最快", icon='IPO_EASE_IN_OUT')
+    if d.get('interpolation') in _EASING_TEXT:
+        col.label(text=_EASING_TEXT[d['interpolation']], icon='IPO_EASE_IN_OUT')
     for leg in d['legs']:
         col.separator(factor=0.4)
         for (x0, x1, y0, y1, kind) in leg['steps']:

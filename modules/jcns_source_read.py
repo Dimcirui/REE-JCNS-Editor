@@ -229,24 +229,19 @@ def target_basis(rest, parts):
     `parts` are (axis, mode, replaces, value) in file order of their winning
     entries.  The last entry's mode decides how the whole bone is composed, and every
     entry's value is used in it whatever its own mode (an Euler bone takes the Y value
-    of a type 4 entry as its Euler Y).  Whether the first or the last entry decides is
-    not separated by the test rig (its mixed bone had the same type at both ends).
+    of a type 4 entry as its Euler Y).
 
-    An 'euler' bone goes through override_basis.  For swing-twist, twist-swing and rotation
-    vector, adding lays the rotation on the rest pose; replacing takes the rest pose's own
-    decomposition in that mode, puts each replaced channel's value in place of its
-    component, and keeps the others.  Axis rotations (13 / 14) hold one rotation and
-    replacing drops the whole rest.  Mixing added and replaced channels outside the
-    Euler mode is modelled on override_basis, not measured.
+    Added channels (Flags bit0 = 1) lay their composed rotation on the rest pose,
+    q1 = rest * compose(added).  Replaced channels (bit0 = 0) then take that rotation apart
+    in the mode's own decomposition, put each value in place of its component and compose
+    again; with no added channel q1 is the rest pose.  This matches bones that mix
+    add and replace on types 1, 4, 5 and 6 (rounds 13 and 16) and pure replace on all four.
+    Axis rotations (13 / 14) hold one rotation and replacing drops the whole rest.
     """
     if not parts:
         return (0.0, 0.0, 0.0)
     last = parts[-1]
     mode = last[1]
-    if mode == 'euler':
-        replaced = {a: v for a, m, r, v in parts if r}
-        added = {a: v for a, m, r, v in parts if not r}
-        return override_basis(rest, replaced, added)
     if mode == 'axis':
         q = _axis_q(last[0], last[3])
         if not last[2]:
@@ -254,17 +249,17 @@ def target_basis(rest, parts):
         return tuple(_euler(_pos_w(qmul(_conj(rest), q)), 0))
     replaced = {a: v for a, m, r, v in parts if r}
     added = {a: v for a, m, r, v in parts if not r}
-    base = [rotation(mode, rest, a) for a in range(3)] if replaced else [0.0, 0.0, 0.0]
-    for a, v in replaced.items():
-        base[a] = v
-    q = compose(mode, base)
+    q = rest
     if added:
         add = [0.0, 0.0, 0.0]
         for a, v in added.items():
             add[a] = v
-        q = qmul(q, compose(mode, add))
-    if not replaced:
-        q = qmul(rest, q)
+        q = qmul(rest, compose(mode, add))
+    if replaced:
+        c = [rotation(mode, q, a) for a in range(3)]
+        for a, v in replaced.items():
+            c[a] = v
+        q = compose(mode, c)
     return tuple(_euler(_pos_w(qmul(_conj(rest), q)), 0))
 
 
