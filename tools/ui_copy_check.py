@@ -5,7 +5,8 @@ Flag high-risk words in user-visible text (docs/UI_COPY_GUIDE.md).
 
 Scans the add-on's own modules (not scripts/, tests/, tools/): every string literal
 that contains Chinese text or is passed as name= / description= / text= / a report
-message, docstrings excluded.  A line carrying `# ui-copy: internal` is skipped:
+message, docstrings excluded except those of registered JCNS_* classes (Blender
+shows them as tooltips).  A line carrying `# ui-copy: internal` is skipped:
 its strings are never shown.  Prints file:line and the text for each hit; a hit
 still needs a human decision.  Exits 1 when anything was flagged.
 """
@@ -27,12 +28,24 @@ CJK = re.compile('[一-鿿]')
 UI_KEYWORDS = {'name', 'description', 'text', 'bl_label', 'bl_description'}
 
 
+# Blender shows the class docstring of a registered type as its tooltip.
+_TOOLTIP_BASES = {'Operator', 'Panel', 'UIList', 'Menu'}
+
+
+def _is_tooltip_class(node):
+    return (isinstance(node, ast.ClassDef) and node.name.startswith('JCNS_')
+            and any(getattr(b, 'id', getattr(b, 'attr', '')) in _TOOLTIP_BASES
+                    or getattr(b, 'id', '').startswith('_') for b in node.bases))
+
+
 def _docstring_nodes(tree):
+    """Docstrings that are not shown to the user."""
     out = set()
     for node in ast.walk(tree):
         if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
             b = node.body
-            if b and isinstance(b[0], ast.Expr) and isinstance(b[0].value, ast.Constant):
+            if (b and isinstance(b[0], ast.Expr) and isinstance(b[0].value, ast.Constant)
+                    and not _is_tooltip_class(node)):
                 out.add(id(b[0].value))
     return out
 
