@@ -217,6 +217,7 @@ def draw_anchors(layout, m, sp):
     """三点映射的六个锚点数值。"""
     col2 = layout.column(align=True)
     col2.separator()
+    col2.prop(sp, "three_point")
     col2.label(text="锚点数值（局部轴；角度为度，位移为厘米）", icon='PREFERENCES')
     h = col2.row()
     h.label(text={'Translation': "源局部位移：", 'Scale': "源局部缩放："}.get(
@@ -317,9 +318,10 @@ class JCNS_PT_Ed_Ranges(_EditorMain, Panel):
         _field_row(col, "骨骼：", p, "target_bone")
         _field_row(col, "局部轴向：", p, "target_axis")
         _field_row(col, "变换：", p, "transform_type")
+        _field_row(col, "叠加：", p, "additive")
         from .jcns_drivers import jcns_source_read as sr
         from .jcns_exporter import _transform_int
-        _draw_rules(box, sr.target_rule(_transform_int(p.transform_type), bool(p.cns_flags & 1)))
+        _draw_rules(box, sr.target_rule(_transform_int(p.transform_type), p.additive))
 
         # 导出按 [N] 前缀排列；同一通道上后写的那条覆盖前面的。
         sibs = sibling_constraints(obj)
@@ -383,6 +385,11 @@ class JCNS_PT_Ed_Ranges_Sources(_Editor, Panel):
         row = col.row(align=True)
         row.active = sp.read_mode == 'EULER'          # the other reads ignore it
         _field_row(row, "欧拉顺序：", sp, "euler_order")
+        row = col.row(align=True)
+        row.active = sp.read_mode in ('SWING_TWIST', 'TWIST_SWING', 'ROTATION_VECTOR')   # the other reads ignore it
+        row.label(text="参考系：")
+        for axis in "xyzw":
+            row.prop(sp, "ref_frame_" + axis, text=axis.upper())
         _draw_rules(c.body, _source_read_notes(c, p, sp))
 
 
@@ -486,18 +493,9 @@ class JCNS_PT_Ed_Ranges_Tools(_Editor, Panel):
         sub.operator("jcns.mirror_constraints", text="镜像到另一侧…", icon='MOD_MIRROR')
 
 
-# 游戏自带 v102 文件里取值固定的 Ranges 原始字段；「隐藏固定字段」只隐藏这些，
-# 有例外取值的字段照常显示。
-FIXED_RANGES_FIELDS = frozenset((
-    'reserved_vec4_x', 'reserved_vec4_y', 'reserved_vec4_z', 'reserved_vec4_w',   # 恒为 (0,0,0,1)
-    'parent_tail_2', 'parent_tail_4', 'parent_tail_5',                     # +76/+78/+79 恒为 0
-    'flag_bit_1', 'flag_bit_6', 'flag_bit_7',                              # 从未置位
-))
-
-
 class JCNS_PT_Ed_Ranges_Advanced(_Editor, _Sub, Panel):
-    """几乎每个文件都相同、或者含义尚未逆向出来的字段。"""
-    bl_label  = "高级 / 原始字段"
+    """含义还没弄清的字段。取值固定的字段在「保留字段」里。"""
+    bl_label  = "未知字段"
     bl_idname = "JCNS_PT_ed_ranges_advanced"
     bl_parent_id = "JCNS_PT_ed_ranges"
     KIND = 'Ranges'
@@ -509,69 +507,40 @@ class JCNS_PT_Ed_Ranges_Advanced(_Editor, _Sub, Panel):
         layout, p = c.body, c.p
         sp = _active_source(p)
 
-        wm = context.window_manager
-        hide = wm.jcns_hide_fixed
-        top = layout.row(align=True)
-        top.prop(wm, "jcns_hide_fixed", toggle=True,
-                 icon='HIDE_ON' if hide else 'HIDE_OFF')
-        if hide:
-            layout.label(text="已隐藏 %d 个取值固定的字段" % len(FIXED_RANGES_FIELDS),
-                         icon='INFO')
-
-        def keep(props):
-            return [(a, t) for a, t in props if not (hide and a in FIXED_RANGES_FIELDS)]
-
         if sp is not None:
-            _draw_raw_group(layout, "驱动源：参考系四元数", 'ORIENTATION_GIMBAL', [
-                (sp, [("ref_frame_x", "X"), ("ref_frame_y", "Y"),
-                     ("ref_frame_z", "Z"), ("ref_frame_w", "W")]),
+            _draw_raw_group(layout, "驱动源", 'PREFERENCES', [
+                (sp, [("curve_mode_extra", "曲线模式其余位")]),
+                (sp, [("unknown_uint16_22", "+22"), ("unknown_uint32_28", "+28")]),
             ])
-            box = _draw_raw_group(layout, "驱动源：原始字节", 'PREFERENCES', [
-                (sp, [("update_timing", "+24")]),
-                (sp, [("unknown_uint16_22", "U16(+22)"), ("unknown_uint32_28", "U32(+28)"),
-                     ("complex_mapping_info_count", "复杂映射数")]),
-            ])
-            box.label(text="+24 是曲线模式（0/1 两点、2/3 三点）；+25/+27 在「驱动源」里", icon='INFO')
-
-        box = layout.box()
-        box.label(text="ConstraintInfo 原始字段", icon='PREFERENCES')
-        col = box.column(align=True)
-        r = col.row(align=True)
-        r.prop(p, "cns_flags", text="标志位")
-        icon = 'TRIA_DOWN' if p.flags_expanded else 'TRIA_RIGHT'
-        r.prop(p, "flags_expanded", text="", icon=icon, emboss=False)
-        col.label(text="位4 / 位5 导出时会按变换类型重算，无需手动维护", icon='INFO')
-        if p.flags_expanded:
-            bits = col.column(align=True)
-            for attr, desc in (
-                ("flag_bit_0", "位0 —— 叠加：1 叠在静止姿态上，0 替换所写的轴；对缩放不起作用"),
-                ("flag_bit_1", "位1"),
-                ("flag_bit_2", "位2"),
-                ("flag_bit_3", "位3"),
-                ("flag_bit_4", "位4 —— 驱动骨骼（v36/v102 导出时按变换类型自动设置）"),
-                ("flag_bit_5", "位5 —— 驱动量为旋转（v36/v102 导出时按变换类型自动设置）"),
-                ("flag_bit_6", "位6"),
-                ("flag_bit_7", "位7"),
-            ):
-                if hide and attr in FIXED_RANGES_FIELDS:
-                    continue
-                rb = bits.row(align=True)
-                rb.prop(p, attr, text="")
-                rb.label(text=desc)
-
-        vec4 = keep([(a, a[-1].upper()) for a in
-                     ("reserved_vec4_x", "reserved_vec4_y", "reserved_vec4_z", "reserved_vec4_w")])
-        if vec4:
-            _draw_raw_group(layout, "未知四维向量 [48..63]", 'PREFERENCES', [(p, vec4)])
-        _draw_raw_group(layout, "杂项标量 [64..72]", 'PREFERENCES', [
-            (p, [("unknown_float2_x", "X"), ("unknown_float2_y", "Y")]),
-            (p, [("unknown_byte_72", "+72"), ("property_hash", "属性哈希")]),
+        box = _draw_raw_group(layout, "约束", 'PREFERENCES', [
+            (p, [("flags_other", "其余标志位")]),
+            (p, [("unknown_float2_x", "Float2 X"), ("unknown_float2_y", "Y")]),
+            (p, [("unknown_byte_72", "+72"), ("unknown_byte_74", "+74"), ("unknown_byte_75", "+75")]),
         ])
-        _draw_raw_group(layout, "尾部字节 [74..79]", 'PREFERENCES', [
-            (p, keep([("parent_tail_0", "+74"), ("parent_tail_1", "+75"), ("parent_tail_2", "+76"),
-                      ("parent_tail_3", "+77 组"), ("parent_tail_4", "+78"),
-                      ("parent_tail_5", "+79")])),
+        box.label(text="其余标志位：位4、位5 导出时按变换类型重算；位2、位3 只出现在形变和材质目标上", icon='INFO')
+        info = box.column(align=True)
+        info.label(text="关节组计数 +77：%d（导出时自动校验，不用手动维护）" % p.group_count)
+        if p.property_hash:
+            info.label(text="属性哈希：0x%08X" % (p.property_hash & 0xFFFFFFFF))
+
+
+class JCNS_PT_Ed_Ranges_Reserved(_Editor, _Sub, Panel):
+    """取值固定的字段，导出时原样写回。"""
+    bl_label  = "保留字段"
+    bl_idname = "JCNS_PT_ed_ranges_reserved"
+    bl_parent_id = "JCNS_PT_ed_ranges"
+    KIND = 'Ranges'
+
+    def draw(self, context):
+        c = _begin(self.layout, context, banner=False)
+        if c is None:
+            return
+        p = c.p
+        _draw_raw_group(c.body, "固定为 (0,0,0,1)", 'PREFERENCES', [
+            (p, [("reserved_vec4_x", "X"), ("reserved_vec4_y", "Y"),
+                 ("reserved_vec4_z", "Z"), ("reserved_vec4_w", "W")]),
         ])
+        _draw_raw_group(c.body, "固定为 0", 'PREFERENCES', [(p, [("reserved_tail", "+76 / +78 / +79")])])
 
 
 # ---------------------------------------------------------------------------
@@ -591,7 +560,6 @@ class JCNS_PT_Ed_Skin(_EditorMain, Panel):
         box = c.body.box()
         locked = _skin_table_locked(rp)
         _field_row(box.column(align=True), "对象骨骼：", p, "target_bone")
-        _field_row(box.column(align=True), "尾部字节：", p, "skin_tail_hex")
         if locked:
             box.label(text="文件带读取骨表：未设目标骨架时只能改权重", icon='INFO')
         elif rp.read_joint_signature_json:
@@ -612,6 +580,19 @@ class JCNS_PT_Ed_Skin(_EditorMain, Panel):
         else:
             row.label(text="权重和 %.3f" % total, icon='CHECKMARK')
         row.operator("jcns.skin_normalize_weights", text="归一化")
+
+
+class JCNS_PT_Ed_Skin_Reserved(_Editor, _Sub, Panel):
+    bl_label  = "保留字段"
+    bl_idname = "JCNS_PT_ed_skin_reserved"
+    bl_parent_id = "JCNS_PT_ed_skin"
+    KIND = 'Skin'
+
+    def draw(self, context):
+        c = _begin(self.layout, context, banner=False)
+        if c is None:
+            return
+        _draw_raw_group(c.body, "v102 恒为 0000", 'PREFERENCES', [(c.p, [("skin_tail_hex", "尾部 2 字节")])])
 
 
 class JCNS_PT_Ed_Skin_Preview(_PreviewSub, Panel):
@@ -639,8 +620,30 @@ class JCNS_PT_Ed_Aim(_EditorMain, Panel):
         if _skin_table_locked(c.rp):
             col.label(text="文件带读取骨表：未设目标骨架时不能换被瞄准的骨骼", icon='INFO')
         _field_row(col, "瞄准目标：", p, "aim_target_bone")
-        _field_row(col, "辅助骨骼：", p, "aim_up_bone")
+        _field_row(col, "类型：", p, "aim_type")
+        row = col.row(align=True)
+        row.active = p.aim_type in ('UP_JOINT_POSITION', 'UP_JOINT_AXIS')
+        _field_row(row, "辅助骨骼：", p, "aim_up_bone")
         _field_row(col, "影响：", p, "aim_influence")
+        _draw_rules(c.body, _AIM_RULES[p.aim_type])
+        vec = c.body.box().column(align=True)
+        vec.label(text="向量", icon='ORIENTATION_LOCAL')
+        for name in ("aim_axis", "aim_up_axis"):
+            vec.prop(p, name)
+        row = vec.column(align=True)
+        row.active = p.aim_type == 'UP_DIRECTION'
+        row.prop(p, "aim_up_dir")
+
+
+# 各类型怎样定翻滚；只有辅助骨轴（类型 2）是在上方向 (0,1,0) 下测的。
+_AIM_RULES = {
+    'WORLD_UP': [("本地瞄准轴指向目标，本地上方向轴对齐世界 +Y", True)],
+    'UP_JOINT_POSITION': [("本地瞄准轴指向目标，本地上方向轴对齐「自己指向辅助骨」的方向", True)],
+    'UP_JOINT_AXIS': [("本地瞄准轴指向目标，本地上方向轴对齐辅助骨自己的 +Y 轴（上方向为 (0,1,0) 时）", True)],
+    'UP_DIRECTION': [("本地瞄准轴指向目标，本地上方向轴对齐「上方向」向量给出的世界方向", True)],
+    'SHORTEST_ARC': [("从静止姿态朝目标转最短弧，不约束翻滚", True)],
+    'SHORTEST_ARC_PARENT': [("从父骨朝向起朝目标转最短弧，丢掉静止姿态", True)],
+}
 
 
 class JCNS_PT_Ed_Aim_Preview(_PreviewSub, Panel):
@@ -649,29 +652,8 @@ class JCNS_PT_Ed_Aim_Preview(_PreviewSub, Panel):
     KIND = 'Aim'
 
 
-class JCNS_PT_Ed_Aim_Vectors(_Editor, _Sub, Panel):
-    bl_label  = "向量"
-    bl_idname = "JCNS_PT_ed_aim_vectors"
-    bl_parent_id = "JCNS_PT_ed_aim"
-    KIND = 'Aim'
-
-    def draw(self, context):
-        c = _begin(self.layout, context, banner=False)
-        if c is None:
-            return
-        p = c.p
-        c.body.label(text="Vec1：本地瞄准轴（指向目标）；Vec2：本地对齐上方向的轴", icon='INFO')
-        c.body.label(text="类型 0：上方向取世界 +Y，Vec3 无效；3：上方向取 Vec3 给出的世界方向")
-        c.body.label(text="类型 1：取辅助骨的位置方向；2：取辅助骨自己的 +Y 轴（Vec3=(0,1,0) 时）")
-        c.body.label(text="类型 4：从静止姿态最短弧；5：从父骨朝向最短弧，丢掉静止姿态")
-        c.body.label(text="影响不为 1 时的行为和 Vec0 的作用未知")
-        col = c.body.column(align=True)
-        for name in ("aim_vec0", "aim_vec1", "aim_vec2", "aim_vec3"):
-            col.row(align=True).prop(p, name, text="")
-
-
 class JCNS_PT_Ed_Aim_Raw(_Editor, _Sub, Panel):
-    bl_label  = "原始字段"
+    bl_label  = "未知与保留字段"
     bl_idname = "JCNS_PT_ed_aim_raw"
     bl_parent_id = "JCNS_PT_ed_aim"
     KIND = 'Aim'
@@ -681,9 +663,10 @@ class JCNS_PT_Ed_Aim_Raw(_Editor, _Sub, Panel):
         if c is None:
             return
         p = c.p
-        _draw_raw_group(c.body, "原始字段", 'PREFERENCES', [
-            (p, [("aim_rotation_type", "RotationType")]),
-            (p, [("aim_bytes", "")]),
+        _draw_raw_group(c.body, "未知字段", 'PREFERENCES', [
+            (p, [("aim_vec0", "")]), (p, [("aim_bytes", "")]),
+        ])
+        _draw_raw_group(c.body, "保留字段（恒为 0）", 'PREFERENCES', [
             (p, [("aim_tail_hex", "尾部")]), (p, [("aim_target_tail_hex", "目标块尾部")]),
         ])
 
@@ -704,6 +687,17 @@ class JCNS_PT_Ed_RotExpr(_EditorMain, Panel):
         col = c.body.box().column(align=True)
         _field_row(col, "被驱动的骨骼：", c.p, "target_bone")
         _field_row(col, "源骨骼：", c.p, "rot_source_bone")
+        _field_row(col, "静止姿态：", c.p, "rot_rest_mode")
+        col.prop(c.p, "rot_gains")
+        _draw_rules(c.body, _ROT_RULES[c.p.rot_rest_mode])
+
+
+_ROT_RULES = {
+    'REPLACE': [("结果是源旋转按系数缩放后的旋转，不含静止姿态；系数 (1,1,1) 时等于源的旋转", True),
+                ("系数不是 1 时只有小角度是每轴相乘，大角度偏离线性，精确公式未定", False)],
+    'ADD_REST': [("结果 = 静止姿态 · 源旋转按系数缩放后的旋转；系数 (1,1,1) 时是精确拷贝", True),
+                 ("系数不是 1 时只有小角度是每轴相乘，大角度偏离线性，精确公式未定", False)],
+}
 
 
 class JCNS_PT_Ed_RotExpr_Preview(_PreviewSub, Panel):
@@ -713,7 +707,7 @@ class JCNS_PT_Ed_RotExpr_Preview(_PreviewSub, Panel):
 
 
 class JCNS_PT_Ed_RotExpr_Raw(_Editor, _Sub, Panel):
-    bl_label  = "原始字段"
+    bl_label  = "未知与保留字段"
     bl_idname = "JCNS_PT_ed_rotexpr_raw"
     bl_parent_id = "JCNS_PT_ed_rotexpr"
     KIND = 'RotExpression'
@@ -723,9 +717,9 @@ class JCNS_PT_Ed_RotExpr_Raw(_Editor, _Sub, Panel):
         if c is None:
             return
         p = c.p
-        _draw_raw_group(c.body, "Rotation/Scale 通常为 0,0,0,1", 'PREFERENCES', [
+        _draw_raw_group(c.body, "未知字段", 'PREFERENCES', [(p, [("rot_unknown_bytes", "")])])
+        _draw_raw_group(c.body, "保留字段（Rotation / Scale 恒为 0,0,0,1）", 'PREFERENCES', [
             (p, [("rot_rotation", "")]), (p, [("rot_scale", "")]),
-            (p, [("rot_bytes", "")]), (p, [("rot_floats", "")]),
         ])
 
 
@@ -812,11 +806,12 @@ _classes = [
     JCNS_PT_Ed_Ranges_Cones,
     JCNS_PT_Ed_Ranges_Tools,
     JCNS_PT_Ed_Ranges_Advanced,
+    JCNS_PT_Ed_Ranges_Reserved,
     JCNS_PT_Ed_Skin,
     JCNS_PT_Ed_Skin_Preview,
+    JCNS_PT_Ed_Skin_Reserved,
     JCNS_PT_Ed_Aim,
     JCNS_PT_Ed_Aim_Preview,
-    JCNS_PT_Ed_Aim_Vectors,
     JCNS_PT_Ed_Aim_Raw,
     JCNS_PT_Ed_RotExpr,
     JCNS_PT_Ed_RotExpr_Preview,

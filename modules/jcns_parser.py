@@ -123,16 +123,16 @@ class JCNSParser:
                                              winning whatever its axis (13 is 20% of all
                                              constraints; 14 behaved identically).  3 and 7-12
                                              drive blend shapes / materials, unmeasured.
-      +48:  UnknownVector4D       vec4     (0,0,0,1) in every constraint.
+      +48:  ReservedVec4          vec4     (0,0,0,1) in every constraint.
       +64:  UnknownFloat2         float[2] (0,0) in 99.7%.  BlendShape targets mostly (0,1);
                                              11 rotation targets carry pairs like (-45,0),
                                              (-90,-90), (0,2), (-2,2) that do not match their
                                              mapping ranges, so not an obvious clamp.
                                              Unmeasured.
-      +72:  UnknownUInt8          uint8    0 in 98.7%, else 1-4.  Unmeasured.
+      +72:  UnknownByte72          uint8    0 in 98.7%, else 1-4; follows the target bone (99.6%).  Unmeasured.
       +73:  TransformAxis         uint8    bt: AxisID, the target axis; equals target_axis in
                                              every entry.  Takes W (1.1%), sources never do.
-      +74:  Tail[0..5]            6 bytes  +74: 0 in 98.9% (else 5/2/1), unmeasured.
+      +74:  TailBytes[0..5]        6 bytes  +74: 0 in 98.9% (else 5/2/1), follows the target bone (99.7%), unmeasured.
                                              +75: 2 in 69%, also 5/0/1/3/6/8; one value per file
                                              in 940 of 971 files (mixed files split translation 2
                                              / rotation 8 on one bone).  Unmeasured.

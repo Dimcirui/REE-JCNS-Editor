@@ -56,7 +56,7 @@ Transformation 约束按欧拉分量乘系数，引擎是否如此未测；预�
 ## 新增一种分区 / 预览
 
 1. `modules/jcns_kinds.py`：加一条 `Kind`，在 `capabilities()` 里写规则，跑 `tests/test_kinds.py`。
-2. `jcns_editors.py`：继承 `_EditorMain` 写主面板，需要的话加子面板（原始字段用 `_Sub` 默认折叠），加进 `_classes`（父在前）。
+2. `jcns_editors.py`：继承 `_EditorMain` 写主面板，需要的话加子面板（含义未知的字段和取值固定的保留字段各放一个 `_Sub` 子面板，默认折叠），加进 `_classes`（父在前）。
    面板开头调 `_begin()`，它按 `capabilities` 决定整块能否编辑并画出原因。
 3. 要预览：复用 `constraint` 后端（在 `modules/jcns_preview_plan.py` 加一个 `plan_*`，在 `jcns_preview._plan_for` 接上），
    或者写新的 `PreviewBackend` 注册进 `BACKENDS`。
@@ -74,17 +74,17 @@ Transformation 约束按欧拉分量乘系数，引擎是否如此未测；预�
 
 ## 待讨论：各分区的编辑器怎么做
 
-现在每个分区的编辑器都是把原有界面**原样搬**进各自的面板（只把 Ranges 拆成子面板、原始字段折叠）。
+每个分区的编辑器把已知含义的字段放在主面板（Ranges 的叠加开关、曲线的三点映射、参考系；Aim 的类型与向量；RotExpr 的系数与静止姿态模式），含义未知的字段在「未知字段」子面板，取值固定的在「保留字段」子面板。
 下面这些是搬完之后值得重新设计的地方，按分区列出：
 
 - **Ranges**：映射方式二选一显示（已做：有 ComplexMapping 的源在「映射曲线」里显示关键帧曲线，曲线本身是约束 Empty 上的
   F-Curve，在曲线编辑器里编辑，见 jcns_cm.py）；列表行应显示"被后面覆盖"（已做）和"静止时已偏转"；多源约束的编辑流程。
 - **Skin**：源数超过 4 的提示；权重和≠1 引擎会归一化（第 12 轮实测），编辑器里只提示。
 - **Aim**：`RotationType` 决定 up 骨和 `vec0` 是否有意义（1/2 必带 up 骨，0/3/4/5 从不带，`vec0` 只在 2 非零），
-  应当放进主面板并据此显示/隐藏字段，而不是全放"原始字段"。第 12、14 轮实测：Vec1 是本地瞄准轴，Vec2 是本地对齐上方向的轴；
+  已放进主面板，辅助骨和上方向向量按类型置灰。第 12、14 轮实测：Vec1 是本地瞄准轴，Vec2 是本地对齐上方向的轴；
   类型 0 上方向取世界 +Y（Vec3 无效），3 取 Vec3 给出的世界方向，1 取 up 骨位置方向，2 取 up 骨自己的 +Y 轴（只在 Vec3=(0,1,0) 下测过），
   4 从静止姿态最短弧，5 从父骨朝向最短弧（丢掉静止姿态）。没测：Vec0、类型 2 下 Vec3 的作用、影响≠1（0.5 时世界旋转几乎不动，原因未知）。
-- **RotExpr**：`rot_floats` 大概是每轴系数，是真正要改的数据，现在藏在原始字段里；`rot_rotation`/`rot_scale` 是恒等四元数，
+- **RotExpr**：系数（`rot_gains`）和静止姿态模式（`rot_rest_mode`）已放进主面板；`rot_rotation`/`rot_scale` 是恒等四元数，
   `rot_scale` 这个名字有误导性。
 - **Material**：哈希编辑对人不友好；项目里有 `hashUTF16`，可以做"输入名称→算哈希"（未确认材质名哈希用的是同一个函数）。
 - **文件级数据**：ObjectSettings、ConeDriver 表、读取骨表目前只读展示；ObjectSettings 的含义还没研究过。

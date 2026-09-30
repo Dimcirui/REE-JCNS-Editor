@@ -122,7 +122,7 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
     re-emit these sections.
     """
     import json
-    from . import section_empties, get_constraint_empties
+    from . import section_empties, get_constraint_empties, AIM_TYPE_TO_INT
     _ensure_modules_path()
     import jcns_sections as X
 
@@ -144,7 +144,7 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
                 'sources': [{'hash': H(w.bone), 'weight': w.weight} for w in o.jcns_cns_props.skin_sources]}
                for o in section_empties(root_obj, 'Skin')]
     table = bytes.fromhex(root_props.read_joint_table_hex or '')
-    meta = {'constant': root_props.skin_constant, 'tail': X.skin_default_tail(records),
+    meta = {'constant': root_props.file_constant, 'tail': X.skin_default_tail(records),
             'read_joint_table': [int.from_bytes(table[i:i + 4], 'little') for i in range(0, len(table), 4)]}
     locked = json.loads(root_props.read_joint_signature_json) if root_props.read_joint_signature_json else []
     # The table also covers the Aim joints, so it is resolved against both.
@@ -172,8 +172,8 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
             'joint': H(p.target_bone), 'target': H(p.aim_target_bone),
             'up': H(p.aim_up_bone) if p.aim_up_bone.strip() else None,
             'influence': p.aim_influence,
-            'vectors': [tuple(p.aim_vec0), tuple(p.aim_vec1), tuple(p.aim_vec2), tuple(p.aim_vec3)],
-            'rotation_type': p.aim_rotation_type, 'bytes': tuple(p.aim_bytes),
+            'vectors': [tuple(p.aim_vec0), tuple(p.aim_axis), tuple(p.aim_up_axis), tuple(p.aim_up_dir)],
+            'rotation_type': AIM_TYPE_TO_INT[p.aim_type], 'bytes': tuple(p.aim_bytes),
             'tail': bytes.fromhex(p.aim_tail_hex or '00' * 12).ljust(12, b'\0')[:12],
             'target_tail': bytes.fromhex(p.aim_target_tail_hex or '00' * 8).ljust(8, b'\0')[:8],
         })
@@ -181,7 +181,7 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
 
     rots = [{'joint': H(o.jcns_cns_props.target_bone), 'source': H(o.jcns_cns_props.rot_source_bone),
              'rotation': tuple(o.jcns_cns_props.rot_rotation), 'scale': tuple(o.jcns_cns_props.rot_scale),
-             'bytes': tuple(o.jcns_cns_props.rot_bytes), 'floats': tuple(o.jcns_cns_props.rot_floats)}
+             'bytes': _rot_bytes(o.jcns_cns_props), 'floats': tuple(o.jcns_cns_props.rot_gains)}
             for o in section_empties(root_obj, 'RotExpression')]
     try:
         parser.rot_expressions, parser.rot_expression_map = X.rot_parser_form(
@@ -354,6 +354,13 @@ def _make_default_constraint_dict(empty_obj):
     }
 
 
+def _rot_bytes(p):
+    """A RotExpression record's four bytes: byte[1] is the rest-pose mode."""
+    from . import ROT_REST_TO_INT
+    ub = p.rot_unknown_bytes
+    return (ub[0], ROT_REST_TO_INT[p.rot_rest_mode], ub[1], ub[2])
+
+
 def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached=False, version=102):
     """
     Overwrite the editable fields of a parsed constraint dict from the Empty.
@@ -362,7 +369,7 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
     value when absent (the writer appends it).  The writer recomputes TargetHash
     and ObjectHashIndex from ObjectName.
     """
-    from . import AXIS_TO_INT
+    from . import AXIS_TO_INT, flags_byte
     _ensure_modules_path()
     try:
         from hashing.mmh3.pymmh3 import hashUTF16
@@ -404,7 +411,7 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
         base['ref_frame_y']     = sp.ref_frame_y
         base['ref_frame_z']     = sp.ref_frame_z
         base['ref_frame_w']     = sp.ref_frame_w
-        base['CurveMode']    = sp.update_timing
+        base['CurveMode']    = (sp.curve_mode_extra & ~2) | (2 if sp.three_point else 0)
         base['ReadMode']        = jcns_source_read.read_mode_value(sp.read_mode)
         base['EulerOrder']      = jcns_source_read.euler_order_value(sp.euler_order)
         base['UnknownUInt16_22']   = sp.unknown_uint16_22
@@ -424,8 +431,8 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
     # type and are recomputed; v35 does not follow the rule and is written as is.
     from .modules_shim import get_flags
     flags = get_flags()
-    parsed_c['Flags'] = (flags.apply_derived_bits(p.cns_flags, p.transform_type)
-                         if version in flags.DERIVED_BITS_VERSIONS else int(p.cns_flags) & 0xFF)
+    parsed_c['Flags'] = (flags.apply_derived_bits(flags_byte(p), p.transform_type)
+                         if version in flags.DERIVED_BITS_VERSIONS else flags_byte(p))
     parsed_c['ReservedVec4']          = (p.reserved_vec4_x, p.reserved_vec4_y,
                                        p.reserved_vec4_z, p.reserved_vec4_w)
     parsed_c['UnknownFloat2']        = (p.unknown_float2_x, p.unknown_float2_y)
@@ -437,8 +444,8 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
         for k in p.cone_infos]
     parsed_c['ConeDriverInfoCount'] = len(parsed_c['ConeDriverInfo'])
     parsed_c['TailBytes']     = bytes([
-        p.parent_tail_0, p.parent_tail_1, p.parent_tail_2,
-        p.parent_tail_3, p.parent_tail_4, p.parent_tail_5,
+        p.unknown_byte_74, p.unknown_byte_75, p.reserved_tail[0],
+        p.group_count, p.reserved_tail[1], p.reserved_tail[2],
     ])
 
 

@@ -34,7 +34,7 @@
   - 「在全部原版文件里恒为 (0,0,0,1)」→「固定为 (0,0,0,1)，请勿修改。」
   - 「原版 77% 的源用 3」→「最常用（约 77%）。」
 - **开发历史**：原名、bt 叫作、曾被误读为、已改为、之前当作……。旧名和别名只记在 `docs/` 或代码注释里。
-- **内部术语**：fallback、raw bytes、opaque、内部属性名（`cns_flags`、`update_timing` 之类）、函数名、模块名。
+- **内部术语**：fallback、raw bytes、opaque、内部属性名（`flags_other`、`curve_mode_extra` 之类）、函数名、模块名。
   用户确实要认的格式名可以保留：`JCNS`、`ReadJointTable`、`ComplexMapping`、骨骼名。
 - **调试信息**：traceback、异常类名、本地路径。这些用 `traceback.print_exc()` 打到控制台，
   界面只提示「详情请查看系统控制台」。

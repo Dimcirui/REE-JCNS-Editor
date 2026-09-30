@@ -95,7 +95,7 @@ def source_map(s, target_q):
                                                 _unit_scale(target_q))))
     vals = (s['from_start'], s['from_kink'], s['from_end'],
             s['to_start'],   s['to_kink'],   s['to_end'])
-    return tuple(m.driver_anchors(vals, src_q, target_q)) + (m.is_two_point(s.get('update_timing')),)
+    return tuple(m.driver_anchors(vals, src_q, target_q)) + (m.is_two_point(s.get('curve_mode')),)
 
 
 def channel_id(armature_name, bone, transform, axis):

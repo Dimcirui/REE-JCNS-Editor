@@ -137,23 +137,26 @@ def driver_anchors(values, source_quantity, target_quantity):
             + _to_driver_units((ts, tk, te), target_quantity))
 
 
-def is_two_point(update_timing):
+def is_two_point(curve_mode):
     """Does this +24 CurveMode value select the two-point curve?
 
     Matches the known values 0 and 1 rather than testing bit 1, since 4 and 5
     are unknown.
     """
-    return update_timing in (0, 1)
+    return curve_mode in (0, 1)
+
+
+def curve_mode_value(source):
+    """The CurveMode byte of a source: the parser dict's `CurveMode` / `curve_mode`, or the
+    Blender PropertyGroup's `three_point` (bit 1) plus `curve_mode_extra` (the other bits)."""
+    if isinstance(source, dict):
+        return source.get('CurveMode', source.get('curve_mode', 3))
+    return (int(source.curve_mode_extra) & ~2) | (2 if source.three_point else 0)
 
 
 def source_two_point(source):
-    """Curve mode of a source: `CurveMode` on parser dicts, `update_timing` on
-    the Blender PropertyGroup."""
-    if isinstance(source, dict):
-        v = source.get('CurveMode', source.get('update_timing'))
-    else:
-        v = getattr(source, 'update_timing', None)
-    return is_two_point(v)
+    """Does this source use the two-point curve?"""
+    return is_two_point(curve_mode_value(source))
 
 
 def is_folded(from_start, from_kink, from_end):

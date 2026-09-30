@@ -76,6 +76,26 @@ def _euler_order_items():
 # +27 EulerOrder, Blender order names.
 _EULER_ORDER_ITEMS = _euler_order_items()
 
+# Aim RotationType: how the roll around the aim axis is fixed.
+AIM_TYPE_ITEMS = [
+    ('WORLD_UP', "0 世界上方向", "上方向取世界 +Y，上方向向量无效"),
+    ('UP_JOINT_POSITION', "1 辅助骨位置", "上方向取自己指向辅助骨的方向"),
+    ('UP_JOINT_AXIS', "2 辅助骨轴", "上方向取辅助骨自己的 +Y 轴（只在 Vec3=(0,1,0) 下测过）"),
+    ('UP_DIRECTION', "3 指定上方向", "上方向取「上方向」向量给出的世界方向"),
+    ('SHORTEST_ARC', "4 最短弧", "从静止姿态朝目标转最短弧，不约束翻滚"),
+    ('SHORTEST_ARC_PARENT', "5 父骨最短弧", "从父骨朝向起朝目标转最短弧，丢掉静止姿态"),
+]
+AIM_TYPE_TO_INT = {item[0]: i for i, item in enumerate(AIM_TYPE_ITEMS)}
+INT_TO_AIM_TYPE = {i: ident for ident, i in AIM_TYPE_TO_INT.items()}
+
+# RotExpression byte[1]: whether the result lies on the rest pose.
+ROT_REST_ITEMS = [
+    ('REPLACE', "替换", "结果不含静止姿态（字节 0）"),
+    ('ADD_REST', "叠在静止姿态上", "结果 = 静止姿态 · 值（字节 48）"),
+]
+ROT_REST_TO_INT = {'REPLACE': 0, 'ADD_REST': 48}
+INT_TO_ROT_REST = {0: 'REPLACE', 48: 'ADD_REST'}
+
 TRANSFORM_ITEMS = [
     ('Translation',    "Translation",    "0：驱动骨骼位置"),
     ('Rotation',       "Rotation",       "1：欧拉旋转，静止姿态 · Rz·Ry·Rx"),
@@ -124,18 +144,14 @@ TRANSFORM_TYPE_MAP = {
 # Update and search callbacks
 # ---------------------------------------------------------------------------
 
-def _update_flags_from_bits(self, context):
-    """Called when any flag_bit_N changes — repack into cns_flags."""
-    self['cns_flags'] = sum(int(getattr(self, f'flag_bit_{i}')) << i for i in range(8))
+def _update_additive(self, context):
     _refresh_flags_preview(self)
 
 
-def _update_bits_from_flags(self, context):
-    """Called when cns_flags changes — unpack into flag_bit_N."""
-    v = self.cns_flags & 0xFF
-    for i in range(8):
-        self[f'flag_bit_{i}'] = bool(v & (1 << i))
-    _refresh_flags_preview(self)
+def flags_byte(p):
+    """The ConstraintInfo Flags byte: bit 0 is the additive switch, the other bits
+    are kept as read (bits 4 and 5 are rederived from the transform type on export)."""
+    return (int(p.flags_other) & 0xFE) | int(bool(p.additive))
 
 
 def _refresh_flags_preview(self):
@@ -373,14 +389,19 @@ class JCNSSourceProperties(PropertyGroup):
 
     # --- Raw bytes ---
     # +24 and +25 default to 3, the most common value.
-    update_timing: IntProperty(
+    three_point: BoolProperty(
         update=_refresh_preview_values,
-        name="曲线模式 (+24)",
+        name="三点映射",
         description=(
-            "映射曲线的形状。0 和 1：两点直线，忽略折点；2 和 3：三点折线，折点生效。"
-            "三点模式下折点落在起点与终点之外时，整条源失效，输出恒为 0。最常用 3"
+            "映射曲线的形状（曲线模式的位1）。关：两点直线，忽略折点；开：三点折线，折点生效。"
+            "三点模式下折点落在起点与终点之外时，整条源失效，输出恒为 0"
         ),
-        default=3, min=0, max=255,
+        default=True,
+    )
+    curve_mode_extra: IntProperty(
+        name="曲线模式其余位",
+        description="曲线模式去掉位1 的其余位：位0 不起作用（多与 Flags 位0 一致），位2 及以上只出现在材质目标上，含义未知",
+        default=1, min=0, max=253,
     )
     read_mode: EnumProperty(
         update=_refresh_preview,
@@ -461,21 +482,18 @@ class JCNSConstraintProperties(PropertyGroup):
         default='X',
     )
 
-    # --- ConstraintInfo raw fields (editable, exported) ---
-    # cns_flags and flag_bit_N sync both ways through their update callbacks.
-    cns_flags: IntProperty(
-        name="标志位", description="位0 为叠加开关：1 把值叠加在静止姿态上，0 替换所写的轴，对缩放不起作用。位4、位5 导出时按变换类型自动设置",
-        default=0x31, min=0, max=255, update=_update_bits_from_flags,
+    # --- ConstraintInfo fields (editable, exported) ---
+    additive: BoolProperty(
+        name="叠加",
+        description="Flags 位0。开：值叠加在静止姿态上；关：替换所写的轴（旋转、平移），对缩放不起作用",
+        default=True, update=_update_additive,
     )
-    flags_expanded: BoolProperty(name="展开标志位", default=False)
-    flag_bit_0: BoolProperty(name="Bit0 — 叠加",    default=True,  update=_update_flags_from_bits)
-    flag_bit_1: BoolProperty(name="Bit1",            default=False, update=_update_flags_from_bits)
-    flag_bit_2: BoolProperty(name="Bit2",            default=False, update=_update_flags_from_bits)
-    flag_bit_3: BoolProperty(name="Bit3",            default=False, update=_update_flags_from_bits)
-    flag_bit_4: BoolProperty(name="Bit4 — 驱动骨骼", default=True, update=_update_flags_from_bits)
-    flag_bit_5: BoolProperty(name="Bit5 — 驱动旋转", default=True, update=_update_flags_from_bits)
-    flag_bit_6: BoolProperty(name="Bit6",            default=False, update=_update_flags_from_bits)
-    flag_bit_7: BoolProperty(name="Bit7",            default=False, update=_update_flags_from_bits)
+    flags_other: IntProperty(
+        name="其余标志位",
+        description="Flags 去掉位0 的其余位：位4 驱动骨骼、位5 驱动量为旋转（v36/v102 导出时按变换类型重算），"
+                    "位2、位3 只出现在形变和材质目标上，含义未知",
+        default=0x30, min=0, max=254,
+    )
     reserved_vec4_x: FloatProperty(name="Vec4 X", default=0.0, precision=5, description="固定为 0，请勿修改")
     reserved_vec4_y: FloatProperty(name="Vec4 Y", default=0.0, precision=5, description="固定为 0，请勿修改")
     reserved_vec4_z: FloatProperty(name="Vec4 Z", default=0.0, precision=5, description="固定为 0，请勿修改")
@@ -497,26 +515,21 @@ class JCNSConstraintProperties(PropertyGroup):
     # ConeDriverInfo[]: the cones this constraint reads (RE9 uses them heavily)
     cone_infos: CollectionProperty(type=JCNSConeInfo)
     active_cone_info_index: IntProperty(default=0)
-    # [3] (+77) is the joint-group count (jcns_writer.tail_group_counts); the
-    # others are unknown, and [1] defaults to its most common value.
-    parent_tail_0: IntProperty(name="Tail[0]", default=0, min=0, max=255,
-                               description="具体作用未知。通常为 0（约 99%）")
-    parent_tail_1: IntProperty(name="Tail[1]", default=2, min=0, max=255,
-                               description="具体作用未知。通常为 2（约 69%），同一文件里一般只用一个值")
-    parent_tail_2: IntProperty(name="Tail[2]", default=0, min=0, max=255,
-                               description="固定为 0，请勿修改")
-    parent_tail_3: IntProperty(
-        name="关节组计数 (Tail[3])",
+    # +77 is the joint-group count (jcns_writer.tail_group_counts derives it); +74 and +75
+    # are unknown, and +75 defaults to its most common value.
+    unknown_byte_74: IntProperty(name="+74", default=0, min=0, max=255,
+                                 description="具体作用未知。通常为 0（约 99%），跟着目标骨走")
+    unknown_byte_75: IntProperty(name="+75", default=2, min=0, max=255,
+                                 description="具体作用未知。通常为 2（约 69%），同一文件里同一变换类型一般只用一个值")
+    group_count: IntProperty(
+        name="关节组计数",
         description=(
             "紧跟在这条后面、与它同目标同变换同 Flags 的连续条目数（组首填 N，组员填 0）。"
-            "引擎把整组输出都写到组首条目的目标骨上，数错了结果会落到别的骨头上。"
-            "导出时自动校验：整份文件分组合法就照写，否则全部重算"
+            "引擎把整组输出都写到组首条目的目标骨上。导出时自动校验：整份文件分组合法就照写，否则全部重算"
         ),
         default=0, min=0, max=255)
-    parent_tail_4: IntProperty(name="Tail[4]", default=0, min=0, max=255,
-                               description="固定为 0，请勿修改")
-    parent_tail_5: IntProperty(name="Tail[5]", default=0, min=0, max=255,
-                               description="固定为 0，请勿修改")
+    reserved_tail: IntVectorProperty(name="保留字节 +76 / +78 / +79", size=3, default=(0, 0, 0), min=0, max=255,
+                                     description="固定为 0")
 
     # --- Material constraint-specific fields (populated at import, editable) ---
     mat_name_hash: StringProperty(
@@ -559,12 +572,17 @@ class JCNSConstraintProperties(PropertyGroup):
     aim_up_bone: StringProperty(name="辅助骨骼", description="AimVectorPointJoint；留空表示不使用",
                                 default="", update=_refresh_preview, search=_search_target_bone)
     aim_influence: FloatProperty(name="影响", default=1.0, update=_refresh_preview_values)
-    aim_vec0: FloatVectorProperty(name="Vec0", size=3, default=(0.0, 0.0, 0.0))
-    aim_vec1: FloatVectorProperty(name="Vec1", size=3, default=(1.0, 0.0, 0.0),
+    aim_vec0: FloatVectorProperty(name="Vec0", size=3, default=(0.0, 0.0, 0.0),
+                                  description="只在类型 2 非零，作用未知")
+    aim_axis: FloatVectorProperty(name="瞄准轴", size=3, default=(1.0, 0.0, 0.0),
+                                  description="目标骨自己的局部轴，指向瞄准目标",
                                   update=_refresh_preview_values)
-    aim_vec2: FloatVectorProperty(name="Vec2", size=3, default=(0.0, 1.0, 0.0))
-    aim_vec3: FloatVectorProperty(name="Vec3", size=3, default=(0.0, 1.0, 0.0))
-    aim_rotation_type: IntProperty(name="RotationType", default=0, min=0, max=255)
+    aim_up_axis: FloatVectorProperty(name="上方向轴", size=3, default=(0.0, 1.0, 0.0),
+                                     description="目标骨自己的局部轴，与「上」对齐")
+    aim_up_dir: FloatVectorProperty(name="上方向", size=3, default=(0.0, 1.0, 0.0),
+                                    description="类型 3 下是世界里的上方向；类型 0 无效；类型 2 下作用没测")
+    aim_type: EnumProperty(name="类型", items=AIM_TYPE_ITEMS, default='WORLD_UP',
+                           update=_refresh_preview)
     aim_bytes: IntVectorProperty(name="字节 +57..59", size=3, default=(1, 0, 5), min=0, max=255)
     aim_tail_hex: StringProperty(name="尾部 12 字节", default="00" * 12)
     aim_target_tail_hex: StringProperty(name="目标块尾部 8 字节", default="00" * 8)
@@ -574,9 +592,11 @@ class JCNSConstraintProperties(PropertyGroup):
                                     search=_search_target_bone)
     rot_rotation: FloatVectorProperty(name="Rotation", size=4, default=(0.0, 0.0, 0.0, 1.0))
     rot_scale: FloatVectorProperty(name="Scale", size=4, default=(0.0, 0.0, 0.0, 1.0))
-    rot_bytes: IntVectorProperty(name="字节", size=4, default=(0, 0, 0, 0), min=0, max=255)
-    rot_floats: FloatVectorProperty(name="尾部浮点", size=3, default=(1.0, 1.0, 1.0),
-                                    update=_refresh_preview_values)
+    rot_rest_mode: EnumProperty(name="静止姿态", items=ROT_REST_ITEMS, default='REPLACE')
+    rot_unknown_bytes: IntVectorProperty(name="未知字节 0 / 2 / 3", size=3, default=(0, 0, 0), min=0, max=255)
+    rot_gains: FloatVectorProperty(name="系数", size=3, default=(1.0, 1.0, 1.0),
+                                   description="每轴的系数。(1,1,1) 是精确拷贝；其他值小角度时每轴相乘，大角度偏离线性",
+                                   update=_refresh_preview_values)
 
     # --- Section type (set at import, read-only in UI) ---
     constraint_type: StringProperty(
@@ -757,7 +777,7 @@ class JCNSRootProperties(PropertyGroup):
         name="条目", description="列表里当前条目的序号；读写的是当前活动物体",
         get=_entry_index_get, set=_entry_index_set,
     )
-    skin_constant: IntProperty(default=5)
+    file_constant: IntProperty(default=5)
     read_joint_table_hex: StringProperty(default="")
     read_joint_signature_json: StringProperty(default="")
     rot_map_hex: StringProperty(default="")
@@ -982,12 +1002,6 @@ def register():
 
     bpy.types.Object.jcns_root_props = PointerProperty(type=JCNSRootProperties)
     bpy.types.Object.jcns_cns_props  = PointerProperty(type=JCNSConstraintProperties)
-    # UI only: lives on the window manager, so it is not saved into .blend files.
-    bpy.types.WindowManager.jcns_hide_fixed = BoolProperty(
-        name="隐藏固定字段",
-        description="隐藏取值固定的原始字段，只留下含义未知、取值会变化的",
-        default=False,
-    )
     bpy.types.Scene.jcns_active_collection = PointerProperty(
         type=bpy.types.Collection,
         name="工作集合",
@@ -1016,7 +1030,6 @@ def unregister():
     jcns_operators.unregister()
 
     del bpy.types.Scene.jcns_active_collection
-    del bpy.types.WindowManager.jcns_hide_fixed
     del bpy.types.Object.jcns_cns_props
     del bpy.types.Object.jcns_root_props
 

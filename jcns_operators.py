@@ -75,8 +75,8 @@ def _sources_for_driver(cns_props):
             'axis_name':  sp.source_axis,
             'from_start': sp.from_start, 'from_kink': sp.from_kink, 'from_end': sp.from_end,
             'to_start':   sp.to_start,   'to_kink':   sp.to_kink,   'to_end':   sp.to_end,
-            # +24 selects the curve mode; see modules.jcns_mapping.is_two_point.
-            'update_timing': sp.update_timing,
+            # Curve mode byte (bit 1 = three-point); see modules.jcns_mapping.is_two_point.
+            'curve_mode': get_mapping().curve_mode_value(sp),
             # +25 ReadMode, as its byte value: how the source bone is read
             # (modules/jcns_source_read.py).
             'read_mode': get_mapping().read_mode_value(sp.read_mode),
@@ -397,7 +397,7 @@ def _apply_translation_bone(armature_obj, root_obj, bone, chans):
 
 def _replaces(members):
     """The live (last) entry of a channel writes with Flags bit0 = 0."""
-    return not (members[-1].jcns_cns_props.cns_flags & 1)
+    return not members[-1].jcns_cns_props.additive
 
 
 def _target_mode(members):
@@ -1034,7 +1034,7 @@ class JCNS_OT_AddSource(Operator):
         if len(p.sources) > 1:
             prev = p.sources[len(p.sources) - 2]
             for attr in ('source_axis', 'from_start', 'from_kink', 'from_end',
-                         'to_start', 'to_kink', 'to_end', 'update_timing',
+                         'to_start', 'to_kink', 'to_end', 'three_point', 'curve_mode_extra',
                          'read_mode', 'ref_frame_w'):
                 setattr(sp, attr, getattr(prev, attr))
         p.active_source_index = len(p.sources) - 1
@@ -1155,7 +1155,7 @@ class JCNS_OT_MirrorConstraints(Operator):
 
     def execute(self, context):
         from . import (get_jcns_constraint, get_jcns_root_from_constraint,
-                       get_constraint_empties, constraint_name_from_props)
+                       get_constraint_empties, constraint_name_from_props, flags_byte)
         from .modules_shim import get_mirror
 
         if not self.mirror_target and not self.mirror_source:
@@ -1244,7 +1244,7 @@ class JCNS_OT_MirrorConstraints(Operator):
                     mate = sp.source_bone
                     src_sigma = None
                 vals, i_s, o_s = mirror.mirror_source(
-                    sp, sp.source_axis, p.target_axis, p.cns_flags,
+                    sp, sp.source_axis, p.target_axis, flags_byte(p),
                     src_sigma, tgt_sigma, p.transform_type,
                     mirror_in=self.mirror_source, mirror_out=self.mirror_target)
                 if vals is None:
@@ -1290,7 +1290,7 @@ class JCNS_OT_MirrorConstraints(Operator):
             q.target_bone = new_tgt
             q.target_axis = p.target_axis
             q.transform_type = p.transform_type
-            q.cns_flags = p.cns_flags
+            q.additive, q.flags_other = p.additive, p.flags_other
             for old in q.sources:
                 jcns_cm.remove(old)
             q.sources.clear()
@@ -1302,7 +1302,7 @@ class JCNS_OT_MirrorConstraints(Operator):
                     if not k.startswith('_'):
                         setattr(ns, k, v)
                 for attr in ('ref_frame_x', 'ref_frame_y', 'ref_frame_z',
-                             'ref_frame_w', 'update_timing', 'read_mode',
+                             'ref_frame_w', 'three_point', 'curve_mode_extra', 'read_mode',
                              'euler_order', 'unknown_uint16_22', 'unknown_uint32_28'):
                     setattr(ns, attr, getattr(orig, attr))
                 if '_frame' in vals:
@@ -1528,7 +1528,7 @@ class JCNS_OT_CMCreate(Operator):
         m = get_mapping()
         keys = jcns_cm.jcns_complex.from_three_point(
             sp.from_start, sp.from_kink, sp.from_end, sp.to_start, sp.to_kink, sp.to_end,
-            two_point=m.is_two_point(sp.update_timing))
+            two_point=m.is_two_point(m.curve_mode_value(sp)))
         sp.cm_cache.clear()
         jcns_cm.set_keys(sp, keys)
         # Shipped keyframed sources carry all-zero anchors.

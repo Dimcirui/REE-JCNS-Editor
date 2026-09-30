@@ -97,7 +97,7 @@ def do_import(filepath, context, armature_obj=None):
     Returns (root_empty, count, error_str).  error_str is '' on success.
     """
     from . import (
-        AXIS_TO_INT, INT_TO_AXIS, TRANSFORM_TYPE_MAP,
+        AXIS_TO_INT, INT_TO_AXIS, TRANSFORM_TYPE_MAP, INT_TO_AIM_TYPE, INT_TO_ROT_REST,
         make_constraint_empty_name,
     )
 
@@ -204,7 +204,8 @@ def do_import(filepath, context, armature_obj=None):
             sp.ref_frame_y = s.get('ref_frame_y', 0.0)
             sp.ref_frame_z = s.get('ref_frame_z', 0.0)
             sp.ref_frame_w = s.get('ref_frame_w', 1.0)
-            sp.update_timing    = s.get('CurveMode', 3)
+            cm_value = s.get('CurveMode', 3)
+            sp.three_point, sp.curve_mode_extra = bool(cm_value & 2), cm_value & ~2
             mode = jcns_source_read.read_mode_id(s.get('ReadMode', 3))
             if mode is None:
                 # The enum cannot hold an unknown mode.
@@ -225,8 +226,8 @@ def do_import(filepath, context, armature_obj=None):
             if s.get('ComplexMapping'):
                 jcns_cm.load(sp, s['ComplexMapping'])
 
-        # cns_flags' update callback syncs the 8 bit properties.
-        p.cns_flags = c.get('Flags', 0x30)
+        flags = c.get('Flags', 0x30)
+        p.additive, p.flags_other = bool(flags & 1), flags & 0xFE
         vec4                    = c.get('ReservedVec4', (0.0, 0.0, 0.0, 1.0))
         p.reserved_vec4_x, p.reserved_vec4_y, p.reserved_vec4_z, p.reserved_vec4_w = vec4
         f2                      = c.get('UnknownFloat2', (0.0, 0.0))
@@ -244,8 +245,8 @@ def do_import(filepath, context, armature_obj=None):
             from . import constraint_name_from_props
             obj.name = constraint_name_from_props(idx, p)
         tail = c.get('TailBytes', b'\x00' * 6)
-        p.parent_tail_0, p.parent_tail_1, p.parent_tail_2 = tail[0], tail[1], tail[2]
-        p.parent_tail_3, p.parent_tail_4, p.parent_tail_5 = tail[3], tail[4], tail[5]
+        p.unknown_byte_74, p.unknown_byte_75, p.group_count = tail[0], tail[1], tail[3]
+        p.reserved_tail = (tail[2], tail[4], tail[5])
 
 
     # Non-Ranges sections store hashes only.  Resolve through the armature, then the
@@ -286,7 +287,7 @@ def do_import(filepath, context, armature_obj=None):
             w = p2.skin_sources.add()
             w.bone, w.weight = _nm(src['hash']), src['weight']
         obj.name = section_empty_name('Skin', idx, p2)
-    rp.skin_constant = sk_meta['constant']
+    rp.file_constant = sk_meta['constant']
     rp.read_joint_table_hex = b''.join(h.to_bytes(4, 'little') for h in sk_meta['read_joint_table']).hex()
     aim_recs = aim_editable(parser)
     rp.read_joint_signature_json = (json.dumps(read_joint_signature(sk_recs, [a['joint'] for a in aim_recs]))
@@ -299,8 +300,12 @@ def do_import(filepath, context, armature_obj=None):
         p2.aim_target_bone = _nm(a['target'])
         p2.aim_up_bone = _nm(a['up']) if a['up'] is not None else ''
         p2.aim_influence = a['influence']
-        p2.aim_vec0, p2.aim_vec1, p2.aim_vec2, p2.aim_vec3 = a['vectors']
-        p2.aim_rotation_type = a['rotation_type']
+        p2.aim_vec0, p2.aim_axis, p2.aim_up_axis, p2.aim_up_dir = a['vectors']
+        aim_type = INT_TO_AIM_TYPE.get(a['rotation_type'])
+        if aim_type is None:
+            print("[JCNS] Aim %d: RotationType %r is unknown, read as 0" % (idx, a['rotation_type']))
+            aim_type = 'WORLD_UP'
+        p2.aim_type = aim_type
         p2.aim_bytes = a['bytes']
         p2.aim_tail_hex = a['tail'].hex()
         p2.aim_target_tail_hex = a['target_tail'].hex()
@@ -313,7 +318,13 @@ def do_import(filepath, context, armature_obj=None):
         p2.target_bone = _nm(r['joint'])
         p2.rot_source_bone = _nm(r['source'])
         p2.rot_rotation, p2.rot_scale = r['rotation'], r['scale']
-        p2.rot_bytes, p2.rot_floats = r['bytes'], r['floats']
+        rest_mode = INT_TO_ROT_REST.get(r['bytes'][1])
+        if rest_mode is None:
+            print("[JCNS] RotExpr %d: byte[1]=%r is unknown, read as 0" % (idx, r['bytes'][1]))
+            rest_mode = 'REPLACE'
+        p2.rot_rest_mode = rest_mode
+        p2.rot_unknown_bytes = (r['bytes'][0], r['bytes'][2], r['bytes'][3])
+        p2.rot_gains = r['floats']
         obj.name = section_empty_name('RotExpression', idx, p2)
     rp.rot_map_hex = bytes(rot_meta['map']).hex()
 

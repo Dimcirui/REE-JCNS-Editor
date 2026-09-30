@@ -12,7 +12,7 @@ change).  Import it for ad-hoc questions:
     C, S = load()          # [(file, constraint)], [(file, constraint, index, source)]
 
 This is how the 2026-09-30 inventory (modules/jcns_parser.py docstring,
-jcns_editors.FIXED_RANGES_FIELDS) was made: a field that is 100% one value is fixed,
+the panel's reserved-field section) was made: a field that is 100% one value is fixed,
 and for a live one, `rank` shows which feature explains it (UnkByte2 turned out to
 follow the source bone at 94.5%, which is what pointed at a per-bone Euler order).
 """
