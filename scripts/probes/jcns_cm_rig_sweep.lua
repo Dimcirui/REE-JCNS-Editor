@@ -1,0 +1,244 @@
+-- jcns_cm_rig_sweep.lua  (2026-09-29 轮：ComplexMapping flag + 装备骨当源)
+-- 复制自 REE-JCNS-Research/scripts/jcns_test_rig_sweep.lua，只改了说明、文件名和骨头列表。
+-- 注意：旧说明里"源必须在本体骨架上"已撤回待实测，本轮 [13]-[15] 就是测它的。
+--
+-- xaihi_constraint.jcns.102 当前 16 条（由 RE-JCNS-Editor/scripts/probes/build_cm_rig.py 生成）：
+--   [00]-[07] 原版裙骨约束
+--   [08] A <- L_Thigh.X 恒等（输入基准）   [09] B CM flag1   [10] C CM flag2
+--   [11] D CM flag0 平切线                 [12] E CM flag5 平切线
+--   [13] F <- L_Dress_HJ_00.X   [14] G <- hair_base_L_a_03_jnt_ctrl.X   [15] H <- TestTgtA.X
+--   第二轮：[16] I / [17] J / [18] K = 平切线 flag 1/2/8；A-D、I-K 刷了 0.1 权重，E-H 没刷
+--   另写 jcns_cm_rig_skel.csv：0012 全骨架每根骨头的局部四元数
+--   第三轮（build_map_rig.py）：[08]-[18] A..K.X = L_Thigh.X * k/12，[19] A.Y*-0.3 [20] B.Z*-0.6 [21] C.Y*-0.9
+--
+-- 用法：放进 reframework/autorun。按 F8 开始记录，跑动、转向、蹲起、抬腿，
+-- 让 L_Thigh 大范围摆动，二三十秒即可；按 F9 停止。输出 reframework/data/jcns_cm_rig_sweep.csv
+-- 读的是 getOutputUserValue(i)，i = jcns 条目顺序。
+
+local recording = false
+local file_handle = nil
+local frame_count = 0
+local record_file_name = "jcns_cm_rig_sweep.csv"
+local status_msg = "按 F8 开始记录"
+local MAX_FRAMES = 5400 -- ~90 秒上限
+
+local EQUIP_NAME = "ch03_017_0012"
+
+-- 想额外记录姿态的骨头（源骨 + 目标骨），仅作旁证，主信号是 Out*
+local SRC_BONES = { "L_Thigh", "R_Thigh" }
+local TGT_BONES = {
+    "TestTgtA", "TestTgtB", "TestTgtC", "TestTgtD",
+    "TestTgtE", "TestTgtF", "TestTgtG", "TestTgtH",
+    "TestTgtI", "TestTgtJ", "TestTgtK",
+    "L_Dress_HJ_00", "hair_base_L_a_03_jnt_ctrl",
+}
+
+local joints = {}
+local jc_layer = nil
+local output_count = 0
+
+-- 【重要，Round 9 实测】getOutputUserValue(i) 的索引空间 = **.jcns 里的约束条目顺序**
+-- （本文件 17 条），而 get_OutputTargetCount()/getOutputTargetHashTbl(i) 的索引空间
+-- = **唯一目标骨**（13 个）。两者不是一套索引！所以这里不能用 OutputTargetCount 当
+-- 上界，也不能拿哈希表给列命名——一律读到 OUT_SCAN_MAX，列名只用序号，
+-- 谁是谁回头按曲线拟合反推。
+local OUT_SCAN_MAX = 48
+
+-- 第二轮：另记 0012 整副骨架每根骨头的 LocalEulerAngle.X，找写错位的输出落到了哪根骨头上
+local skel_file_name = "jcns_cm_rig_skel.csv"
+local skel_handle = nil
+local all_joints = {}
+
+local function try(fn, default)
+    local ok, v = pcall(fn)
+    if ok then return v end
+    return default
+end
+
+local function as_number(v)
+    if v == nil then return nil end
+    if type(v) == "number" then return v end
+    local ok, s = pcall(function() return v:call("ToString()") end)
+    if ok and s then return tonumber(s) end
+    return nil
+end
+
+local function get_GameObjectComponent(go, type_name)
+    return go and go:call("getComponent(System.Type)", sdk.typeof(type_name))
+end
+
+local function find_joint_anywhere(root_tr, name)
+    local j = root_tr:call("getJointByName", name)
+    if j then return j end
+    local child = root_tr:call("get_Child")
+    while child do
+        j = child:call("getJointByName", name)
+        if j then return j end
+        child = child:call("get_Next")
+    end
+    return nil
+end
+
+local function resolve()
+    local pm = sdk.get_managed_singleton("app.PlayerManager")
+    if not pm then status_msg = "没有 PlayerManager"; return false end
+    local mp = pm:call("getMasterPlayer")
+    if not mp then status_msg = "没有 MasterPlayer"; return false end
+    local obj = mp:call("get_Object")
+    if not obj then status_msg = "没有 Object"; return false end
+    local root_tr = obj:call("get_Transform")
+    if not root_tr then status_msg = "没有 Transform"; return false end
+
+    joints = {}
+    for _, n in ipairs(SRC_BONES) do joints[n] = find_joint_anywhere(root_tr, n) end
+    for _, n in ipairs(TGT_BONES) do joints[n] = find_joint_anywhere(root_tr, n) end
+    if not joints["L_Thigh"] then status_msg = "找不到 L_Thigh"; return false end
+
+    -- 定位装备件上的 JointConstraints layer，并建立 骨骼哈希 -> 名字 的映射
+    jc_layer = nil
+    local hash2name = {}
+    local child = root_tr:call("get_Child")
+    while child do
+        local cgo = child:call("get_GameObject")
+        local nm = cgo and try(function() return cgo:call("get_Name()") end, nil)
+        if nm == EQUIP_NAME then
+            local arr = try(function() return child:call("get_Joints") end, nil)
+            if arr then
+                local n = try(function() return arr:get_size() end, 0) or 0
+                all_joints = {}
+                for i = 0, n - 1 do
+                    local j = try(function() return arr:get_element(i) end, nil)
+                    if j then
+                        table.insert(all_joints, { name = try(function() return j:call("get_Name") end, "?") or "?", joint = j })
+                        local jn = try(function() return j:call("get_Name") end, nil)
+                        local jh = as_number(try(function() return j:call("get_NameHash") end, nil))
+                        if jn and jh then hash2name[jh & 0xFFFFFFFF] = jn end
+                    end
+                end
+            end
+            local jc = get_GameObjectComponent(cgo, "via.motion.JointConstraints")
+            if jc then
+                jc_layer = try(function() return jc:call("getLayer", 0) end, nil)
+                if jc_layer then
+                    output_count = try(function() return jc_layer:call("get_OutputTargetCount") end, 0) or 0
+                end
+            end
+            break
+        end
+        child = child:call("get_Next")
+    end
+    if not jc_layer then status_msg = "找不到 " .. EQUIP_NAME .. " 的 JointConstraints layer"; return false end
+
+    status_msg = string.format("就位：OutputTargetCount=%d，扫描 %d 个输出槽，全骨架 %d 根",
+        output_count, OUT_SCAN_MAX, #all_joints)
+    return true
+end
+
+local function start_recording()
+    if recording then return end
+    if not resolve() then return end
+    file_handle = io.open(record_file_name, "w")
+    if not file_handle then status_msg = "无法创建 " .. record_file_name; return end
+
+    local header = "Frame"
+    for _, n in ipairs(SRC_BONES) do
+        header = header .. string.format(",%s_qx,%s_qy,%s_qz,%s_qw,%s_EulX,%s_EulY,%s_EulZ",
+            n, n, n, n, n, n, n)
+    end
+    for i = 0, OUT_SCAN_MAX - 1 do
+        header = header .. string.format(",Out%d", i)
+    end
+    for _, n in ipairs(TGT_BONES) do
+        header = header .. string.format(",%s_EulX", n)
+    end
+    file_handle:write(header .. "\n")
+
+    skel_handle = io.open(skel_file_name, "w")
+    if skel_handle then
+        local names = {}
+        for _, e in ipairs(all_joints) do
+            for _, c in ipairs({ "qx", "qy", "qz", "qw" }) do table.insert(names, e.name .. "_" .. c) end
+        end
+        skel_handle:write("Frame," .. table.concat(names, ",") .. "\n")
+    end
+
+    recording = true
+    frame_count = 0
+    status_msg = "记录中…（在游戏里跑动、转向、蹲起）"
+end
+
+local function stop_recording()
+    if not recording then return end
+    recording = false
+    if file_handle then file_handle:close(); file_handle = nil end
+    if skel_handle then skel_handle:close(); skel_handle = nil end
+    status_msg = string.format("完成，%d 帧 → %s", frame_count, record_file_name)
+end
+
+re.on_draw_ui(function()
+    if imgui.tree_node("JCNS CM 测试台记录器") then
+        imgui.text("状态: " .. status_msg)
+        if recording then imgui.text("已记录帧数: " .. frame_count) end
+        if not recording then
+            if imgui.button("开始记录 (或按 F8)") then start_recording() end
+        else
+            if imgui.button("停止 (或按 F9)") then stop_recording() end
+        end
+        imgui.tree_pop()
+    end
+end)
+
+-- 【读取时机，Round 10】
+-- 装备件上的 JointConstraints 是 UpdateTiming=1，在 UpdateMotion **之后**才应用，
+-- 所以在 UpdateMotion 里读目标骨永远读到应用前的绑定姿势(恒 0)——整个调查早期
+-- "目标骨零响应"的假象就是这么来的。改到 re.on_frame（一帧的最后、渲染时触发）读，
+-- 这样才能看到约束真正写进骨头的结果，才能判定"同通道多条约束谁胜出"。
+re.on_frame(function()
+    pcall(function()
+        if reframework:is_key_down(119) and not recording then
+            start_recording()
+        elseif reframework:is_key_down(120) and recording then
+            stop_recording()
+        end
+    end)
+
+    if not recording then return end
+
+    local row = tostring(frame_count)
+
+    for _, n in ipairs(SRC_BONES) do
+        local j = joints[n]
+        local q = j and try(function() return j:call("get_LocalRotation") end, nil)
+        local e = j and try(function() return j:call("get_LocalEulerAngle") end, nil)
+        if q and e then
+            row = row .. string.format(",%.6f,%.6f,%.6f,%.6f,%.4f,%.4f,%.4f",
+                q.x, q.y, q.z, q.w,
+                e.x * 180.0 / math.pi, e.y * 180.0 / math.pi, e.z * 180.0 / math.pi)
+        else
+            row = row .. ",0,0,0,1,0,0,0"
+        end
+    end
+
+    for i = 0, OUT_SCAN_MAX - 1 do
+        local v = as_number(try(function() return jc_layer:call("getOutputUserValue", i) end, nil)) or 0
+        row = row .. string.format(",%.6f", v)
+    end
+
+    for _, n in ipairs(TGT_BONES) do
+        local j = joints[n]
+        local e = j and try(function() return j:call("get_LocalEulerAngle") end, nil)
+        row = row .. string.format(",%.4f", e and (e.x * 180.0 / math.pi) or 0)
+    end
+
+    file_handle:write(row .. "\n")
+    if skel_handle then
+        local vals = { tostring(frame_count) }
+        for _, e in ipairs(all_joints) do
+            local q = try(function() return e.joint:call("get_LocalRotation") end, nil)
+            table.insert(vals, q and string.format("%.5f,%.5f,%.5f,%.5f", q.x, q.y, q.z, q.w) or "nan,nan,nan,nan")
+        end
+        skel_handle:write(table.concat(vals, ",") .. "\n")
+    end
+    frame_count = frame_count + 1
+    if frame_count >= MAX_FRAMES then stop_recording() end
+end)
