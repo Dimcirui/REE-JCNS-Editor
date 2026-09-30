@@ -107,6 +107,56 @@ def _sources_for_driver(cns_props):
 _REST_VALUE = {'Translation': 0.0, 'Rotation': 0.0, 'Scale': 1.0}
 
 
+def mesh_rest_scale(bone):
+    """Recover positive native rest scale omitted by Blender edit bones.
+
+    RE Mesh Editor preserves the original row-vector local matrix as a bone
+    property. Ordinary Blender rigs use unit rest scale. Mirrored/sheared rest
+    matrices are not covered by the round-11 experiment.
+    """
+    from mathutils import Matrix
+    import math
+    raw = bone.get('reMeshLocalMatrix')
+    if raw is None:
+        return (1.0, 1.0, 1.0)
+    m = Matrix(raw).transposed()
+    if m.to_3x3().determinant() <= 0:
+        return (1.0, 1.0, 1.0)
+    scale = tuple(m.to_scale())
+    if any(not math.isfinite(v) or v <= 0 for v in scale):
+        return (1.0, 1.0, 1.0)
+    axes = [m.to_3x3().col[i].normalized() for i in range(3)]
+    if any(abs(axes[i].dot(axes[j])) > 1e-5 for i in range(3) for j in range(i)):
+        return (1.0, 1.0, 1.0)
+    return scale if max(abs(v-1) for v in scale) > 1e-5 else (1.0, 1.0, 1.0)
+
+
+def initialize_mesh_rest_scales(arm):
+    """Restore missing scale on neutral imported poses, preserving authored poses.
+
+    Skip animated rigs and any bone already posed, constrained or driven. This
+    runs once on JCNS import; drivers then write absolute native scale per axis.
+    """
+    if arm is None:
+        return
+    animation = arm.animation_data
+    if animation and (animation.action or len(animation.nla_tracks)):
+        return
+    driven = {f.data_path for f in animation.drivers} if animation else set()
+    from mathutils import Matrix
+    identity = Matrix.Identity(4)
+    for pb in arm.pose.bones:
+        scale = mesh_rest_scale(pb.bone)
+        if scale == (1.0, 1.0, 1.0) or pb.constraints:
+            continue
+        if any(path.startswith(pb.path_from_id()+'.') for path in driven):
+            continue
+        if max(abs(v) for row in pb.matrix_basis-identity for v in row) > 1e-6:
+            continue
+        pb.scale = scale
+    arm.update_tag()
+
+
 def _written_from(root_obj, owner):
     """{(bone, data path, axis)} of every channel whose live writer is `owner` or an
     entry after it in the file.
@@ -758,6 +808,8 @@ def _clear_channel(armature_obj, members):
             pose_bone.driver_remove(entry[0], AXIS_TO_INT.get(axis, 0))
         except Exception:
             pass
+        if entry[0] == 'scale' and axis != 'W':
+            pose_bone.scale[AXIS_TO_INT.get(axis, 0)] = mesh_rest_scale(pose_bone.bone)[AXIS_TO_INT.get(axis, 0)]
     for e in members:
         e.jcns_cns_props.preview_on = False
 

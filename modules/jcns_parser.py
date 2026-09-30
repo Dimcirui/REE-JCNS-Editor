@@ -106,9 +106,11 @@ class JCNSParser:
                                              Translation (round 10): 1 adds in parent axes,
                                              0 replaces only written position components;
                                              unwritten components keep their rest offset.
-                                             Scale: bit0=0/1 agree at unit rest scale; written
-                                             axes equal output, unwritten axes stay 1.
-                                             Non-unit rest scale remains unmeasured. Agrees
+                                             Euler bit0=0 replaces only written rest-Euler
+                                             components, including multi-axis rest (round 11).
+                                             Scale: bit0=0/1 both directly replace written
+                                             axes; unwritten axes keep rest scale, including
+                                             non-unit (1.4,0.7,1.8), measured round 11. Agrees
                                              with bit0 of its sources' CurveMode in 93.5%, but
                                              that bit does nothing.  bit2/bit3: only on
                                              BlendShape / material targets.  bits 1/6/7: never.

@@ -186,12 +186,11 @@ def override_basis(rest, replaced, added):
 
     Measured 2026-09-30 (round 8): bit0 = 1 lays a value on the rest pose,
     rest * R(v); bit0 = 0 replaces the channel -- a single-axis -2 deg rest turned
-    into the bare value.  Modelled here as: take the rest pose's XYZ Euler angles,
+    into the bare value. Round 11 also confirms multi-axis rest (-2,17,-23 deg):
+    take the rest pose's XYZ Euler angles,
     put each replaced channel's value in place of its angle, then lay the added
-    channels on top, R(e') * R(v_add). Multi-axis Euler rest uses the same
-    per-axis replacement rule, adopted by extending the measured translation
-    behavior (round 10). Only the single-axis, replace-only rotation case has
-    capture evidence; mixed add/replace rotation also remains modelled.
+    channels on top, R(e') * R(v_add). Pure per-axis replacement has capture
+    evidence on multi-axis rest; mixed add/replace rotation remains modelled.
 
     `replaced` / `added` map axis (0-2) -> value; returns the basis (x, y, z) such
     that rest * basis is that rotation.
