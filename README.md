@@ -14,6 +14,8 @@ Newer versions are rebuilt from scratch, so constraints, sources and section
 entries can be added, deleted and re-pointed. Older versions are written back in
 place: every value can change, the file's structure cannot.
 
+Project home: <https://github.com/Dimcirui/REE-JCNS-Editor>
+
 ## Supported Games
 
 | JCNS version | Game | Export |
@@ -50,12 +52,26 @@ offset; export refuses structural edits and lists what changed.
 | 5 | JointExportGraph | ✅ Path editable | Kept |
 
 *Structurally editable*: entries can be added, deleted and re-pointed; counts,
-hash-list indices and derived tables are regenerated on export. Raw fields whose
-in-game meaning is still unknown are exposed as numbers.
+hash-list indices, derived tables and the section table (the engine runs only the
+sections it lists) are regenerated on export. Fields with a known meaning are
+shown as switches, enums and named numbers in each section's panel; fields whose
+meaning is still unknown, and fields that never change, sit in collapsed
+sub-panels.
 
 ¹ Files that carry a ReadJointTable (SkinConstraintHashTable in the 010 template
 and REE-Lib) need the target armature set before Skin or Aim bones change: the
 table is re-derived from the skeleton's hierarchy.
+
+## Live preview
+
+*Ranges* entries become Blender drivers; *Skin*, *Aim* and *RotExpression* become
+native pose-bone constraints. The Ranges rules (how a source is read, how a value
+is composed onto the rest pose, add and replace, interpolation, scale and
+translation in a scaled parent) were measured in game on a test rig, and every
+panel line marks a measured rule with a check mark and an inferred one with a
+question mark. The Skin / Aim / RotExpression previews are approximations of the
+measured behaviour and say where they differ. Not supported in the preview:
+negative rest scales, Aim influence other than 1.
 
 ## Installation
 
