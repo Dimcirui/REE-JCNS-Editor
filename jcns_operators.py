@@ -1201,13 +1201,12 @@ class JCNS_OT_MirrorConstraints(Operator):
                     "——用于来源是中线/共享骨骼，只有目标需要换到对侧的情况")
     overwrite: BoolProperty(
         name="覆盖已有数值", default=False,
-        description="对侧若已存在同名约束，是否用镜像结果覆盖它的数值。"
-                    "官方文件里约十分之一的左右配对是有意做成不对称的，"
-                    "所以默认不覆盖")
+        description="对侧已有同名约束时，用镜像结果覆盖它的数值。"
+                    "约一成的左右配对本来就不对称，所以默认不覆盖")
     use_frames: BoolProperty(
         name="从骨架读取符号", default=True,
-        description="实测每对骨骼的局部坐标系来决定符号。关闭则使用在官方"
-                    "骨架上量到的默认值（X:+1, Y:-1, Z:-1）")
+        description="按每对骨骼的局部坐标系决定各轴的符号。"
+                    "关闭则使用默认符号（X:+1, Y:-1, Z:-1）")
 
     @classmethod
     def poll(cls, context):

@@ -298,7 +298,7 @@ def _draw_version_note(layout, rp):
     col = layout.column(align=True)
     col.label(text=f"v{v} · {schema.VERSION_GAMES.get(v, '未知游戏')}", icon='INFO')
     if v not in schema.VERIFIED_VERSIONS:
-        col.label(text="该版本布局未经实际文件验证", icon='ERROR')
+        col.label(text="这个版本的支持不完整，导出前请备份原文件", icon='ERROR')
 
 
 class JCNS_PT_File(Panel):

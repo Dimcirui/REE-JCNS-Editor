@@ -40,27 +40,27 @@ class Kind:
 # shown that it changes anything, so the UI does not invite reordering.
 KINDS = (
     Kind('Ranges', "范围约束", 'DRIVER', tab=True, ordered=True, addable=True,
-         preview='driver', confidence="实机验证",
+         preview='driver', confidence="实机验证",  # ui-copy: internal
          summary="源骨骼姿态经三点折线映射，驱动目标骨骼的一个通道"),
     Kind('Skin', "Skin 蒙皮", 'MOD_VERTEX_WEIGHT', tab=True, ordered=False, addable=True,
-         preview='constraint', confidence="高（统计推断）",
+         preview='constraint', confidence="高（统计推断）",  # ui-copy: internal
          summary="按蒙皮权重把附件骨钉在变形后的皮肤上"),
     Kind('Aim', "Aim 瞄准", 'CON_TRACKTO', tab=True, ordered=False, addable=True,
-         preview='constraint', confidence="主体高，字段中",
+         preview='constraint', confidence="主体高，字段中",  # ui-copy: internal
          summary="look-at：让一根骨的轴指向另一根骨"),
     Kind('RotExpression', "RotExpr 旋转表达式", 'DRIVER_ROTATIONAL_DIFFERENCE',
          tab=True, ordered=False, addable=True,
-         preview='constraint', confidence="中高（统计推断）",
+         preview='constraint', confidence="中高（统计推断）",  # ui-copy: internal
          summary="按轴乘系数把源骨骼的旋转拷贝给目标骨骼"),
     Kind('Material', "Material 材质", 'MATERIAL', tab=True, ordered=False, addable=False,
-         preview='', confidence="低",
+         preview='', confidence="低",  # ui-copy: internal
          summary="骨骼驱动材质属性（如 Water_* 骨驱动 Liquid* 材质）"),
     Kind('JointExportGraph', "JXG 导出图", 'FILE_FOLDER', tab=True, ordered=False,
-         addable=False, preview='', confidence="低",
+         addable=False, preview='', confidence="低",  # ui-copy: internal
          summary="一条 JointExportGraph 资源路径"),
     # Anything the importer does not produce.  Exported untouched.
     Kind('Unknown', "未知", 'QUESTION', tab=False, ordered=False, addable=False,
-         preview='', confidence="未知", summary="导出时原样保留"),
+         preview='', confidence="未知", summary="导出时原样保留"),  # ui-copy: internal
 )
 
 _BY_ID = {k.id: k for k in KINDS}

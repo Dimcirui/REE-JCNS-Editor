@@ -54,7 +54,7 @@ READ_MODES = (
     (4, 'TWIST_SWING', "扭转·摆动", 'Rotation',
      "同摆动·扭转，但 q = 扭转·摆动（先摆动）；X 与前者相同，Y/Z 不同。约 1% 的源"),
     (5, 'ROTATION_VECTOR', "旋转向量", 'Rotation',
-     "旋转向量（转轴×角度）的分量，含静止姿态。原版几乎只读大腿、驱动 ThighTwist 一类。约 2% 的源"),
+     "旋转向量（转轴×角度）的分量，含静止姿态。常用于读大腿、驱动 ThighTwist 一类。约 2% 的源"),
 )
 _BY_VALUE = {m[0]: m for m in READ_MODES}
 _BY_ID = {m[1]: m for m in READ_MODES}
@@ -317,7 +317,7 @@ def translation_basis(rest, offset, parts):
 # Each line is (text, measured).  measured = False marks a rule the preview follows
 # by inference; the UI shows those with a question mark.
 
-_UNMEASURED_REPLACE = ("替换：丢掉静止旋转，只剩合成出的旋转（未实测，按类型 13 推断）", False)
+_UNMEASURED_REPLACE = ("替换：丢掉静止旋转，只剩合成出的旋转", False)
 _TARGET_RULES = {
     0: {True: [("叠加：位置 = 静止偏移 + 输出，沿父骨的轴", True)],
         False: [("替换：所写轴的位置 = 输出，其余轴保留静止偏移", True)]},
@@ -331,8 +331,8 @@ _TARGET_RULES = {
                 ("每根骨只有一个：骨上最后一条 13/14 整条胜出，与它写哪个轴无关", True)],
          False: [("替换：丢掉整个静止旋转，只剩绕所写轴的「输出」角", True),
                  ("每根骨只有一个：骨上最后一条 13/14 整条胜出，与它写哪个轴无关", True)]},
-    14: {True: [("与 13 实测完全相同：静止姿态 · 绕所写轴转「输出」角，骨上最后一条 13/14 胜出", True)],
-         False: [("同 13：丢掉整个静止旋转（14 的 bit0=0 未单独实测）", False)]},
+    14: {True: [("与 13 相同：静止姿态 · 绕所写轴转「输出」角，骨上最后一条 13/14 生效", True)],
+         False: [("与 13 相同：丢掉整个静止旋转", False)]},
 }
 
 
@@ -341,7 +341,7 @@ def target_rule(transform_type, additive):
     Flags bit0 = `additive`.  -> [(text, measured), ...]"""
     rules = _TARGET_RULES.get(int(transform_type))
     if rules is None:
-        return [("形变 / 材质类目标：引擎行为未实测，没有预览", False)]
+        return [("形变 / 材质类目标：具体作用未知，没有预览", False)]
     return list(rules.get(None) or rules[bool(additive)])
 
 

@@ -77,7 +77,6 @@ AXIS_ITEMS = [
 #     +24 ∈ {0: 1700, 1: 3137, 2: 1879, 3: 16306, 4: 2, 5: 7}
 #     +25 ∈ {0: 1285, 1: 1455, 2: 373, 3: 19053, 4: 273, 5: 592}
 # 21 distinct (+24, +25) combinations occur; the two bytes are NOT locked together.
-UPDATE_TIMING_HINT = "bt 0.65.14 猜测为 0=MotionBegin 1=MotionEnd 2=ConstraintBegin 3=ConstraintEnd"
 
 
 def _read_mode_items():
@@ -106,23 +105,23 @@ def _euler_order_items():
 _EULER_ORDER_ITEMS = _euler_order_items()
 
 TRANSFORM_ITEMS = [
-    ('Translation',    "Translation",    "ID=0: Translational constraint"),
-    ('Rotation',       "Rotation",       "ID=1: 欧拉旋转，静止·Rz·Ry·Rx（实测）"),
-    ('Scale',          "Scale",          "ID=2: Scale constraint"),
-    ('BlendShape',     "BlendShape",     "ID=3: Blend-shape / morph target"),
-    ('SwingTwist',     "SwingTwist",     "ID=4: 摆动·扭转旋转（X 扭转、Y/Z 摆动；实测）。原版用于扭转骨、三角肌 (bt: UnkCtrl_4)"),
-    ('TwistSwing',     "TwistSwing",     "ID=5: 扭转·摆动旋转（实测）。原版只在一个 TopBank 文件里 (bt: UnkTopBank_5)"),
-    ('RotationVector', "RotationVector", "ID=6: 旋转向量（轴×角度；实测）。原版只用于 ThighRX/RZ (bt: Unknown_6)"),
-    ('Material_Color', "Material_Color", "ID=7: Material color drive"),
-    ('Material_4D',    "Material_4D",    "ID=8: Material 4D property drive"),
-    ('Material_3D',    "Material_3D",    "ID=9: Material 3D property drive"),
-    ('Material_2D',    "Material_2D",    "ID=10: Material 2D property drive"),
-    ('Scalar',         "Scalar",         "ID=11: Scalar drive"),
-    ('Unknown_12',     "Unknown_12",     "ID=12: Unknown"),
-    ('AxisRotation',   "AxisRotation",   "ID=13: 单轴旋转：每根骨只有一个，绕所写的轴；骨上最后一条 13/14 条目整条胜出，与轴无关（实测）。占原版 20%，用于辅助骨、布料偏移骨"),
-    ('AxisRotation_14', "AxisRotation_14", "ID=14: 与 13 实测表现相同，差别未知。原版用于围裙、触手等"),
-    ('UnkRotation_15', "UnkRotation_15", "ID=15: Unknown rotation variant"),
-    ('UnkRotation_16', "UnkRotation_16", "ID=16: Unknown rotation variant"),
+    ('Translation',    "Translation",    "0：驱动骨骼位置"),
+    ('Rotation',       "Rotation",       "1：欧拉旋转，静止姿态 · Rz·Ry·Rx"),
+    ('Scale',          "Scale",          "2：驱动骨骼缩放"),
+    ('BlendShape',     "BlendShape",     "3：驱动形变权重"),
+    ('SwingTwist',     "SwingTwist",     "4：摆动·扭转旋转，X 为扭转、Y/Z 为摆动。常用于扭转骨、三角肌"),
+    ('TwistSwing',     "TwistSwing",     "5：扭转·摆动旋转，与 4 相同但先摆动后扭转"),
+    ('RotationVector', "RotationVector", "6：旋转向量，三个分量组成「转轴 × 角度」。常用于 ThighRX/RZ"),
+    ('Material_Color', "Material_Color", "7：可能驱动材质颜色参数"),
+    ('Material_4D',    "Material_4D",    "8：可能驱动材质四维参数"),
+    ('Material_3D',    "Material_3D",    "9：可能驱动材质三维参数"),
+    ('Material_2D',    "Material_2D",    "10：可能驱动材质二维参数"),
+    ('Scalar',         "Scalar",         "11：可能驱动标量参数"),
+    ('Unknown_12',     "Unknown_12",     "12：具体作用未知"),
+    ('AxisRotation',   "AxisRotation",   "13：单轴旋转，绕所写的轴。每根骨只保留一个：骨上最后一条 13/14 条目生效，与它写哪个轴无关。常用于辅助骨、布料偏移骨（约 20% 的条目）"),
+    ('AxisRotation_14', "AxisRotation_14", "14：与 13 行为相同，两者的区别未知。常用于围裙、触手"),
+    ('UnkRotation_15', "UnkRotation_15", "15：具体作用未知"),
+    ('UnkRotation_16', "UnkRotation_16", "16：具体作用未知"),
 ]
 
 AXIS_TO_INT = {'X': 0, 'Y': 1, 'Z': 2, 'W': 3}
@@ -322,7 +321,7 @@ class JCNSCMKey(PropertyGroup):
     to_y:   FloatProperty(name="To Y",   default=0.0)
     from_z: FloatProperty(name="From Z", default=0.0)
     to_z:   FloatProperty(name="To Z",   default=0.0)
-    flag:   IntProperty(name="Flag", description="ComplexSrcMapping.UnknownUInt32 (0/8/5/2 seen)",
+    flag:   IntProperty(name="Flag", description="具体作用未知，改动不影响曲线。常见值为 0、2、5、8",
                         default=0, min=0)
 
 
@@ -333,7 +332,7 @@ class JCNSConeInfo(PropertyGroup):
     target takes for that cone (bt: AngleDeg, but scale targets hold factors).
     """
     cone_index: IntProperty(name="ConeDriver", description="ConeDriver 表里的序号", default=0, min=0)
-    value: FloatProperty(name="输出值", description="bt: AngleDeg —— 这个锥形对应的目标值", default=0.0)
+    value: FloatProperty(name="输出值", description="这个锥形对应的目标值：角度，缩放目标时为倍数", default=0.0)
     rest: FloatVectorProperty(name="Rest", size=4, default=(0.0, 0.0, 0.0, 0.0))
     unk_byte0: IntProperty(name="+20", default=0, min=0, max=255)
     unk_byte3: IntProperty(name="+23", default=0, min=0, max=255)
@@ -374,32 +373,32 @@ class JCNSSourceProperties(PropertyGroup):
     # --- Three-point piecewise mapping ---
     from_start: FloatProperty(
         update=_refresh_preview_values,
-        name="From 起点", description="MapFrom 点A — 第一段起始锚点（源角度，单位度）",
+        name="From 起点", description="起点 A 的输入，即源骨读数。单位随读取方式：度、厘米或倍数",
         default=0.0, precision=2, step=10,
     )
     from_kink: FloatProperty(
         update=_refresh_preview_values,
-        name="From 折点", description="MapFrom 点B — 两段斜率的分界折点（源角度，单位度）",
+        name="From 折点", description="折点 B 的输入，两段斜率在这里分界。两点模式下忽略；落在起点与终点之外时整条源失效",
         default=0.0, precision=2, step=10,
     )
     from_end: FloatProperty(
         update=_refresh_preview_values,
-        name="From 终点", description="MapFrom 点C — 第二段终止锚点，源骨骼最大偏转角（单位度）",
+        name="From 终点", description="终点 C 的输入",
         default=0.0, precision=2, step=10,
     )
     to_start: FloatProperty(
         update=_refresh_preview_values,
-        name="To 起点", description="MapTo 点A — 对应 from_start 的输出值",
+        name="To 起点", description="起点 A 的输出。单位随变换类型：度、厘米或倍数",
         default=0.0, precision=2, step=10,
     )
     to_kink: FloatProperty(
         update=_refresh_preview_values,
-        name="To 折点", description="MapTo 点B — 折点处的输出值（引擎读取此值）",
+        name="To 折点", description="折点 B 的输出。两点模式下忽略",
         default=0.0, precision=2, step=10,
     )
     to_end: FloatProperty(
         update=_refresh_preview_values,
-        name="To 终点", description="MapTo 点C — 目标骨骼最大输出旋转量（单位度）",
+        name="To 终点", description="终点 C 的输出",
         default=0.0, precision=2, step=10,
     )
 
@@ -422,11 +421,8 @@ class JCNSSourceProperties(PropertyGroup):
         update=_refresh_preview_values,
         name="曲线模式 (+24)",
         description=(
-            "ConstraintSource_v2 byte +24 — 实测(2026-08-21)是曲线模式开关，不是更新时机。"
-            "0 和 1 = 两点直线：忽略折点，直接从 (from_start,to_start) 连到 (from_end,to_end)。"
-            "2 和 3 = 三点分段折线，折点生效。每一对内部实测逐位相同，即 bit 1 (0x02) 决定模式。"
-            "三点模式下若折点落在 [start, end] 区间之外，整条源失效、输出恒 0。"
-            "（bt 0.65.14 曾把它读作 UpdateTimingID：" + UPDATE_TIMING_HINT + "，那是误判）"
+            "映射曲线的形状。0 和 1：两点直线，忽略折点；2 和 3：三点折线，折点生效。"
+            "三点模式下折点落在起点与终点之外时，整条源失效，输出恒为 0。最常用 3"
         ),
         default=3, min=0, max=255,
     )
@@ -434,9 +430,8 @@ class JCNSSourceProperties(PropertyGroup):
         update=_refresh_preview,
         name="读取方式 (+25)",
         description=(
-            "ConstraintSource_v2 byte +25（bt 叫 TransformIDSrc / InterpolationID）："
-            "引擎怎样读源骨。一律读相对父骨的完整变换，静止姿态和静止偏移都算在内，"
-            "这里只决定取位置、缩放，还是旋转的哪种分解。2026-09-30 实机逐个测定"
+            "从源骨读什么。读的是相对父骨的完整变换，静止姿态和静止偏移都算在内；"
+            "这里决定取位置、缩放，还是旋转的哪一种分解"
         ),
         items=_READ_MODE_ITEMS,
         default=_READ_MODE_DEFAULT,
@@ -445,23 +440,22 @@ class JCNSSourceProperties(PropertyGroup):
         update=_refresh_preview,
         name="欧拉顺序 (+27)",
         description=(
-            "ConstraintSource_v2 byte +27（原 UnkByte2）：读取方式为「欧拉角」时的分解顺序，"
-            "其他读取方式忽略它（2026-09-30 实测）。原版里跟着源骨走：大腿/手多为 1，手指 2，"
-            "翅膀 3，其余几乎都是 0"
+            "读取方式为「欧拉角」时的分解顺序，其他读取方式忽略它。"
+            "通常跟着源骨走：大腿、手多为 YZX，手指为 ZXY，翅膀为 ZYX，其余为 XYZ"
         ),
         items=_EULER_ORDER_ITEMS,
         default='XYZ',
     )
     complex_mapping_info_count: IntProperty(
-        name="复杂映射数", description="bt: ComplexMappingInfoCount",
+        name="复杂映射数", description="复杂映射曲线的关键帧数，导出时按曲线重算",
         default=0, min=0, max=65535,
     )
     unknown_uint16: IntProperty(
-        name="未知 UInt16", description="ConstraintSource_v2 偏移 +22",
+        name="未知 UInt16 (+22)", description="具体作用未知。通常为 0",
         default=0, min=0, max=65535,
     )
     unknown_uint32_2: IntProperty(
-        name="未知 UInt32 (+28)", description="ConstraintSource_v2 偏移 +28",
+        name="未知 UInt32 (+28)", description="具体作用未知。低字节通常为 0（约 92%）；次字节在有复杂映射时为 1",
         default=0, min=0,
     )
     # ComplexMapping: the curve is an F-Curve on the constraint Empty, on the custom
@@ -519,7 +513,7 @@ class JCNSConstraintProperties(PropertyGroup):
     # --- ConstraintInfo raw fields (editable, exported) ---
     # flags_cns: editable int + 8 bit checkboxes (bidirectional sync via update callbacks)
     cns_flags: IntProperty(
-        name="标志位", description="bt: flags_cns。位0 = 叠加：1 把值叠在静止姿态上，0 替换静止姿态（2026-09-30 实测）。位4（驱动骨骼）与位5（驱动量为旋转）在导出时会按变换类型自动重算",
+        name="标志位", description="位0 为叠加开关：1 把值叠加在静止姿态上，0 替换所写的轴，对缩放不起作用。位4、位5 导出时按变换类型自动设置",
         default=0x31, min=0, max=255, update=_update_bits_from_flags,
     )
     flags_expanded: BoolProperty(name="展开标志位", default=False)
@@ -527,24 +521,26 @@ class JCNSConstraintProperties(PropertyGroup):
     flag_bit_1: BoolProperty(name="Bit1",            default=False, update=_update_flags_from_bits)
     flag_bit_2: BoolProperty(name="Bit2",            default=False, update=_update_flags_from_bits)
     flag_bit_3: BoolProperty(name="Bit3",            default=False, update=_update_flags_from_bits)
-    flag_bit_4: BoolProperty(name="Bit4 — isJoint?",default=True,  update=_update_flags_from_bits)
-    flag_bit_5: BoolProperty(name="Bit5",            default=True,  update=_update_flags_from_bits)
+    flag_bit_4: BoolProperty(name="Bit4 — 驱动骨骼", default=True, update=_update_flags_from_bits)
+    flag_bit_5: BoolProperty(name="Bit5 — 驱动旋转", default=True, update=_update_flags_from_bits)
     flag_bit_6: BoolProperty(name="Bit6",            default=False, update=_update_flags_from_bits)
     flag_bit_7: BoolProperty(name="Bit7",            default=False, update=_update_flags_from_bits)
-    parent_vec4_x: FloatProperty(name="Vec4 X", default=0.0, precision=5)
-    parent_vec4_y: FloatProperty(name="Vec4 Y", default=0.0, precision=5)
-    parent_vec4_z: FloatProperty(name="Vec4 Z", default=0.0, precision=5)
-    parent_vec4_w: FloatProperty(name="Vec4 W", default=1.0, precision=5)
-    parent_float2_x: FloatProperty(name="Float2 X", default=0.0, precision=5)
-    parent_float2_y: FloatProperty(name="Float2 Y", default=0.0, precision=5)
+    parent_vec4_x: FloatProperty(name="Vec4 X", default=0.0, precision=5, description="固定为 0，请勿修改")
+    parent_vec4_y: FloatProperty(name="Vec4 Y", default=0.0, precision=5, description="固定为 0，请勿修改")
+    parent_vec4_z: FloatProperty(name="Vec4 Z", default=0.0, precision=5, description="固定为 0，请勿修改")
+    parent_vec4_w: FloatProperty(name="Vec4 W", default=1.0, precision=5, description="固定为 1，请勿修改")
+    parent_float2_x: FloatProperty(name="Float2 X", default=0.0, precision=5,
+                                   description="具体作用未知。通常为 0")
+    parent_float2_y: FloatProperty(name="Float2 Y", default=0.0, precision=5,
+                                   description="具体作用未知。通常为 0")
     parent_uint8_72: IntProperty(
-        name="UnknownUInt8 (+72)", description="ConstraintInfo byte at offset +72",
+        name="未知字节 (+72)", description="具体作用未知。通常为 0（约 99%）",
         default=0, min=0, max=255,
     )
     # A uint32 hash in a signed IntProperty: values >= 2**31 are stored as their
     # two's-complement negative (importer), and masked back on export.
     property_hash: IntProperty(
-        name="PropertyHash", description="bt: PropertyHash — usually 0 (uint32, shown signed)",
+        name="PropertyHash", description="目标属性名的哈希。目标是骨骼时为 0；按有符号整数显示",
         default=0,
     )
     # ConeDriverInfo[]: the cones this constraint reads (RE9 uses them heavily)
@@ -554,34 +550,39 @@ class JCNSConstraintProperties(PropertyGroup):
     # are zero in all 19884 shipped constraints and [0] in 98.8% of them.
     # [1]=2 is both the corpus mode (70%) and what the verified hand-authored
     # file uses.  [3] is the joint-group count (jcns_writer.tail_group_counts).
-    parent_tail_0: IntProperty(name="Tail[0]", default=0, min=0, max=255)
-    parent_tail_1: IntProperty(name="Tail[1]", default=2, min=0, max=255)
-    parent_tail_2: IntProperty(name="Tail[2]", default=0, min=0, max=255)
+    parent_tail_0: IntProperty(name="Tail[0]", default=0, min=0, max=255,
+                               description="具体作用未知。通常为 0（约 99%）")
+    parent_tail_1: IntProperty(name="Tail[1]", default=2, min=0, max=255,
+                               description="具体作用未知。通常为 2（约 69%），同一文件里一般只用一个值")
+    parent_tail_2: IntProperty(name="Tail[2]", default=0, min=0, max=255,
+                               description="固定为 0，请勿修改")
     parent_tail_3: IntProperty(
         name="关节组计数 (Tail[3])",
         description=(
             "紧跟在这条后面、与它同目标同变换同 Flags 的连续条目数（组首填 N，组员填 0）。"
-            "引擎把整组输出都写到组首条目的目标骨上，数错了结果会落到别的骨头上"
-            "（2026-09-30 实测）。导出时自动校验：整份文件构成合法分组就照写，否则全部重算"
+            "引擎把整组输出都写到组首条目的目标骨上，数错了结果会落到别的骨头上。"
+            "导出时自动校验：整份文件分组合法就照写，否则全部重算"
         ),
         default=0, min=0, max=255)
-    parent_tail_4: IntProperty(name="Tail[4]", default=0, min=0, max=255)
-    parent_tail_5: IntProperty(name="Tail[5]", default=0, min=0, max=255)
+    parent_tail_4: IntProperty(name="Tail[4]", default=0, min=0, max=255,
+                               description="固定为 0，请勿修改")
+    parent_tail_5: IntProperty(name="Tail[5]", default=0, min=0, max=255,
+                               description="固定为 0，请勿修改")
 
     # --- Material constraint-specific fields (populated at import, editable) ---
     mat_name_hash: StringProperty(
         name="MaterialNameHash",
-        description="Direct hash of the material name (hex uint32, e.g. 0x1A2B3C4D)",
+        description="材质名的哈希，十六进制，例如 0x1A2B3C4D",
         default="0x00000000",
     )
     mat_property_hash: StringProperty(
         name="MaterialPropertyHash",
-        description="Direct hash of the material property (hex uint32)",
+        description="材质属性名的哈希，十六进制",
         default="0x00000000",
     )
     mat_transform_type_raw: IntProperty(
         name="TransformationID",
-        description="Material TransformationID byte",
+        description="材质约束驱动的参数类型",
         default=0, min=0, max=255,
     )
     mat_tail_0: IntProperty(name="MatTail[0]", default=0, min=0, max=255)
@@ -591,7 +592,7 @@ class JCNSConstraintProperties(PropertyGroup):
     # --- JointExportGraph path (Type 5 empties only) ---
     jxg_path: StringProperty(
         name="路径",
-        description="JointExportGraph 路径字符串（文件中为 UTF-16LE）",
+        description="导出图（JointExportGraph）的路径",
         default="",
     )
 
@@ -1058,7 +1059,7 @@ def register():
     # UI only: lives on the window manager, so it is not saved into .blend files.
     bpy.types.WindowManager.jcns_hide_fixed = BoolProperty(
         name="隐藏固定字段",
-        description="隐藏在全部原版文件里取值完全不变的原始字段，只留下还可能有含义、值得测试的",
+        description="隐藏取值固定的原始字段，只留下含义未知、取值会变化的",
         default=False,
     )
     bpy.types.Scene.jcns_active_collection = PointerProperty(

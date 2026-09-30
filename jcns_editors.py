@@ -93,7 +93,7 @@ def draw_entry_preview(layout, context, c):
     for alert, text in backend.problems(c.obj):
         _wrap_label(layout, context, text, icon='ERROR' if alert else 'INFO', alert=alert)
     if backend.experimental:
-        _wrap_label(layout, context, "语义为推断、未实测，预览仅供对照。", icon='INFO')
+        _wrap_label(layout, context, "这一类的预览效果可能与游戏里不同，只适合用来对照。", icon='INFO')
     has_arm = c.rp.target_armature is not None
     if not has_arm:
         _wrap_label(layout, context, "先在上面的「骨架」里设置目标骨架。", icon='ERROR', alert=True)
@@ -268,7 +268,7 @@ def draw_keyframes(layout, m, sp, cm_ok, reason):
         col.label(text="……共 %d 帧" % len(keys))
     if any(abs(getattr(sp, n)) > 1e-9 for n in ('from_start', 'from_kink', 'from_end',
                                                 'to_start', 'to_kink', 'to_end')):
-        box.label(text="三点映射锚点不为 0：原版带关键帧的源锚点都是 0，两者并存时引擎怎么算没有测过",
+        box.label(text="三点映射锚点不为 0：带关键帧的源通常把锚点设为 0，两者同时存在时的效果未知",
                   icon='ERROR')
     row = box.row(align=True)
     row.operator("jcns.cm_edit", icon='GRAPH')
@@ -525,7 +525,7 @@ class JCNS_PT_Ed_Ranges_Advanced(_Editor, _Sub, Panel):
         top.prop(wm, "jcns_hide_fixed", toggle=True,
                  icon='HIDE_ON' if hide else 'HIDE_OFF')
         if hide:
-            layout.label(text="已隐藏 %d 个在全部原版文件里恒定不变的字段" % len(FIXED_RANGES_FIELDS),
+            layout.label(text="已隐藏 %d 个取值固定的字段" % len(FIXED_RANGES_FIELDS),
                          icon='INFO')
 
         def keep(props):
@@ -554,7 +554,7 @@ class JCNS_PT_Ed_Ranges_Advanced(_Editor, _Sub, Panel):
         if p.flags_expanded:
             bits = col.column(align=True)
             for attr, desc in (
-                ("flag_bit_0", "位0 —— 叠加：1 叠在静止姿态上，0 替换所写轴（实测；缩放不受影响）"),
+                ("flag_bit_0", "位0 —— 叠加：1 叠在静止姿态上，0 替换所写的轴；对缩放不起作用"),
                 ("flag_bit_1", "位1"),
                 ("flag_bit_2", "位2"),
                 ("flag_bit_3", "位3"),
@@ -619,7 +619,7 @@ class JCNS_PT_Ed_Skin(_EditorMain, Panel):
         row = box.row(align=True)
         if p.skin_sources and abs(total - 1.0) > 1e-3:
             row.alert = True
-            row.label(text="权重和 %.3f（原版 1851 条中只有 6 条不为 1）" % total, icon='ERROR')
+            row.label(text="权重和为 %.3f，通常应为 1" % total, icon='ERROR')
         else:
             row.label(text="权重和 %.3f" % total, icon='CHECKMARK')
         row.operator("jcns.skin_normalize_weights", text="归一化")
@@ -671,7 +671,7 @@ class JCNS_PT_Ed_Aim_Vectors(_Editor, _Sub, Panel):
         if c is None:
             return
         p = c.p
-        c.body.label(text="含义未测定；Vec1 多为轴向，Vec2/Vec3 多为 +Y", icon='INFO')
+        c.body.label(text="四个向量的具体作用未知。Vec1 通常是坐标轴方向，Vec2/Vec3 通常为 +Y", icon='INFO')
         col = c.body.column(align=True)
         for name in ("aim_vec0", "aim_vec1", "aim_vec2", "aim_vec3"):
             col.row(align=True).prop(p, name, text="")
@@ -730,7 +730,7 @@ class JCNS_PT_Ed_RotExpr_Raw(_Editor, _Sub, Panel):
         if c is None:
             return
         p = c.p
-        _draw_raw_group(c.body, "Rotation/Scale 在原版里恒为 0,0,0,1", 'PREFERENCES', [
+        _draw_raw_group(c.body, "Rotation/Scale 通常为 0,0,0,1", 'PREFERENCES', [
             (p, [("rot_rotation", "")]), (p, [("rot_scale", "")]),
             (p, [("rot_bytes", "")]), (p, [("rot_floats", "")]),
         ])

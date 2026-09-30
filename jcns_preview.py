@@ -124,7 +124,7 @@ class ConstraintBackend(PreviewBackend):
     id = 'constraint'
     noun = "骨骼约束"
     experimental = True
-    note = "用原生骨骼约束预览。这几类的语义是统计推断、未实测，预览只是拿来对照游戏"
+    note = "用原生骨骼约束预览。效果可能与游戏里不同，只适合用来对照"
 
     def units(self, root, kind_id):
         from . import entries_of
