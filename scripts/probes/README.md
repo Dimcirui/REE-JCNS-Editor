@@ -68,6 +68,11 @@
 - 后台 Blender 必须带 `--factory-startup`，否则用户装的其他插件会在启动时崩掉。
   RE Mesh Editor 要关掉 `showConsole`，否则 `wm.console_toggle` 在没有窗口时会崩。
 - bash 的 heredoc 里混用引号时容易被截断。较长的补丁先写成 .py 文件再运行。
+- **后台 Blender 的退出码不可信**：脚本里抛了 Python 异常，进程照样返回 0。判断通过与否要看输出里的
+  `RESULT` / `Traceback` / 测试自己打印的 OK 行。
+- **旧轮回归要把 jcns 和 mesh 都指定成那一轮的快照**（`--jcns`、`--mesh`），默认用的是游戏目录里的当前文件。
+  RE Mesh Editor 按扩展名判断版本，`xaihi_model.mesh.241111606.before_round11_…` 这种带后缀的备份读不了；
+  快照要用标准文件名存进 `roundN_keep/`（第 10、11 轮都已存好）。
 
 ## 十一轮结论一览
 
