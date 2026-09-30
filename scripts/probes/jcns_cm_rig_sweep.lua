@@ -42,7 +42,7 @@ local output_count = 0
 -- = **唯一目标骨**（13 个）。两者不是一套索引！所以这里不能用 OutputTargetCount 当
 -- 上界，也不能拿哈希表给列命名——一律读到 OUT_SCAN_MAX，列名只用序号，
 -- 谁是谁回头按曲线拟合反推。
-local OUT_SCAN_MAX = 48
+local OUT_SCAN_MAX = 80
 
 -- 第二轮：另记 0012 整副骨架每根骨头的 LocalEulerAngle.X，找写错位的输出落到了哪根骨头上
 local skel_file_name = "jcns_cm_rig_skel.csv"

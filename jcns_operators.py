@@ -86,6 +86,10 @@ def _sources_for_driver(cns_props):
             # +25 ReadMode, as its byte value: how the source bone is read
             # (modules/jcns_source_read.py).
             'read_mode': get_mapping().read_mode_value(sp.read_mode),
+            # +27 EulerOrder and the rest_quat reference frame, both only used by
+            # rotation reads (modules/jcns_source_read.py).
+            'euler_order': get_mapping().euler_order_value(sp.euler_order),
+            'frame': (sp.rest_quat_w, sp.rest_quat_x, sp.rest_quat_y, sp.rest_quat_z),
             # ComplexMapping keys, which replace the anchors when present.
             'cm': jcns_cm.keys(sp),
         })
@@ -153,8 +157,10 @@ def source_rest_input_of(sp):
         return None
     rest, off = _rest_transform(arm, sp.source_bone)
     per_cm = get_mapping()._to_driver_units((1.0,), 'Translation')[0]   # metres per cm
-    return jcns_drivers.jcns_source_read.rest_input(
-        sp.read_mode, axis, rest, tuple(v / per_cm for v in off))
+    sr = jcns_drivers.jcns_source_read
+    return sr.rest_input(sp.read_mode, axis, rest, tuple(v / per_cm for v in off),
+                         order=sr.euler_order_value(sp.euler_order),
+                         frame=(sp.rest_quat_w, sp.rest_quat_x, sp.rest_quat_y, sp.rest_quat_z))
 
 
 def channel_sources(armature_obj, root_obj, owner):
@@ -183,7 +189,7 @@ def channel_sources(armature_obj, root_obj, owner):
         mode = jcns_drivers.jcns_source_read.ROTATION_MODES.get(sid)
         if q == 'Rotation' and mode:
             rest, _off = _rest_transform(armature_obj, s['bone'])
-            s['read'] = ('rot', mode, axis, rest, live)
+            s['read'] = ('rot', mode, axis, rest, s['euler_order'], s['frame'], live)
         elif q == 'Translation' and sid == 0:
             rest, off = _rest_transform(armature_obj, s['bone'])
             s['read'] = ('loc', axis, rest, off, live)
@@ -1065,7 +1071,7 @@ class JCNS_OT_MirrorConstraints(Operator):
                     setattr(ns, k, v)
                 for attr in ('rest_quat_x', 'rest_quat_y', 'rest_quat_z',
                              'rest_quat_w', 'update_timing', 'read_mode',
-                             'unk_byte2', 'unknown_uint16', 'unknown_uint32_2'):
+                             'euler_order', 'unknown_uint16', 'unknown_uint32_2'):
                     setattr(ns, attr, getattr(orig, attr))
                 if jcns_cm.has_curve(orig):
                     jcns_cm.copy_keys(orig, ns, lambda k, i_s=i_s, o_s=o_s:

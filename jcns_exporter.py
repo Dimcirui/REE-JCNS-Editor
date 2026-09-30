@@ -432,7 +432,7 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
         base['rest_quat_w']     = sp.rest_quat_w
         base['CurveMode']    = sp.update_timing
         base['ReadMode']        = jcns_source_read.read_mode_value(sp.read_mode)
-        base['UnkByte2']        = sp.unk_byte2
+        base['EulerOrder']      = jcns_source_read.euler_order_value(sp.euler_order)
         base['UnknownUInt16']   = sp.unknown_uint16
         base['UnknownUInt32_2'] = sp.unknown_uint32_2
         if sections_cached:

@@ -59,7 +59,7 @@ Degenerate anchors, measured separately in each mode:
 UNTESTED: +24 == 4 / 5 (9 sources in the whole corpus).
 """
 
-from jcns_source_read import read_quantity, read_mode_value  # noqa: F401
+from jcns_source_read import read_quantity, read_mode_value, euler_order_value  # noqa: F401
 
 
 # +25 (ReadMode): how the engine reads the source bone -- measured in game

@@ -16,7 +16,7 @@ from jcns_parser import header_field_offset
 # (strings, source arrays, hash table) does not move.
 INPLACE_CNS_FIELDS = ('Flags', 'TransformType', 'ParentVec4', 'ParentFloat2',
                       'ParentUInt8_72', 'PropertyHash', 'ParentTailBytes')
-INPLACE_SRC_FIELDS = ('CurveMode', 'ReadMode', 'source_axis', 'UnkByte2',
+INPLACE_SRC_FIELDS = ('CurveMode', 'ReadMode', 'source_axis', 'EulerOrder',
                       'UnknownUInt16', 'UnknownUInt32_2',
                       'from_start', 'from_kink', 'from_end',
                       'to_start', 'to_kink', 'to_end',
@@ -743,7 +743,7 @@ _CNS_DEFAULTS = {
 _SOURCE_DEFAULTS = {
     'ComplexMappingInfoOffset': 0, 'SourceHashIndex': 0, 'ComplexMappingInfoCount': 0,
     'UnknownUInt16': 0, 'CurveMode': 3, 'ReadMode': 3, 'source_axis': 0,
-    'UnkByte2': 0, 'UnknownUInt32_2': 0,
+    'EulerOrder': 0, 'UnknownUInt32_2': 0,
     'from_start': 0.0, 'from_kink': 0.0, 'from_end': 0.0,
     'to_start': 0.0, 'to_kink': 0.0, 'to_end': 0.0,
     'rest_quat_x': 0.0, 'rest_quat_y': 0.0, 'rest_quat_z': 0.0, 'rest_quat_w': 1.0,

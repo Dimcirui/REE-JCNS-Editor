@@ -49,10 +49,11 @@ import jcns_source_read  # noqa: E402
 # variables feed the source:
 #   ('v',)                        one variable, used as is
 #   ('c', value)                  none; the source is not live yet, use value
-#   ('rot', mode, axis, rest, live)
+#   ('rot', mode, axis, rest, order, frame, live)
 #                                 one variable per axis in `live` (XYZ Euler, radians,
-#                                 the others read 0); rest is (w, x, y, z); mode is a
-#                                 jcns_source_read.ROTATION_MODES value
+#                                 the others read 0); rest and frame are (w, x, y, z);
+#                                 mode is a jcns_source_read.ROTATION_MODES value and
+#                                 order the source's +27 EulerOrder
 #   ('loc', axis, rest, offset, live)
 #                                 one variable per axis in `live` (location, metres);
 #                                 offset is the rest offset from the parent, metres
@@ -86,9 +87,9 @@ def _read(read, vals):
     for a, val in zip(read[-1], vals):
         chans[a] = val
     if read[0] == 'rot':
-        _, mode, axis, rest, _live = read
+        _, mode, axis, rest, order, frame, _live = read
         return jcns_source_read.rotation(
-            mode, jcns_source_read.pose_rotation(rest, chans), axis)
+            mode, jcns_source_read.pose_rotation(rest, chans), axis, order, frame)
     _, axis, rest, offset, _live = read
     return jcns_source_read.position(rest, offset, chans, axis)
 

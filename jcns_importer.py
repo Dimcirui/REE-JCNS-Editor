@@ -233,7 +233,13 @@ def do_import(filepath, context, armature_obj=None):
                       % (c.get('ObjectName', '?'), s.get('SourceName', '?'), s.get('ReadMode')))
                 mode = 'SWING_TWIST'
             sp.read_mode = mode
-            sp.unk_byte2        = s.get('UnkByte2', 0)
+            order = jcns_source_read.EULER_ORDER_NAMES.get(s.get('EulerOrder', 0))
+            if order is None:
+                # Only 0-3 occur in shipped files; the enum cannot hold anything else.
+                print("[JCNS] %s <- %s: EulerOrder %r is unknown, read as XYZ"
+                      % (c.get('ObjectName', '?'), s.get('SourceName', '?'), s.get('EulerOrder')))
+                order = 'XYZ'
+            sp.euler_order = order
             sp.complex_mapping_info_count = s.get('ComplexMappingInfoCount', 0)
             sp.unknown_uint16   = s.get('UnknownUInt16', 0)
             sp.unknown_uint32_2 = s.get('UnknownUInt32_2', 0)

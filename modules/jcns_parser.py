@@ -75,103 +75,117 @@ class JCNSParser:
     earlier TransformAxis and no Flags byte before v35, a 64/56-byte
     ConstraintInfo before v21/v13, and a 64-byte ConstraintSource_v1 before v13.
 
+    Statistics are over the 1103 shipped Wilds .jcns.102 files (22839 constraints,
+    26053 sources), recounted 2026-09-30; "measured" means tested in game on the
+    xaihi rig (see scripts/probes).  Every field is round-tripped verbatim by
+    jcns_writer except the ones it derives (offsets, counts, hash indices, Flags
+    bit4/5, the joint-group byte); its defaults apply only to new constraints.
+
     80-byte ConstraintInfo block layout (parent, at 0xF0 + n*80):
       +0:   ConeDriverInfoOffset  uint64   bt: ConeDriverInfoList.Offset (0=none)
       +8:   OffsetSourceList      uint64   pointer to ConstraintSource_v2
       +16:  ObjectNameOffset      uint64   pointer to TARGET bone name (UTF-16LE)
-      +24:  PropertyOffset        uint64   pointer to property name (0 usually)
-      +32:  ObjectHashIndex       uint32   index into hash_list → target bone hash
+      +24:  PropertyOffset        uint64   pointer to property name; set in 5.9%, all on
+                                             non-joint targets (Blend_A.., UV_Tile_Offset, ...)
+      +32:  ObjectHashIndex       uint32   index into hash_list -> target bone hash
       +36:  ObjectHash            uint32   direct target bone hash (redundant with above)
-      +40:  PropertyHash          uint32   property hash
-      +44:  ConeDriverInfoCount   uint8    bt: ConeDriverInfoCount — 0 in every MH Wilds
-                                             constraint; RE9 (v35) uses ConeDrivers heavily
-                                             (1466 of 2349 constraints, see CONE_DRIVER).
-      +45:  SourceCount           uint8    number of ConstraintSource_v2 blocks; ~12% of
-                                             constraints have more than 1 (up to 8 observed)
-      +46:  Flags                 uint8    bt: flags_cns.  11 distinct values observed; bit4/bit5
-                                             are deterministic functions of TransformType
-                                             (bit4 "isJoint" set for types {0,1,2,4,5,6,13,14},
-                                             bit5 "isAngular" for the rotation-ish subset
-                                             {1,4,5,6,13,14}).  bit0 ("isAdd?" per bt) is the only
-                                             bit that varies independently within one
-                                             TransformType — see modules/jcns_flags.py.
-                                             bits 1/6/7 never set in any observed file.
-      +47:  TransformType         uint8    bt: TransformationID  0=Translation 1=Rotation 2=Scale …
-      +48:  UnknownVector4D       vec4     [0,0,0,1] in every observed constraint
-      +64:  UnknownFloat2         float[2] [0,0] in 99.6%; the rest look like angle limits
-                                             (e.g. [-45,0], [-90,-90], [-20,-20])
-      +72:  UnknownUInt8          uint8    0 in 98.5%; also seen {1,2,3,4}
-      +73:  TransformAxis         uint8    bt: AxisID — target axis (may differ from src-specific).
-                                             Unlike source_axis, this DOES take W (1.3%).
-      +74:  UnknownUInt8 × 6      Not six free bytes: +76/+78/+79 are always 0 and +74 is 0 in
-                                             98.8%, but +75 and +77 are two live enum-ish fields.
-                                             +75 ∈ {0,1,2,3,4,5,8} (2 dominates at 70%),
-                                             +77 ∈ {0,1,2,3,4} (0 dominates at 74%).
-                                             Meaning unknown; preserved verbatim on write.
+      +40:  PropertyHash          uint32   hash of the property name; 0 when there is none
+      +44:  ConeDriverInfoCount   uint8    0 in every Wilds constraint; RE9 (v35) uses
+                                             ConeDrivers heavily (1466 of 2349, see CONE_DRIVER).
+      +45:  SourceCount           uint8    1 in 89.3%, up to 8; 0 in 19 (BlendShape targets
+                                             mostly).  Sources sum (measured).
+      +46:  Flags                 uint8    bt: flags_cns.  11 values (49 35%, 17 35%, 48 11%,
+                                             16 9%, 1 8%, 0 3%, 9/5/13/53/57 rare).
+                                             bit4 "isJoint" / bit5 "isAngular" follow
+                                             TransformType (see jcns_flags; derived on export).
+                                             bit0 (1 in 78%) = additive (measured, round 8):
+                                             1 lays the value onto the rest pose (rest * R(v)),
+                                             0 replaces it (a -2 deg rest vanished).  Either
+                                             way the last writer of a channel still wins, and
+                                             the entry's output value is unchanged.  Agrees
+                                             with bit0 of its sources' CurveMode in 93.5%, but
+                                             that bit does nothing.  bit2/bit3: only on
+                                             BlendShape / material targets.  bits 1/6/7: never.
+      +47:  TransformType         uint8    bt: TransformationID.  15 values; 0 Translation,
+                                             1 Rotation, 2 Scale measured, the rest named by bt
+                                             only (13 alone is 20% of constraints).
+      +48:  UnknownVector4D       vec4     (0,0,0,1) in every constraint.
+      +64:  UnknownFloat2         float[2] (0,0) in 99.7%.  BlendShape targets mostly (0,1);
+                                             11 rotation targets carry pairs like (-45,0),
+                                             (-90,-90), (0,2), (-2,2) that do not match their
+                                             mapping ranges, so not an obvious clamp.
+                                             Unmeasured.
+      +72:  UnknownUInt8          uint8    0 in 98.7%, else 1-4.  Unmeasured.
+      +73:  TransformAxis         uint8    bt: AxisID, the target axis; equals target_axis in
+                                             every entry.  Takes W (1.1%), sources never do.
+      +74:  Tail[0..5]            6 bytes  +74: 0 in 98.9% (else 5/2/1), unmeasured.
+                                             +75: 2 in 69%, also 5/0/1/3/6/8; one value per file
+                                             in 940 of 971 files (mixed files split translation 2
+                                             / rotation 8 on one bone).  Unmeasured.
+                                             +76, +78, +79: always 0.
+                                             +77: joint-group count -- the N entries right after
+                                             this one (same target, property, TransformType and
+                                             Flags) are written to THIS entry's target (measured;
+                                             see jcns_writer.tail_group_counts, which derives it).
 
     72-byte ConstraintSource_v2 layout (pointed to by OffsetSourceList):
       +0:   ComplexMappingInfoOffset  uint64   bt: ComplexMappingInfoOffset (0=none)
       +8:   SourceNameOffset          uint64   pointer to SOURCE bone name (UTF-16LE)
-      +16:  SourceHashIndex           uint32   index into hash_list → source bone hash
-      +20:  ComplexMappingInfoCount   uint16   bt: ComplexMappingInfoCount.  Nonzero in 78 of
-                                              23031 sources, taking values {3, 4, 7}.
-      +22:  UnknownUInt16             uint16   0 in all but a single observed source (which has 1).
-      +24:  CurveMode                 uint8    bt calls it UpdateTiming (UpdateTimingID enum),
-                                              ReeLib an unnamed byte.  Measured in game: bit 1
-                                              selects the curve — {0,1} two-point (kink ignored),
-                                              {2,3} three-point piecewise; see jcns_mapping.
-                                              Observed 0..5 (4 and 5: 9 sources, unmeasured).
+      +16:  SourceHashIndex           uint32   index into hash_list -> source bone hash
+      +20:  ComplexMappingInfoCount   uint16   records in the ComplexMapping curve; nonzero in 78
+                                              sources ({3, 4, 7}).  The curve is a cubic Hermite
+                                              (measured, see jcns_complex).
+      +22:  UnknownUInt16             uint16   0 in every source but one (flower_ziva, 1).
+      +24:  CurveMode                 uint8    bt: UpdateTiming (wrong).  bit 1 selects the curve:
+                                              {0,1} two-point (kink ignored), {2,3} three-point
+                                              (measured).  bit 0 does nothing -- not to the curve,
+                                              not to the pose (measured); Flags bit0 is the
+                                              additive switch it usually mirrors.  3 64%, 0 13%, 1 12%,
+                                              2 10%; 4/5 only in 34 sources on material targets,
+                                              unmeasured.
       +25:  ReadMode                  uint8    How the source bone is read (bt: TransformIDSrc /
                                               InterpolationID, both marked "Not sure").  Measured
-                                              in game 2026-09-30 for every value, off the bone's
-                                              whole parent-relative transform, rest included:
-                                              0 position, 1 XYZ Euler, 2 scale, 3 swing-twist
+                                              for every value, off the bone's whole
+                                              parent-relative transform, rest included:
+                                              0 position, 1 Euler (order: +27), 2 scale, 3 swing-twist
                                               about X (q = swing*twist), 4 the same with
                                               q = twist*swing, 5 rotation vector.  Only 0-5 occur
                                               (2114 files); see jcns_source_read.READ_MODES.
-      +26:  source_axis               uint8    bt: SourceAxis  0=X 1=Y 2=Z 3=W.  Only {X,Y,Z} ever
-                                              observed here — sources never use W, though targets do.
-      +27:  UnkByte2                  uint8    NOT constant: {0:79.3%, 1:14.8%, 2:5.6%, 3:0.3%}.
-      +28:  UnknownUInt32_2      uint32   Really two live bytes; +30/+31 are always 0.
-                                              +28 ∈ {0,1,2,3} (0 in 91.5%).
-                                              +29 == 1 iff ComplexMappingInfoCount > 0 (exact
-                                              match across all 78 cases), so it reads as that
-                                              feature's enable flag; +29 == 2 occurs in 39 further
-                                              sources with no complex mapping and is unexplained.
-      +32:  from_start           float    Point A source angle (rest-side boundary)
-      +36:  from_kink            float    Point B source angle (kink/折点 — slope changes here)
-      +40:  from_end             float    Point C source angle (終点 — end of second segment)
-      +44:  to_start             float    Point A output (= 0 for one-sided, = extreme for through-range like Back X)
-      +48:  to_kink              float    Point B output — engine reads this.  NOT a dead field:
-                                        nonzero in 14.8% of sources across 98 distinct values,
-                                        so the mapping's middle anchor is genuinely used.
-      +52:  to_end               float    Point C output (= actual maximum target output)
-      +56:  rest_quat_x          float    Rest-pose quaternion X — 0.0 in every observed source
-      +60:  rest_quat_y          float    Rest-pose quaternion Y — 0.0 except 2 sources (-0.7071)
-      +64:  rest_quat_z          float    Rest-pose quaternion Z — 0.0 in every observed source
-      +68:  rest_quat_w          float    Rest-pose quaternion W — 1.0 except the same 2 sources
-                                        (0.7071); together those two encode a 90° rotation about Y
-                                        rather than identity, so this is a real rest pose, not padding.
+      +26:  source_axis               uint8    bt: SourceAxis  0=X 1=Y 2=Z.  Sources never use W.
+      +27:  EulerOrder                uint8    (was UnkByte2) the Euler order of ReadMode 1
+                                              (measured, round 8): 0 Rz*Ry*Rx (Blender XYZ),
+                                              1 Rx*Rz*Ry (YZX), 2 Ry*Rx*Rz (ZXY), 3 Rx*Ry*Rz (ZYX).
+                                              ReadMode 3/4/5 ignore it.  0 82%, 1 13%, 2 5%,
+                                              3 0.3%; it follows the source bone (94.5%
+                                              predictable from it): Thigh / Hand mostly 1, finger
+                                              F1 bones and capes 2, wings 3, nearly all others 0,
+                                              always 0 for ReadMode 0/2 -- a per-bone rotation
+                                              order, stored even where the read ignores it.
+      +28:  UnknownUInt32_2           uint32   Two live bytes; +30/+31 always 0.
+                                              +28: 0 92%, 3 8% (3 mostly on non-joint targets and
+                                              ReadMode 1/4), 1/2 rare.  Unmeasured.
+                                              +29: 1 exactly when ComplexMappingInfoCount > 0; 2 in
+                                              90 further sources, all material 2D/3D targets with
+                                              ReadMode 1 and CurveMode 1/5.  Unmeasured.
+      +32:  from_start / from_kink / from_end   float   input anchors A, B, C
+      +44:  to_start / to_kink / to_end         float   output anchors A, B, C; the curve
+                                              through them is in jcns_mapping (measured: linear
+                                              between anchors; an out-of-range kink in
+                                              three-point mode kills the source).
+      +56:  rest_quat_x/y/z/w         float    (0,0,0,1) in every source but two: ch90_021's
+                                              Chest -> Chest_Roll_Val_HJ and Spine0 ->
+                                              Spine_Roll_Val_HJ, both a 90 deg turn about Y
+                                              (0,-0.7071,0,0.7071), ReadMode 3.  Not the bone's
+                                              rest pose (the engine takes that from the skeleton)
+                                              but the frame f the rotation is read in: ReadMode
+                                              3/4/5 decompose f^-1 * q * f, so that value moves the
+                                              twist axis from X to Z (measured, round 8); ReadMode
+                                              1 ignores it.
     Total: 72 bytes
-
-    Field-frequency claims above were measured over 884 shipped .jcns.102 files
-    (19884 constraints / 23031 sources).  Every non-constant field listed here is
-    round-tripped verbatim by jcns_writer; the defaults it falls back to apply only to
-    newly created constraints.
 
     JCNS axis convention (AxisID):
       0=X  1=Y  2=Z  3=W (quaternion component)
       bt 0.65.14 also defines UnknownAxis_4..8, none of which occur in the corpus.
-
-    Mapping formula (correct 2-anchor interpretation):
-      output = clamp(
-          to_max + (source - from_max) * (to_min - to_max) / (from_min - from_max),
-          min(to_min, to_max),
-          max(to_min, to_max)
-      )
-      At source=from_max → output=to_max (anchor A)
-      At source=from_min → output=to_min (anchor B)
-      At source outside range → clamped to boundary → 0 at rest pose ✓
     """
 
     AXIS_NAMES = ['X', 'Y', 'Z', 'W']

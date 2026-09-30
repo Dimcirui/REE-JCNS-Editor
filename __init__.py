@@ -93,6 +93,18 @@ def _read_mode_items():
 # +25 ReadMode; the table lives in modules/jcns_source_read.py.
 _READ_MODE_ITEMS, _READ_MODE_DEFAULT = _read_mode_items()
 
+
+def _euler_order_items():
+    from .modules_shim import ensure_path
+    ensure_path()
+    import jcns_source_read
+    return [(name, "%d %s" % (value, name), "Blender 的 %s 顺序（%s 轴最先作用）" % (name, name[0]), value)
+            for value, name in sorted(jcns_source_read.EULER_ORDER_NAMES.items())]
+
+
+# +27 EulerOrder, Blender order names.
+_EULER_ORDER_ITEMS = _euler_order_items()
+
 TRANSFORM_ITEMS = [
     ('Translation',    "Translation",    "ID=0: Translational constraint"),
     ('Rotation',       "Rotation",       "ID=1: Rotational constraint (most common)"),
@@ -379,23 +391,21 @@ class JCNSSourceProperties(PropertyGroup):
         default=0.0, precision=2, step=10,
     )
 
-    # --- Rest-pose quaternion ---
-    rest_quat_x: FloatProperty(name="Quat X", default=0.0, precision=5)
-    rest_quat_y: FloatProperty(name="Quat Y", default=0.0, precision=5)
-    rest_quat_z: FloatProperty(name="Quat Z", default=0.0, precision=5)
-    rest_quat_w: FloatProperty(name="Quat W", default=1.0, precision=5)
+    # --- Reference frame (+56, stored as "rest_quat") ---
+    # Not the bone's rest pose (the engine takes that from the skeleton): it is the
+    # frame the swing-twist and rotation-vector reads decompose in, f^-1 * q * f
+    # (measured 2026-09-30, round 8).  Identity in all but two shipped sources.
+    rest_quat_x: FloatProperty(name="参考系 X", default=0.0, precision=5,
+                               update=_refresh_preview)
+    rest_quat_y: FloatProperty(name="参考系 Y", default=0.0, precision=5,
+                               update=_refresh_preview)
+    rest_quat_z: FloatProperty(name="参考系 Z", default=0.0, precision=5,
+                               update=_refresh_preview)
+    rest_quat_w: FloatProperty(name="参考系 W", default=1.0, precision=5,
+                               update=_refresh_preview)
 
     # --- Raw bytes ---
-    # Both default to 3, the mode among the 4916 sources of real bone rotation
-    # constraints in the shipped corpus (+24=ConstraintEnd at 69%, +25=93%).
-    #
-    # For +24 that also agrees with the flags default below: bit0 starts set
-    # (additive), and additive constraints read their source at ConstraintEnd
-    # 80.6% of the time, while override ones read early (MotionBegin +
-    # ConstraintBegin, 81.5%).  Reading late is what lets an additive result
-    # layer onto a settled pose, so a bit0=1 / +24=3 pair is self-consistent.
-    # If you clear bit0 to make a constraint override, an early +24 is the
-    # matching choice.
+    # +24 and +25 both default to 3, the most common value in shipped files.
     update_timing: IntProperty(
         update=_refresh_preview_values,
         name="曲线模式 (+24)",
@@ -419,9 +429,16 @@ class JCNSSourceProperties(PropertyGroup):
         items=_READ_MODE_ITEMS,
         default=_READ_MODE_DEFAULT,
     )
-    unk_byte2: IntProperty(
-        name="未知字节 (+27)", description="ConstraintSource_v2 偏移 +27 的字节",
-        default=0, min=0, max=255,
+    euler_order: EnumProperty(
+        update=_refresh_preview,
+        name="欧拉顺序 (+27)",
+        description=(
+            "ConstraintSource_v2 byte +27（原 UnkByte2）：读取方式为「欧拉角」时的分解顺序，"
+            "其他读取方式忽略它（2026-09-30 实测）。原版里跟着源骨走：大腿/手多为 1，手指 2，"
+            "翅膀 3，其余几乎都是 0"
+        ),
+        items=_EULER_ORDER_ITEMS,
+        default='XYZ',
     )
     complex_mapping_info_count: IntProperty(
         name="复杂映射数", description="bt: ComplexMappingInfoCount",

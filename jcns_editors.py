@@ -360,6 +360,9 @@ class JCNS_PT_Ed_Ranges_Sources(_Editor, Panel):
         _field_row(col, "骨骼：", sp, "source_bone")
         _field_row(col, "局部轴向：", sp, "source_axis")
         _field_row(col, "读取方式：", sp, "read_mode")
+        row = col.row(align=True)
+        row.active = sp.read_mode == 'EULER'          # the other reads ignore it
+        _field_row(row, "欧拉顺序：", sp, "euler_order")
 
 
 class JCNS_PT_Ed_Ranges_Mapping(_Editor, Panel):
@@ -477,16 +480,16 @@ class JCNS_PT_Ed_Ranges_Advanced(_Editor, _Sub, Panel):
         sp = _active_source(p)
 
         if sp is not None:
-            _draw_raw_group(layout, "驱动源：静止四元数", 'ORIENTATION_GIMBAL', [
+            _draw_raw_group(layout, "驱动源：参考系四元数", 'ORIENTATION_GIMBAL', [
                 (sp, [("rest_quat_x", "X"), ("rest_quat_y", "Y"),
                      ("rest_quat_z", "Z"), ("rest_quat_w", "W")]),
             ])
             box = _draw_raw_group(layout, "驱动源：原始字节", 'PREFERENCES', [
-                (sp, [("update_timing", "+24"), ("unk_byte2", "+27")]),
+                (sp, [("update_timing", "+24")]),
                 (sp, [("unknown_uint16", "U16(+22)"), ("unknown_uint32_2", "U32(+28)"),
                      ("complex_mapping_info_count", "复杂映射数")]),
             ])
-            box.label(text="+24 是曲线模式（0/1 两点、2/3 三点），+25 在「驱动源」里", icon='INFO')
+            box.label(text="+24 是曲线模式（0/1 两点、2/3 三点）；+25/+27 在「驱动源」里", icon='INFO')
 
         box = layout.box()
         box.label(text="ConstraintInfo 原始字段", icon='PREFERENCES')
