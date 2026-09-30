@@ -511,11 +511,18 @@ class JCNSConstraintProperties(PropertyGroup):
     # Of these six, only [1] (+75) and [3] (+77) ever hold anything: [2]/[4]/[5]
     # are zero in all 19884 shipped constraints and [0] in 98.8% of them.
     # [1]=2 is both the corpus mode (70%) and what the verified hand-authored
-    # file uses; [3]=0 likewise.
+    # file uses.  [3] is the joint-group count (jcns_writer.tail_group_counts).
     parent_tail_0: IntProperty(name="Tail[0]", default=0, min=0, max=255)
     parent_tail_1: IntProperty(name="Tail[1]", default=2, min=0, max=255)
     parent_tail_2: IntProperty(name="Tail[2]", default=0, min=0, max=255)
-    parent_tail_3: IntProperty(name="Tail[3]", default=0, min=0, max=255)
+    parent_tail_3: IntProperty(
+        name="关节组计数 (Tail[3])",
+        description=(
+            "紧跟在这条后面、与它同目标同变换同 Flags 的连续条目数（组首填 N，组员填 0）。"
+            "引擎把整组输出都写到组首条目的目标骨上，数错了结果会落到别的骨头上"
+            "（2026-09-30 实测）。导出时自动校验：整份文件构成合法分组就照写，否则全部重算"
+        ),
+        default=0, min=0, max=255)
     parent_tail_4: IntProperty(name="Tail[4]", default=0, min=0, max=255)
     parent_tail_5: IntProperty(name="Tail[5]", default=0, min=0, max=255)
 

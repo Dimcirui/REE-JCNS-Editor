@@ -37,7 +37,7 @@ def _ensure_modules_path():
 # Driver math
 # ---------------------------------------------------------------------------
 
-_EULER_MODES = ('XYZ', 'XZY', 'YXZ', 'YZX', 'ZXY', 'ZYX')
+_X_FIRST_EULER = ('XYZ', 'XZY')
 _ROT_TYPE   = ['ROT_X',   'ROT_Y',   'ROT_Z']
 _LOC_TYPE   = ['LOC_X',   'LOC_Y',   'LOC_Z']
 _SCALE_TYPE = ['SCALE_X', 'SCALE_Y', 'SCALE_Z']
@@ -123,7 +123,11 @@ def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
     if not usable:
         return False, "未设置驱动骨骼"
 
-    if data_path == 'rotation_euler' and pose_bone.rotation_mode not in _EULER_MODES:
+    # The engine applies a bone's X channel first and Y / Z over it (measured in game
+    # 2026-09-30: q = rest * R(Y|Z) * R(X), 0.4 deg; the reverse was off by up to 29).
+    # Blender's XYZ / XZY Euler modes do the same; any other order, or a quaternion,
+    # would show a different pose.  Which of Y and Z goes first is not measured.
+    if data_path == 'rotation_euler' and pose_bone.rotation_mode not in _X_FIRST_EULER:
         pose_bone.rotation_mode = 'XYZ'
 
     # In the driver's own units, so the namespace function converts nothing.
