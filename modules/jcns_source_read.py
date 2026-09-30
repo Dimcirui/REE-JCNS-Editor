@@ -227,10 +227,17 @@ def target_basis(rest, parts):
     """Blender pose basis (XYZ Euler) of a rotation target from its live channels.
 
     `parts` are (axis, mode, replaces, value) in file order of their winning
-    entries.  Replacing (Flags bit0 = 0) drops the rest pose; adding lays the
-    rotation on it.  An 'euler' bone goes through override_basis.  For the other
-    modes the latest channel's mode and bit0 decide the whole bone (mixing modes
-    on one bone is modelled this way, not measured).
+    entries.  The last entry's mode decides how the whole bone is composed, and every
+    entry's value is used in it whatever its own mode (an Euler bone takes the Y value
+    of a type 4 entry as its Euler Y).  Whether the first or the last entry decides is
+    not separated by the test rig (its mixed bone had the same type at both ends).
+
+    An 'euler' bone goes through override_basis.  For swing-twist, twist-swing and rotation
+    vector, adding lays the rotation on the rest pose; replacing takes the rest pose's own
+    decomposition in that mode, puts each replaced channel's value in place of its
+    component, and keeps the others.  Axis rotations (13 / 14) hold one rotation and
+    replacing drops the whole rest.  Mixing added and replaced channels outside the
+    Euler mode is modelled on override_basis, not measured.
     """
     if not parts:
         return (0.0, 0.0, 0.0)
@@ -242,13 +249,21 @@ def target_basis(rest, parts):
         return override_basis(rest, replaced, added)
     if mode == 'axis':
         q = _axis_q(last[0], last[3])
-    else:
-        v = [0.0, 0.0, 0.0]
-        for a, m, r, val in parts:
-            if m == mode:
-                v[a] = val
-        q = compose(mode, v)
-    if not last[2]:
+        if not last[2]:
+            q = qmul(rest, q)
+        return tuple(_euler(_pos_w(qmul(_conj(rest), q)), 0))
+    replaced = {a: v for a, m, r, v in parts if r}
+    added = {a: v for a, m, r, v in parts if not r}
+    base = [rotation(mode, rest, a) for a in range(3)] if replaced else [0.0, 0.0, 0.0]
+    for a, v in replaced.items():
+        base[a] = v
+    q = compose(mode, base)
+    if added:
+        add = [0.0, 0.0, 0.0]
+        for a, v in added.items():
+            add[a] = v
+        q = qmul(q, compose(mode, add))
+    if not replaced:
         q = qmul(rest, q)
     return tuple(_euler(_pos_w(qmul(_conj(rest), q)), 0))
 
@@ -296,22 +311,24 @@ def translation_basis(rest, offset, parts):
 # Panel text for the engine rules.  Each line is (text, measured); measured =
 # False marks a modelled rule, which the UI shows with a question mark.
 
-_UNMEASURED_REPLACE = ("替换：丢掉静止旋转，只剩合成出的旋转", False)
 _TARGET_RULES = {
     0: {True: [("叠加：位置 = 静止偏移 + 输出，沿父骨的轴", True)],
         False: [("替换：所写轴的位置 = 输出，其余轴保留静止偏移", True)]},
     1: {True: [("叠加：静止姿态 · Rz·Ry·Rx（XYZ 欧拉，与文件里各轴先后无关）", True)],
         False: [("替换：静止姿态的 XYZ 欧拉角里换掉所写的轴，其余轴保留", True)]},
     2: {None: [("所写轴的缩放 = 输出，其余轴保留静止缩放；bit0 不起作用", True)]},
-    4: {True: [("叠加：静止姿态 · 摆动(Y,Z) · 扭转(X)", True)], False: [_UNMEASURED_REPLACE]},
-    5: {True: [("叠加：静止姿态 · 扭转(X) · 摆动(Y,Z)", True)], False: [_UNMEASURED_REPLACE]},
-    6: {True: [("叠加：静止姿态 · 旋转向量（转轴 × 角度）", True)], False: [_UNMEASURED_REPLACE]},
+    4: {True: [("叠加：静止姿态 · 摆动(Y,Z) · 扭转(X)", True)],
+        False: [("替换：静止姿态按摆动·扭转分解，换掉所写的轴，其余轴保留", True)]},
+    5: {True: [("叠加：静止姿态 · 扭转(X) · 摆动(Y,Z)", True)],
+        False: [("替换：静止姿态按扭转·摆动分解，换掉所写的轴，其余轴保留", True)]},
+    6: {True: [("叠加：静止姿态 · 旋转向量（转轴 × 角度）", True)],
+        False: [("替换：静止姿态按旋转向量分解，换掉所写的轴，其余轴保留", True)]},
     13: {True: [("叠加：静止姿态 · 绕所写轴转「输出」角", True),
                 ("每根骨只有一个：骨上最后一条 13/14 整条胜出，与它写哪个轴无关", True)],
          False: [("替换：丢掉整个静止旋转，只剩绕所写轴的「输出」角", True),
                  ("每根骨只有一个：骨上最后一条 13/14 整条胜出，与它写哪个轴无关", True)]},
     14: {True: [("与 13 相同：静止姿态 · 绕所写轴转「输出」角，骨上最后一条 13/14 生效", True)],
-         False: [("与 13 相同：丢掉整个静止旋转", False)]},
+         False: [("与 13 相同：丢掉整个静止旋转", True)]},
 }
 
 
