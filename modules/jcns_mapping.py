@@ -171,9 +171,9 @@ _INTERPOLATION_IDS = {'LINEAR': 0, 'CUBIC_IN': 1, 'CUBIC_OUT': 2, 'SMOOTHSTEP': 
 
 def source_interpolation(source):
     """The interpolation byte +28 of a source.  Parser dicts carry it in the low byte of
-    `UnknownUInt32_28`, the PropertyGroup in `interpolation`."""
+    `Interpolation`, the PropertyGroup in `interpolation`."""
     if isinstance(source, dict):
-        return int(source.get('UnknownUInt32_28', 0)) & 0xFF
+        return int(source.get('Interpolation', 0))
     return _INTERPOLATION_IDS.get(getattr(source, 'interpolation', 'LINEAR'), 0)
 
 

@@ -415,7 +415,8 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
         base['ReadMode']        = jcns_source_read.read_mode_value(sp.read_mode)
         base['EulerOrder']      = jcns_source_read.euler_order_value(sp.euler_order)
         base['UnknownUInt16_22']   = sp.unknown_uint16_22
-        base['UnknownUInt32_28'] = INTERPOLATION_TO_INT[sp.interpolation] | (sp.unknown_uint32_29 << 8)
+        base['Interpolation'] = INTERPOLATION_TO_INT[sp.interpolation]
+        base['ComplexMappingFlag'] = sp.complex_mapping_flag
         if sections_cached:
             # The F-Curve is the data; the count follows it.
             from . import jcns_cm

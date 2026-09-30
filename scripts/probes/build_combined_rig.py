@@ -3,7 +3,7 @@
 Only B/C/D/G rest rotation and E/F/G rest scale are changed in the mesh.
 Six leaf bones' local/world/inverse matrices are patched; every other byte
 must remain identical. This does not export or alter the live Blender scene.
-Hidden fields: EulerOrder=0, UnknownUInt32_28=0, ReadMode=3, CurveMode=0,
+Hidden fields: EulerOrder=0, Interpolation=0, ReadMode=3, CurveMode=0,
 identity ref_frame, UnknownByte72=0, UnknownFloat2=(0,0), Tail[1]=2,
 Tail[3]=0; remaining fields inherit original constraint [00].
 """
@@ -118,7 +118,7 @@ def main():
             tail=bytearray(c['TailBytes']); tail[1]=2; tail[3]=0
             c['TailBytes']=bytes(tail)
             c['sources'][0].update(SourceName='L_Thigh',source_axis=0,ReadMode=3,CurveMode=0,
-                EulerOrder=0,UnknownUInt32_28=0,ref_frame_x=0.,ref_frame_y=0.,ref_frame_z=0.,ref_frame_w=1.,
+                EulerOrder=0,Interpolation=0,ref_frame_x=0.,ref_frame_y=0.,ref_frame_z=0.,ref_frame_w=1.,
                 from_start=-90.,from_kink=0.,from_end=90.,to_start=bias-90*gain,
                 to_kink=bias,to_end=bias+90*gain,ComplexMapping=[],ComplexMappingInfoCount=0)
             entries.append(dict(out=len(cons),bone=letter,type=tt,flags=flags,axis=axis,gain=gain,bias=bias))
@@ -140,7 +140,7 @@ def main():
     for e in entries:
         c=decoded[e['out']]; src=c['sources'][0]
         assert (c['ObjectName'],c['TransformType'],c['Flags'],c['target_axis']) == ('TestTgt'+e['bone'],e['type'],e['flags'],'XYZ'.index(e['axis']))
-        assert src['EulerOrder']==src['UnknownUInt32_28']==src['CurveMode']==0 and src['ReadMode']==3
+        assert src['EulerOrder']==src['Interpolation']==src['CurveMode']==0 and src['ReadMode']==3
         assert c['UnknownByte72']==0 and tuple(c['UnknownFloat2'])==(0.,0.) and c['TailBytes'][1]==2
     manifest=dict(round=11,base_mesh_sha256=sha(raw),mesh_sha256=sha(data),
         jcns_sha256=sha(jcns_output.read_bytes()),matrix_ranges=patched,rests=rests,entries=entries,

@@ -517,7 +517,7 @@ class JCNS_PT_Ed_Ranges_Advanced(_Editor, _Sub, Panel):
         if sp is not None:
             _draw_raw_group(layout, "驱动源", 'PREFERENCES', [
                 (sp, [("curve_mode_extra", "曲线模式其余位")]),
-                (sp, [("unknown_uint16_22", "+22"), ("unknown_uint32_29", "+29..+31")]),
+                (sp, [("unknown_uint16_22", "+22"), ("complex_mapping_flag", "+29")]),
             ])
         box = _draw_raw_group(layout, "约束", 'PREFERENCES', [
             (p, [("flags_other", "其余标志位")]),

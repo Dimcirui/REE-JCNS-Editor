@@ -222,14 +222,13 @@ def do_import(filepath, context, armature_obj=None):
             sp.euler_order = order
             sp.complex_mapping_info_count = s.get('ComplexMappingInfoCount', 0)
             sp.unknown_uint16_22   = s.get('UnknownUInt16_22', 0)
-            word = s.get('UnknownUInt32_28', 0)
-            interp = INT_TO_INTERPOLATION.get(word & 0xFF)
+            interp = INT_TO_INTERPOLATION.get(s.get('Interpolation', 0))
             if interp is None:
                 print("[JCNS] %s <- %s: interpolation byte %r is unknown, read as 0"
-                      % (c.get('ObjectName', '?'), s.get('SourceName', '?'), word & 0xFF))
+                      % (c.get('ObjectName', '?'), s.get('SourceName', '?'), s.get('Interpolation')))
                 interp = 'LINEAR'
             sp.interpolation = interp
-            sp.unknown_uint32_29 = word >> 8
+            sp.complex_mapping_flag = s.get('ComplexMappingFlag', 0)
             if s.get('ComplexMapping'):
                 jcns_cm.load(sp, s['ComplexMapping'])
 

@@ -117,7 +117,7 @@ def main():
     for name in ('ComplexMappingInfoCount', 'UnknownUInt16_22', 'CurveMode', 'ReadMode', 'source_axis', 'EulerOrder'):
         dist(name, [s[name] for _, _, _, s in S])
     for k in range(4):
-        dist('+%d (UnknownUInt32_28 byte %d)' % (28 + k, k), [(s['UnknownUInt32_28'] >> (8 * k)) & 0xFF for *_, s in S])
+        dist('+%d (Interpolation / ComplexMappingFlag / ReservedWord30 byte %d)' % (28 + k, k), [((s['Interpolation'] | (s['ComplexMappingFlag'] << 8) | (s['ReservedWord30'] << 16)) >> (8 * k)) & 0xFF for *_, s in S])
     dist('ref_frame', [(s['ref_frame_x'], s['ref_frame_y'], s['ref_frame_z'], s['ref_frame_w']) for *_, s in S])
     if len(sys.argv) > 1:
         field = sys.argv[1]

@@ -304,7 +304,9 @@ SOURCE_V2 = Struct('ConstraintSource_v2', [
     F('ReadMode',                 'B'),
     F('source_axis',              'B'),
     F('EulerOrder',                 'B'),
-    F('UnknownUInt32_28',          'I'),
+    F('Interpolation',            'B'),               # +28: how each mapping segment runs
+    F('ComplexMappingFlag',       'B'),               # +29: 1 exactly when the source has a ComplexMapping
+    F('ReservedWord30',           'H'),               # +30: always 0
     F('from_start',  'f'), F('from_kink', 'f'), F('from_end', 'f'),
     F('to_start',    'f'), F('to_kink',   'f'), F('to_end',   'f'),
     F('ref_frame_x', 'f'), F('ref_frame_y', 'f'),
@@ -320,7 +322,9 @@ SOURCE_V1 = Struct('ConstraintSource_v1', [
     F('ReadMode',           'B'),
     F('source_axis',        'B'),
     F('EulerOrder',           'B'),
-    F('UnknownUInt32_28',    'I'),
+    F('Interpolation',      'B'),
+    F('ComplexMappingFlag', 'B'),
+    F('ReservedWord30',     'H'),
     F('ref_frame_x', 'f'), F('ref_frame_y', 'f'),
     F('ref_frame_z', 'f'), F('ref_frame_w', 'f'),
     F('UnknownDWORD_v1',    'I'),

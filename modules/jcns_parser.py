@@ -175,18 +175,18 @@ class JCNSParser:
                                               F1 bones and capes 2, wings 3, nearly all others 0,
                                               always 0 for ReadMode 0/2 -- a per-bone rotation
                                               order, stored even where the read ignores it.
-      +28:  UnknownUInt32_28           uint32   Two live bytes; +30/+31 always 0.
-                                              +28 is the interpolation of each mapping segment
+      +28:  Interpolation              uint8    how each mapping segment runs between its anchors
                                               (measured, rounds 15 and 16; per segment also on a
                                               three-point map): 0 straight, 1 cubic ease in (t^3),
                                               2 cubic ease out (1-(1-t)^3), 3 smoothstep (3t^2-2t^3).
                                               0 92%, 3 8%, 1 / 2 rare, mostly on non-joint targets
                                               and ReadMode 1/4.
-                                              +29: 1 exactly when ComplexMappingInfoCount > 0; 2 in
+      +29:  ComplexMappingFlag         uint8    1 exactly when ComplexMappingInfoCount > 0 (derived on write); 2 in
                                               90 further sources, all material 2D/3D targets with
                                               ReadMode 1 and CurveMode 1/5.  +29 = 2 on a rotation
                                               entry gave an output of -90 * input, unclamped, and
                                               overrode +28 = 3 (round 15); no meaning for bones.
+      +30:  ReservedWord30             uint16   always 0
       +32:  from_start / from_kink / from_end   float   input anchors A, B, C
       +44:  to_start / to_kink / to_end         float   output anchors A, B, C; the curve
                                               through them is in jcns_mapping (measured: linear

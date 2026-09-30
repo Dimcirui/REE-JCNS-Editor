@@ -87,7 +87,7 @@ def main(dst):
         c['TailBytes'] = bytes(tail)
         c['sources'][0].update(
             SourceName='L_Thigh', source_axis=0, ReadMode=3, CurveMode=e.get('curve', 0), EulerOrder=0,
-            UnknownUInt32_28=e.get('src28', 0), ref_frame_x=0.0, ref_frame_y=0.0, ref_frame_z=0.0, ref_frame_w=1.0,
+            Interpolation=e.get('src28', 0), ref_frame_x=0.0, ref_frame_y=0.0, ref_frame_z=0.0, ref_frame_w=1.0,
             from_start=frm[0], from_kink=frm[1], from_end=frm[2], to_start=to[0], to_kink=to[1], to_end=to[2],
             ComplexMapping=[], ComplexMappingInfoCount=0)
         cons.append(c)
@@ -106,9 +106,9 @@ def check(dst):
         assert (c['ObjectName'], c['TransformType'], c['Flags'], 'XYZ'[c['target_axis']]) == \
             ('TestTgt' + e['bone'], e['tt'], e['flags'], e['axis']), i
         assert (c['TailBytes'][0], c['TailBytes'][1], c['UnknownByte72']) == (e.get('b74', 0), e.get('b75', 2), e.get('b72', 0)), i
-        assert s['UnknownUInt32_28'] == e.get('src28', 0) and s['CurveMode'] == e.get('curve', 0), i
+        assert s['Interpolation'] == e.get('src28', 0) and s['CurveMode'] == e.get('curve', 0), i
         print(f"[{FIRST_OUT + i:02}] {c['ObjectName']:<11} TT={e['tt']} F={e['flags']} .{e['axis']} curve={s['CurveMode']} "
-              f"src+28={s['UnknownUInt32_28']} +72/74/75={c['UnknownByte72']}/{c['TailBytes'][0]}/{c['TailBytes'][1]}"
+              f"src+28={s['Interpolation']} +72/74/75={c['UnknownByte72']}/{c['TailBytes'][0]}/{c['TailBytes'][1]}"
               f" map {s['from_start']:g},{s['from_kink']:g},{s['from_end']:g} -> {s['to_start']:.3g},{s['to_kink']:.3g},{s['to_end']:.3g}")
     return q
 

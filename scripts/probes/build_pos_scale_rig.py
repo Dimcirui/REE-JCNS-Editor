@@ -55,7 +55,7 @@ def main():
             gain = 0.5 if tt == 1 else ((0.03, 0.05, -0.04) if tt == 0 else (0.002, 0.003, -0.004))[i]
             bias = 1.0 if tt == 2 else 0.0
             s.update(SourceName='L_Thigh', source_axis=0, ReadMode=3, CurveMode=0,
-                     EulerOrder=0, UnknownUInt32_28=0, ref_frame_x=0.0,
+                     EulerOrder=0, Interpolation=0, ref_frame_x=0.0,
                      ref_frame_y=0.0, ref_frame_z=0.0, ref_frame_w=1.0,
                      from_start=-90.0, from_kink=0.0, from_end=90.0,
                      to_start=bias-90*gain, to_kink=bias, to_end=bias+90*gain,
@@ -70,7 +70,7 @@ def main():
     for idx, (a, b) in enumerate(zip(cons, back)):
         assert (a['ObjectName'], a['TransformType'], a['Flags'], a['target_axis']) == (b['ObjectName'], b['TransformType'], b['Flags'], b['target_axis'])
         if idx >= 8:
-            assert b['sources'][0]['UnknownUInt32_28'] == 0
+            assert b['sources'][0]['Interpolation'] == 0
         print(idx, b['ObjectName'], b['TransformType'], b['Flags'], b['target_axis'])
 
 

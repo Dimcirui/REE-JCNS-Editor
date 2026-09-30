@@ -448,9 +448,9 @@ class JCNSSourceProperties(PropertyGroup):
                     "1 和 2 极少见，含义未知",
         items=INTERPOLATION_ITEMS, default='LINEAR',
     )
-    unknown_uint32_29: IntProperty(
-        name="未知 (+29..+31)", description="次字节在有复杂映射时为 1，导出时自动设置；其余含义未知。通常为 0",
-        default=0, min=0,
+    complex_mapping_flag: IntProperty(
+        name="复杂映射标记 (+29)", description="有复杂映射时为 1，导出时自动设置；没有复杂映射时也可能是 2（只见于材质目标）",
+        default=0, min=0, max=255,
     )
     # ComplexMapping: the curve is an F-Curve on the constraint Empty, on the custom
     # property named here (jcns_cm.py); cm_cache holds the file's own records.

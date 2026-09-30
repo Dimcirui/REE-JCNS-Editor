@@ -72,7 +72,7 @@ def main(dst):
         k = GAIN[axis]
         c['sources'][0].update(
             SourceName='L_Thigh', source_axis=0, ReadMode=3, CurveMode=0, EulerOrder=0,
-            UnknownUInt32_28=ex.get('src28', 0), ref_frame_x=0.0, ref_frame_y=0.0, ref_frame_z=0.0, ref_frame_w=1.0,
+            Interpolation=ex.get('src28', 0) & 0xFF, ComplexMappingFlag=ex.get('src28', 0) >> 8, ref_frame_x=0.0, ref_frame_y=0.0, ref_frame_z=0.0, ref_frame_w=1.0,
             from_start=-90.0, from_kink=0.0, from_end=90.0, to_start=-90.0 * k, to_kink=0.0, to_end=90.0 * k,
             ComplexMapping=[], ComplexMappingInfoCount=0)
         cons.append(c)
@@ -92,10 +92,10 @@ def check(dst):
             ('TestTgt' + bone, tt, 49, axis), i
         assert c['TailBytes'][0] == ex.get('tail74', 0) and c['TailBytes'][1] == ex.get('tail75', 2), i
         assert c['UnknownByte72'] == ex.get('byte72', 0), i
-        assert s['UnknownUInt32_28'] == ex.get('src28', 0), (i, s['UnknownUInt32_28'])
+        assert s['Interpolation'] | (s['ComplexMappingFlag'] << 8) == ex.get('src28', 0), (i, s['Interpolation'], s['ComplexMappingFlag'])
         assert (s['SourceName'], s['ReadMode'], s['CurveMode'], s['EulerOrder']) == ('L_Thigh', 3, 0, 0)
         print(f"[{FIRST_OUT + i:02}] {c['ObjectName']:<11} TT={tt} .{axis} +74={c['TailBytes'][0]} +75={c['TailBytes'][1]}"
-              f" +72={c['UnknownByte72']} src+28={s['UnknownUInt32_28']:#x}")
+              f" +72={c['UnknownByte72']} src+28/29={s['Interpolation']}/{s['ComplexMappingFlag']}")
     return q
 
 

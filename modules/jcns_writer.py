@@ -18,7 +18,7 @@ from jcns_parser import header_field_offset
 INPLACE_CNS_FIELDS = ('Flags', 'TransformType', 'ReservedVec4', 'UnknownFloat2',
                       'UnknownByte72', 'PropertyHash', 'TailBytes')
 INPLACE_SRC_FIELDS = ('CurveMode', 'ReadMode', 'source_axis', 'EulerOrder',
-                      'UnknownUInt16_22', 'UnknownUInt32_28',
+                      'UnknownUInt16_22', 'Interpolation', 'ComplexMappingFlag', 'ReservedWord30',
                       'from_start', 'from_kink', 'from_end',
                       'to_start', 'to_kink', 'to_end',
                       'ref_frame_x', 'ref_frame_y', 'ref_frame_z', 'ref_frame_w')
@@ -295,9 +295,8 @@ class JCNSWriter:
                 rec['ComplexMappingInfoOffset'] = cm_off
                 # Byte +29 is 1 exactly when the source has ComplexMapping; a source
                 # without one may also hold 2, so only a 1 is cleared.
-                flag = (rec['UnknownUInt32_28'] >> 8) & 0xFF
-                flag = 1 if cm_off else (0 if flag == 1 else flag)
-                rec['UnknownUInt32_28'] = (rec['UnknownUInt32_28'] & ~0xFF00) | (flag << 8)
+                flag = rec['ComplexMappingFlag']
+                rec['ComplexMappingFlag'] = 1 if cm_off else (0 if flag == 1 else flag)
                 src_blob.extend(SOURCE_V2.pack(rec, version))
 
             src_blob.extend(name_blob)
@@ -728,7 +727,7 @@ _CNS_DEFAULTS = {
 _SOURCE_DEFAULTS = {
     'ComplexMappingInfoOffset': 0, 'SourceHashIndex': 0, 'ComplexMappingInfoCount': 0,
     'UnknownUInt16_22': 0, 'CurveMode': 3, 'ReadMode': 3, 'source_axis': 0,
-    'EulerOrder': 0, 'UnknownUInt32_28': 0,
+    'EulerOrder': 0, 'Interpolation': 0, 'ComplexMappingFlag': 0, 'ReservedWord30': 0,
     'from_start': 0.0, 'from_kink': 0.0, 'from_end': 0.0,
     'to_start': 0.0, 'to_kink': 0.0, 'to_end': 0.0,
     'ref_frame_x': 0.0, 'ref_frame_y': 0.0, 'ref_frame_z': 0.0, 'ref_frame_w': 1.0,

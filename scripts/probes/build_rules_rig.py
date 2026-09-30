@@ -79,7 +79,7 @@ def main(dst):
         tail[1], tail[3] = 2, 0
         c['TailBytes'] = bytes(tail)
         s = c['sources'][0]
-        common = dict(CurveMode=0, EulerOrder=0, UnknownUInt32_28=0, ref_frame_x=0.0, ref_frame_y=0.0,
+        common = dict(CurveMode=0, EulerOrder=0, Interpolation=0, ref_frame_x=0.0, ref_frame_y=0.0,
                       ref_frame_z=0.0, ref_frame_w=1.0, ComplexMapping=[], ComplexMappingInfoCount=0)
         if src is None:
             k = GAIN[axis]
@@ -115,7 +115,7 @@ def check(dst):
             assert (s['SourceName'], s['source_axis'], s['ReadMode']) == ('TestTgt' + src[0], src[1], src[2])
         else:
             assert (s['SourceName'], s['source_axis'], s['ReadMode']) == ('L_Thigh', 0, 3)
-        assert s['EulerOrder'] == 0 and s['UnknownUInt32_28'] == 0 and s['CurveMode'] == 0
+        assert s['EulerOrder'] == 0 and s['Interpolation'] == 0 and s['CurveMode'] == 0
         print(f"[{FIRST_OUT + i:02}] {c['ObjectName']:<11} TT={tt:<2} F={flags} .{axis} pf2={pf2} <- {s['SourceName']}.{s['source_axis']} rm{s['ReadMode']}")
     return q
 
