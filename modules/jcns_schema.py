@@ -233,6 +233,23 @@ def section_count(header, version):
     return 0
 
 
+# Section ids in the section table: 0 Ranges, 1 RotExpression, 2 Skin, 3 Aim,
+# 4 Material, 5 JointExportGraph.  The engine runs only the sections listed.
+SECTION_APPEND_ORDER = (1, 3, 2, 0, 4, 5)
+
+
+def reconcile_section_table(table, present):
+    """Section table that lists exactly the sections in `present` (a set of ids).
+
+    Entries already in `table` keep their order (ids this add-on does not know are
+    kept too); missing ones are appended in SECTION_APPEND_ORDER.
+    """
+    known = set(SECTION_APPEND_ORDER)
+    out = [s for s in table if s not in known or s in present]
+    out += [s for s in SECTION_APPEND_ORDER if s in present and s not in out]
+    return out
+
+
 # ── ConstraintInfo (Section 0) ─────────────────────────────────────────────
 # 80 bytes from v21, 64 at v16/v19, 56 at v11/v12.  Before v35 there is no
 # hash-table index, the Flags byte is an unnamed byte, and TransformAxis sits in

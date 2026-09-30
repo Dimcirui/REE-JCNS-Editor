@@ -6,6 +6,7 @@ from jcns_schema import (
     HEADER, CONSTRAINT_INFO, SOURCE_V2, AIM, AIM_TARGET, MATERIAL,
     COMPLEX_MAPPING, OBJECT_SETTING, SKIN, SKIN_SOURCE, SKIN_SOURCE_INFO,
     CONE_DRIVER, CONE_DRIVER_INFO, source_struct, transform_axis_key,
+    reconcile_section_table,
 )
 from jcns_parser import header_field_offset
 
@@ -398,12 +399,17 @@ class JCNSWriter:
         if rem:
             SEC_TABLE_START += (4 - rem)
 
+        # The table must list every section that has records and none that is empty.
         sec_count       = hdr['SectionTableItemCount']
         orig_sec_off    = hdr['SectionTableEntry']
-        section_blob    = bytearray()
-        for i in range(sec_count):
-            st = struct.unpack_from('<I', orig, orig_sec_off + i * 4)[0]
-            section_blob.extend(struct.pack('<I', st))
+        orig_table      = list(struct.unpack_from('<%dI' % sec_count, orig, orig_sec_off))
+        present = {sid for sid, has in (
+            (0, bool(p.constraints)), (1, bool(getattr(p, 'rot_expressions', []))),
+            (2, bool(getattr(p, 'skin_constraints', []))), (3, bool(getattr(p, 'aim_constraints', []))),
+            (4, bool(getattr(p, 'material_cns', []))),
+            (5, getattr(p, 'joint_export_graph', None) is not None)) if has}
+        sec_table       = reconcile_section_table(orig_table, present)
+        section_blob    = bytearray(struct.pack('<%dI' % len(sec_table), *sec_table))
 
         # ── Phase 7: build HashTable ────────────────────────────────────
         HASH_TABLE_START = _align(SEC_TABLE_START + len(section_blob), 16)
@@ -592,6 +598,7 @@ class JCNSWriter:
         patch['RotExpressionInfoCount'] = N_ROT
         patch['RotExpressionMapCount'] = len(rot_map)
         patch['MaterialConstraintInfoCount'] = N_MAT
+        patch['SectionCount'] = len(sec_table)
         if N_AIM > 0:
             patch['AimConstraintTableEntry'] = AIM_SECTION_START
         if N_ROT > 0:
@@ -605,16 +612,15 @@ class JCNSWriter:
             patch['MaterialConstraintInfoEntry'] = MAT_START
         if jxg is not None:
             patch['JointExportGraphInfoEntry'] = JXG_START
+        patch['SkinConstraintCount'] = N_SKIN
+        patch['SkinConstraintSourceCount'] = len(skin_infos) if N_SKIN else 0
+        patch['ReadJointTableItemCount'] = len(read_joints) if N_SKIN else 0
         if N_SKIN:
             patch['SkinConstraintTableEntry'] = SKIN_START
-            patch['SkinConstraintCount'] = N_SKIN
-            patch['SkinConstraintSourceCount'] = len(skin_infos)
             if skin_infos:
                 patch['SkinConstraintSourceTableEntry'] = SKIN_INFO_START
-            if HEADER.has('ReadJointTableItemCount', version):
-                patch['ReadJointTableItemCount'] = len(read_joints)
-                if read_joints:
-                    patch['ReadJointTableEntry'] = READ_JOINT_START
+            if read_joints:
+                patch['ReadJointTableEntry'] = READ_JOINT_START
         HEADER.pack_into(header, hdr['DataEntry'], patch, version)
 
         # ── Phase 10: assemble ──────────────────────────────────────────
