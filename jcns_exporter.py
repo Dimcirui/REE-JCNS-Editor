@@ -500,7 +500,7 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
         return change_ext
 
     def execute(self, context):
-        from . import get_constraint_empties
+        from . import get_constraint_empties, entries_of
 
         root_obj, root_props = _get_active_root(context)
         if root_obj is None:
@@ -511,8 +511,9 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
         source_exists = os.path.isfile(source_path)
 
         empties = get_constraint_empties(root_obj)
-        if not empties:
-            self.report({'WARNING'}, "没有找到任何约束，无内容可导出。")
+        # Files made only of Skin / Aim / RotExpression / Material entries have no Ranges.
+        if not empties and not entries_of(root_obj):
+            self.report({'WARNING'}, "没有找到任何条目，无内容可导出。")
             return {'CANCELLED'}
 
         _ensure_modules_path()
