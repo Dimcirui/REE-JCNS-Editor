@@ -22,10 +22,19 @@ Derived data:
       order within a depth does not matter, since no two entries are related.
       Aim targets and up joints are not in it.  Deriving it needs the skeleton.
       A file without a table (player and NPC rigs) keeps none.
+  Skin (measured, round 12): the target's position is the linear blend of its sources'
+    skinning matrices with the weights divided by their sum; the rotation is the
+    normalized sum of the weighted source rotations, each flipped to the running sum's
+    hemisphere.  A file's section table has to list the section (2) for it to run.
   Aim
+    * measured with Vec1 (1,0,0), Vec2 = Vec3 (0,1,0): local +X points at the target;
+      RotationType 0/3 take the up direction from world +Y, 1 from the up joint's
+      position, 2 from the up joint's own +Y axis, 4 is the shortest arc from the rest pose
     * no derived data besides the target block; an unused up-joint is -1; the
       12 tail bytes and the target block's 8 tail bytes are carried, not assumed
   RotExpression
+    * byte[1] = 0 replaces the rest pose, 48 gives rest * value (round 12); the value is each
+      axis scaled by the coefficient for small angles, and deviates for large ones
     * the two hash-index arrays point at the record's inline JointHash /
       SourceJointHash
     * the map holds one value per file; new entries repeat it

@@ -39,6 +39,8 @@ def _no(reason):
 def plan_skin(object_bone, sources):
     """Pin `object_bone` to the skin: an Armature constraint that blends the
     source bones' deformation by weight, which is what a skinned vertex does.
+    Position matches the engine (linear blend, weights divided by their sum); the
+    engine blends rotation as a normalized quaternion sum, Blender as a matrix sum.
 
     sources: [(bone_name, weight), ...]
     """
@@ -55,9 +57,11 @@ def plan_skin(object_bone, sources):
             targets.append((bone, float(w)))
     if not targets:
         return _no("没有可用的源骨骼")
+    # The engine divides by the weight sum (measured, round 12), Blender's Armature
+    # constraint does not.
     total = sum(w for _, w in targets)
-    if abs(total - 1.0) > 1e-3:
-        warnings.append("权重和 %.3f（Blender 不会归一化）" % total)
+    if total > 0:
+        targets = [(b, w / total) for b, w in targets]
     return ConstraintPlan(
         True, warnings=warnings, bone=object_bone, name=CON_NAME['Skin'],
         con_type='ARMATURE', targets=tuple(targets),
@@ -80,10 +84,12 @@ def aim_track_axis(vec):
     return ''
 
 
-def plan_aim(bone, target, vec1, influence, up_bone=''):
+def plan_aim(bone, target, vec1, influence, up_bone='', rotation_type=4):
     """Aim `bone` at `target`: a Damped Track along the record's aim axis (Vec1).
 
-    The up bone and the other vectors are not previewed.
+    Damped Track is the shortest-arc turn from the rest pose, which is what
+    RotationType 4 does (measured, round 12).  Types 0-3 also fix the roll around the
+    aim axis, so the preview's roll differs; the up bone is not previewed.
     """
     if not bone:
         return _no("没有被瞄准的骨骼")
@@ -96,6 +102,8 @@ def plan_aim(bone, target, vec1, influence, up_bone=''):
         return _no("瞄准轴 (%.2f, %.2f, %.2f) 不是坐标轴，Blender 的阻尼追踪表示不了"
                    % tuple(vec1))
     warnings = []
+    if rotation_type != 4:
+        warnings.append("类型 %d 的引擎行为还会固定绕瞄准轴的翻滚，预览只做最短弧，翻滚会不同" % rotation_type)
     if up_bone:
         warnings.append("辅助骨骼（up）不参与预览")
     infl = min(1.0, max(0.0, float(influence)))

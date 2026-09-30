@@ -158,6 +158,11 @@ def analyze_aim(W, K, rests, bone, vec1, vec2, target, up_bone, shifts=(-2, -1, 
     if up_bone:
         U = pos_cols(W, f'{src}.{up_bone}')
         ups['up_bone'] = U - P
+        Ur = quat_cols(W, f'{src}.{up_bone}')
+        for k, a in enumerate('xyz'):
+            unit_axis = np.eye(3)[k]
+            ups[f'up_bone_axis_{a}'] = Ur.apply(unit_axis)
+            ups[f'up_bone_axis_-{a}'] = -Ur.apply(unit_axis)
     errs = {}
     for name, up in ups.items():
         Wf = frame_from(d, up)
@@ -239,8 +244,39 @@ def analyze_skin(W, K, rests, bone, sources):
         for i, (name, _) in enumerate(sources):
             entry[f'rot_vs_source_{name}_relative_spread_deg'] = float(
                 ang(Rot.from_matrix(Rm[i]).inv() * TR, (Rot.from_matrix(Rm[i]).inv() * TR)[0]).max())
+        entry['rot_nlerp_running_max_err_deg'] = skin_rotation_nlerp(
+            [quat_cols(W, f'{src}.{name}') for name, _ in sources], nominal / nominal.sum(), TR)
         out[src] = entry
     return dict(bone=bone, sources=[s for s, _ in sources], by_source_set=out)
+
+
+def skin_rotation_nlerp(Rs, w, T, seeds=8):
+    """Fit T = normalize(sum_i w_i q_i X_i) with each q_i X_i flipped toward the running
+    sum, X_i unknown constant rotations; -> worst-frame error in degrees."""
+    from scipy.optimize import least_squares
+    n = len(Rs)
+    idx = np.arange(0, len(T), max(1, len(T) // 600))
+    Rs = [r[idx] for r in Rs]
+    T = T[idx]
+
+    def model(p):
+        acc = None
+        for i in range(n):
+            q = (Rs[i] * Rot.from_rotvec(p[3 * i:3 * i + 3])).as_quat()
+            if acc is None:
+                acc = w[i] * q
+            else:
+                acc = acc + w[i] * q * np.sign(np.sum(q * acc, axis=1, keepdims=True) + 1e-12)
+        return Rot.from_quat(acc / np.linalg.norm(acc, axis=1, keepdims=True))
+
+    best = None
+    start = np.concatenate([(Rs[i][0].inv() * T[0]).as_rotvec() for i in range(n)])
+    for seed in range(seeds):
+        p0 = start if seed == 0 else np.random.default_rng(seed).normal(size=3 * n)
+        sol = least_squares(lambda p: ang(T, model(p)), p0, loss='soft_l1', max_nfev=300)
+        e = float(ang(T, model(sol.x)).max())
+        best = e if best is None else min(best, e)
+    return best
 
 
 # ── RotExpression ───────────────────────────────────────────────────────────
@@ -318,6 +354,8 @@ def run(F, rests):
     ent = {b: q for b, q in zip('EF', [out['rot'][k] for k in out['rot']])}
     E, Fq = quat_cols(K, 'TestTgtE'), quat_cols(K, 'TestTgtF')
     out['rot_E_vs_F_max_deg'] = float(ang(E, Fq).max())
+    rest_e = Rot.from_quat(rests['E'][[1, 2, 3, 0]])
+    out['rot_F_equals_rest_times_E_max_deg'] = float(ang(Fq, rest_e * E).max())   # F = rest * E exactly?
     for b, srcs in SPEC['skin']:
         out['skin'][b] = analyze_skin(W, K, rests, b, srcs)
     return out
@@ -365,7 +403,10 @@ def synthetic(n=600, seed=1, aim_model='lookat_world_Y', skin_alpha=(0.5, 0.3, 0
     d = unit(T - base_p)
     L = frame_from(np.array([[1.0, 0, 0]]), np.array([[0, 1.0, 0]]))[0]
     for b, typ, up in SPEC['aim']:
-        if aim_model == 'lookat_world_Y':
+        if typ == 2:
+            up_axis = bones['L_Hand'][1].apply([0, 1.0, 0])
+            Rw = Rot.from_matrix(frame_from(d, up_axis) @ L.T[None])
+        elif aim_model == 'lookat_world_Y':
             Rw = Rot.from_matrix(frame_from(d, np.tile([0, 1.0, 0], (n, 1))) @ L.T[None])
         else:
             rw = ear_q * rest_local
@@ -383,8 +424,11 @@ def synthetic(n=600, seed=1, aim_model='lookat_world_Y', skin_alpha=(0.5, 0.3, 0
             c = np.array([0.1 * (i + 1), -0.2, 0.05 * i])
             pos += al[i] * (r_i.apply(c) + p_i)
             rot_acc += al[i] * r_i.as_matrix()
-        U, _, Vt = np.linalg.svd(rot_acc)
-        put(W, f'e.TestTgt{b}', pos, Rot.from_matrix(U @ Vt))
+        acc, xs = None, [Rot.from_rotvec([0.3 * (i + 1), 0.2, -0.1]) for i in range(len(srcs))]
+        for i, (nm, _) in enumerate(srcs):
+            qq = (bones[nm][1] * xs[i]).as_quat()
+            acc = al[i] * qq if acc is None else acc + al[i] * qq * np.sign(np.sum(qq * acc, axis=1, keepdims=True))
+        put(W, f'e.TestTgt{b}', pos, Rot.from_quat(acc / np.linalg.norm(acc, axis=1, keepdims=True)))
         put(K, f'TestTgt{b}', np.zeros((n, 3)), Rot.from_quat(np.tile([0, 0, 0, 1.0], (n, 1))))
     # rot expression
     src_q = bones['L_Thigh'][1]
@@ -412,6 +456,9 @@ def self_test():
         want = 'lookat_world_Y' if aim_model == 'lookat_world_Y' else 'shortest_arc_from_rest'
         for k, v in res['aim'].items():
             best = v['candidates']['ranked'][0]['candidate']
+            if k.startswith('D'):
+                assert best == 'lookat_up_bone_axis_y' and v['candidates']['ranked'][0]['max_error'] < 1e-3, (k, v['candidates'])
+                continue
             assert best == want or best == 'lookat_' + want.split('_', 1)[-1] or want in best, (k, best)
             assert v['aim_axis']['max_spread_deg'] < 1e-3 or aim_model == 'lookat_world_Y', (k, v['aim_axis'])
         for k, v in res['rot'].items():
@@ -421,6 +468,7 @@ def self_test():
         s = res['skin']['J']['by_source_set']['e']
         assert np.allclose(s['alpha'], [0.5, 0.3, 0.2], atol=1e-6), s['alpha']
         assert s['pos_max_resid_m'] < 1e-8
+        assert s['rot_nlerp_running_max_err_deg'] < 0.1, s['rot_nlerp_running_max_err_deg']
         s = res['skin']['K']['by_source_set']['e']
         assert np.allclose(s['alpha'], [0.5, 0.25], atol=1e-6), s['alpha']
         assert s['pos_max_resid_alpha_nominal_m'] < 1e-8 and s['pos_max_resid_alpha_normalized_m'] > 1e-4

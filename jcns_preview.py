@@ -104,7 +104,7 @@ def _plan_for(kind_id, p):
         return plan.plan_skin(p.target_bone, [(w.bone, w.weight) for w in p.skin_sources])
     if kind_id == 'Aim':
         return plan.plan_aim(p.target_bone, p.aim_target_bone, tuple(p.aim_vec1),
-                             p.aim_influence, p.aim_up_bone)
+                             p.aim_influence, p.aim_up_bone, p.aim_rotation_type)
     if kind_id == 'RotExpression':
         return plan.plan_rot(p.target_bone, p.rot_source_bone, tuple(p.rot_floats))
     return plan.ConstraintPlan(False, "这一类没有预览")

@@ -608,8 +608,7 @@ class JCNS_PT_Ed_Skin(_EditorMain, Panel):
         total = sum(w.weight for w in p.skin_sources)
         row = box.row(align=True)
         if p.skin_sources and abs(total - 1.0) > 1e-3:
-            row.alert = True
-            row.label(text="权重和为 %.3f，通常应为 1" % total, icon='ERROR')
+            row.label(text="权重和 %.3f，引擎会除以权重和" % total, icon='INFO')
         else:
             row.label(text="权重和 %.3f" % total, icon='CHECKMARK')
         row.operator("jcns.skin_normalize_weights", text="归一化")
@@ -661,7 +660,9 @@ class JCNS_PT_Ed_Aim_Vectors(_Editor, _Sub, Panel):
         if c is None:
             return
         p = c.p
-        c.body.label(text="四个向量的具体作用未知。Vec1 通常是坐标轴方向，Vec2/Vec3 通常为 +Y", icon='INFO')
+        c.body.label(text="Vec1=(1,0,0)、Vec2=Vec3=(0,1,0) 时：本地 +X 指向目标", icon='INFO')
+        c.body.label(text="类型 0/3 上方向取世界 +Y；1 取辅助骨的位置方向；2 取辅助骨自己的 +Y 轴；4 从静止姿态最短弧转过去")
+        c.body.label(text="其他向量取值的作用未知")
         col = c.body.column(align=True)
         for name in ("aim_vec0", "aim_vec1", "aim_vec2", "aim_vec3"):
             col.row(align=True).prop(p, name, text="")
