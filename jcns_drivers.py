@@ -132,7 +132,7 @@ def clear_channels():
 _GROUPS = {}
 
 
-def register_group(gid, rest, parts, keys, offset=None):
+def register_group(gid, rest, parts, keys, offset=None, parent_scale=None):
     """One bone's group; optional offset selects parent-axis translation.
 
     `keys` are the three driver channel keys; parts carry winning entries.
@@ -140,6 +140,7 @@ def register_group(gid, rest, parts, keys, offset=None):
     _GROUPS[gid] = {'rest': tuple(rest), 'parts': list(parts)}
     if offset is not None:
         _GROUPS[gid]['offset'] = tuple(offset)
+        _GROUPS[gid]['parent_scale'] = tuple(parent_scale or (1.0, 1.0, 1.0))
     for a, key in enumerate(keys):
         _CHANNELS[key] = {'group': gid, 'axis': a}
 
@@ -186,7 +187,8 @@ def _group_value(ch, values):
         parts.append((axis, mode, replaces, total))
     if 'offset' in g:
         return jcns_source_read.translation_basis(
-            g['rest'], g['offset'], [(a, rep, val) for a, mode, rep, val in parts])[ch['axis']]
+            g['rest'], g['offset'], [(a, rep, val) for a, mode, rep, val in parts],
+            g.get('parent_scale', (1.0, 1.0, 1.0)))[ch['axis']]
     return jcns_source_read.target_basis(g['rest'], parts)[ch['axis']]
 
 

@@ -287,7 +287,7 @@ def position(rest, offset, loc, axis):
     return offset[axis] + p[axis + 1]
 
 
-def translation_basis(rest, offset, parts):
+def translation_basis(rest, offset, parts, parent_scale=(1.0, 1.0, 1.0)):
     """Blender location basis for parent-axis translations.
 
     Parts are (axis, replaces, value) for winning channels in file order, in
@@ -295,10 +295,13 @@ def translation_basis(rest, offset, parts):
     replacing writes value on that axis alone; untouched axes keep offset.
     Blender's location basis is rest-rotated, so the parent-axis delta goes back
     through inverse rest; the engine's output is not rotated before adding.
+    The value is written in the parent's own local frame, which a scaled parent stretches
+    (round 18), and Blender's parent space has no rest scale: the delta is multiplied by
+    `parent_scale` (the parent's rest scale) on each axis.
     """
     delta = [0.0, 0.0, 0.0]
     for axis, replaces, value in parts:
-        delta[axis] = value - offset[axis] if replaces else value
+        delta[axis] = (value - offset[axis] if replaces else value) * parent_scale[axis]
     p = qmul(qmul(_conj(rest), (0.0, *delta)), rest)
     return tuple(p[1:])
 

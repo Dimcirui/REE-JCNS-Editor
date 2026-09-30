@@ -375,7 +375,9 @@ def register_translation_group(armature_obj, root_obj, bone, chans):
     gid = jcns_drivers.channel_id(armature_obj.name, bone, _LOCATION_GROUP_TAG, '')
     keys = [jcns_drivers.channel_id(armature_obj.name, bone, _LOCATION_GROUP_TAG, _AXIS_NAME[a])
             for a in range(3)]
-    jcns_drivers.register_group(gid, rest, parts, keys, offset=offset)
+    parent = armature_obj.data.bones[bone].parent
+    parent_scale = mesh_rest_scale(parent) if parent is not None else (1.0, 1.0, 1.0)
+    jcns_drivers.register_group(gid, rest, parts, keys, offset=offset, parent_scale=parent_scale)
     return keys, all_sources, all_reads
 
 

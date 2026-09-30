@@ -128,6 +128,9 @@ for t in range(0, len(S), args.stride):
             for kind, value, errors, factor in (('p',matrix.translation,pos_err,100),
                                                ('s',[v * k for v, k in zip(matrix.to_scale(), rest_scale[b])],scale_err,1)):
                 want = [float(trs[t][b+'_'+kind+a]) for a in 'xyz']
+                if kind == 'p' and arm.data.bones[b].parent is not None:
+                    # the engine's local position lives in the parent's scaled frame; Blender's has no rest scale
+                    want = [w * k for w, k in zip(want, ops.mesh_rest_scale(arm.data.bones[b].parent))]
                 if not all(math.isfinite(v) for v in want):
                     raise ValueError('Missing/nonfinite TRS capture: '+b)
                 errors[b] = max(errors[b],max(abs(a-v)*factor for a,v in zip(want,value)))
