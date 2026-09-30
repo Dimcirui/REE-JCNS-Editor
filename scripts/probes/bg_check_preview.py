@@ -36,6 +36,7 @@ MESH = "xaihi_model.mesh.241111606"
 
 ap = argparse.ArgumentParser()
 ap.add_argument('--jcns', default=RIG + "xaihi_constraint.jcns.102")
+ap.add_argument('--mesh', default=RIG + MESH, help='use the mesh snapshot matching this capture')
 ap.add_argument('--data', required=True)
 ap.add_argument('--x-out', type=int, default=8)
 ap.add_argument('--x-gain', type=float, default=0.5)
@@ -62,7 +63,7 @@ bpy.context.preferences.addons['RE-Mesh-Editor'].preferences.showConsole = False
 
 quiet = io.StringIO()
 with contextlib.redirect_stdout(quiet):
-    bpy.ops.re_mesh.importfile(filepath=RIG + MESH, files=[{"name": MESH}], directory=RIG)
+    bpy.ops.re_mesh.importfile(filepath=args.mesh, files=[{"name": os.path.basename(args.mesh)}], directory=os.path.dirname(args.mesh))
 arm = [o for o in bpy.data.objects if o.type == 'ARMATURE'][0]
 with contextlib.redirect_stdout(quiet):
     bpy.ops.jcns.import_file(filepath=args.jcns, target_armature_name=arm.name)
