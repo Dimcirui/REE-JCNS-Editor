@@ -32,11 +32,14 @@ rig rounds 6-7):
     written by a LATER entry is still at its unconstrained pose when it is read.  Such
     a channel gets no variable and reads its rest value.
 
-A target entry with Flags bit0 = 0 replaces the channel instead of adding to the
-rest pose (round 8).  On a bone with an identity rest the two are the same, so only
-a bone that has both -- a replacing channel and a rest rotation -- needs more: its
-three rotation_euler drivers are built as one group, each evaluating the whole bone
-(jcns_source_read.override_basis) and returning its own axis of the basis.
+Two things make a bone's rotation more than three independent Euler channels, and
+such a bone's three rotation_euler drivers are built as one group, each evaluating
+the whole bone (jcns_source_read.target_basis) and returning its axis of the basis:
+  * a rotation TransformType other than 1 -- 4 / 5 / 6 compose by swing-twist,
+    twist-swing and rotation vector, 13 / 14 hold one rotation about the last
+    written axis (round 9);
+  * a target entry with Flags bit0 = 0 on a bone with a rest rotation: it replaces
+    the rest pose instead of adding to it (round 8).
 """
 
 import bpy
@@ -137,7 +140,8 @@ def clear_channels():
     _GROUPS.clear()
 
 
-# gid -> {'rest': (w, x, y, z), 'parts': [(axis, replaces, maps, reads), ...]}
+# gid -> {'rest': (w, x, y, z), 'parts': [(axis, mode, replaces, maps, reads), ...]}
+# with parts in file order of their live entries
 # for a bone whose rotation drivers are built together; see the module docstring.
 # The channels of such a bone are in _CHANNELS as {'group': gid, 'axis': a}.
 _GROUPS = {}
@@ -182,13 +186,13 @@ def _group_value(ch, values):
     g = _GROUPS.get(ch['group'])
     if g is None:
         return 0.0
-    replaced, added = {}, {}
+    parts = []
     at = 0
-    for axis, replaces, maps, reads in g['parts']:
+    for axis, mode, replaces, maps, reads in g['parts']:
         total, used = _total(maps, reads, values[at:])
         at += used
-        (replaced if replaces else added)[axis] = total
-    return jcns_source_read.override_basis(g['rest'], replaced, added)[ch['axis']]
+        parts.append((axis, mode, replaces, total))
+    return jcns_source_read.target_basis(g['rest'], parts)[ch['axis']]
 
 
 def jcns_ch(key, *values):

@@ -131,7 +131,8 @@ CM_PER_UNIT = 100.0
 # Driver targets by transform type: which quantity the output is.
 _TARGET_QUANTITY = {
     'Translation': 'Translation', 'Scale': 'Scale',
-    'Rotation': 'Rotation', 'UnkRotation_13': 'Rotation',
+    'Rotation': 'Rotation', 'AxisRotation': 'Rotation', 'AxisRotation_14': 'Rotation',
+    'SwingTwist': 'Rotation', 'TwistSwing': 'Rotation', 'RotationVector': 'Rotation',
 }
 
 

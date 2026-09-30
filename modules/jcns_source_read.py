@@ -204,6 +204,72 @@ def override_basis(rest, replaced, added):
     return tuple(_euler(_pos_w(qmul(_conj(rest), q)), 0))
 
 
+# How a rotation target composes its three channel values, by TransformType
+# (measured 2026-09-30, round 9: every one to 0.001 deg).  They mirror the source
+# reads: 1 / 4 / 5 / 6 build the rotation the way ReadMode 1 / 3 / 4 / 5 take it
+# apart.  13 and 14 hold a single rotation about the written axis per bone -- the
+# last such entry on the bone wins, whatever its axis.
+TARGET_MODES = {1: 'euler', 4: 'swing_twist', 5: 'twist_swing', 6: 'rotvec',
+                13: 'axis', 14: 'axis'}
+
+
+def _axis_q(axis, v):
+    h = v * 0.5
+    r = [math.cos(h), 0.0, 0.0, 0.0]
+    r[axis + 1] = math.sin(h)
+    return tuple(r)
+
+
+def compose(mode, v):
+    """The rotation a target mode builds from channel values v = (x, y, z)."""
+    if mode == 'euler':
+        return from_euler_xyz(v)
+    if mode in ('swing_twist', 'twist_swing'):
+        t = _axis_q(0, v[0])
+        s = (1.0, 0.0, math.tan(v[1] * 0.5), math.tan(v[2] * 0.5))
+        n = math.sqrt(sum(c * c for c in s))
+        s = tuple(c / n for c in s)
+        return qmul(s, t) if mode == 'swing_twist' else qmul(t, s)
+    if mode == 'rotvec':
+        ang = math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2)
+        if ang < 1e-12:
+            return (1.0, 0.0, 0.0, 0.0)
+        k = math.sin(ang * 0.5) / ang
+        return (math.cos(ang * 0.5), v[0] * k, v[1] * k, v[2] * k)
+    raise ValueError(mode)
+
+
+def target_basis(rest, parts):
+    """Blender pose basis (XYZ Euler) of a rotation target from its live channels.
+
+    `parts` are (axis, mode, replaces, value) in file order of their winning
+    entries.  Replacing (Flags bit0 = 0) drops the rest pose; adding lays the
+    rotation on it (rounds 8-9).  An 'euler' bone goes through override_basis,
+    which also covers a mix of replacing and adding channels.  For the other modes
+    the latest channel's mode and bit0 decide the whole bone (mixing modes on one
+    bone never occurs in shipped files and is unmeasured).
+    """
+    if not parts:
+        return (0.0, 0.0, 0.0)
+    last = parts[-1]
+    mode = last[1]
+    if mode == 'euler':
+        replaced = {a: v for a, m, r, v in parts if r}
+        added = {a: v for a, m, r, v in parts if not r}
+        return override_basis(rest, replaced, added)
+    if mode == 'axis':
+        q = _axis_q(last[0], last[3])
+    else:
+        v = [0.0, 0.0, 0.0]
+        for a, m, r, val in parts:
+            if m == mode:
+                v[a] = val
+        q = compose(mode, v)
+    if not last[2]:
+        q = qmul(rest, q)
+    return tuple(_euler(_pos_w(qmul(_conj(rest), q)), 0))
+
+
 def rest_input(mode, axis, rest, offset_cm, order=0, frame=None):
     """What a source reads with its bone at rest, in the file's units (degrees,
     centimetres, or 1 for a scale).

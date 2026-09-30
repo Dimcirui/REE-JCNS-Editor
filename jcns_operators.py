@@ -55,7 +55,14 @@ _DRIVABLE = {
     'Scale':           ('scale',           ['SCALE_X', 'SCALE_Y', 'SCALE_Z'], 'Scale'),
     # Unresolved variant seen driving cloth-offset bones; treated as a plain
     # Euler rotation until its actual semantics are reverse-engineered.
-    'UnkRotation_13':  ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     'Rotation'),
+    # The other rotation types (measured 2026-09-30, round 9) drive the same Euler
+    # channels; how they compose is jcns_source_read.TARGET_MODES, so a bone that
+    # carries one is previewed as a group (see _needs_group).
+    'SwingTwist':      ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     'Rotation'),
+    'TwistSwing':      ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     'Rotation'),
+    'RotationVector':  ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     'Rotation'),
+    'AxisRotation':    ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     'Rotation'),
+    'AxisRotation_14': ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     'Rotation'),
 }
 
 # What a driver variable reads off a SOURCE bone.  That is set by the source's
@@ -319,18 +326,37 @@ def _replaces(members):
     return not (members[-1].jcns_cns_props.cns_flags & 1)
 
 
+def _target_mode(members):
+    """How the live entry of a channel composes its bone's rotation
+    (jcns_source_read.TARGET_MODES), from its TransformType."""
+    from . import jcns_drivers
+    from .jcns_exporter import _transform_int
+    tt = _transform_int(members[-1].jcns_cns_props.transform_type)
+    return jcns_drivers.jcns_source_read.TARGET_MODES.get(tt, 'euler')
+
+
 def _rotation_channels(root_obj, bone):
-    """{axis: members} for every rotation_euler channel of `bone`, file order kept."""
-    from . import AXIS_TO_INT, group_constraints_by_channel
+    """{axis: members} for every rotation_euler channel of `bone`.  When two
+    rotation types write one axis, the one whose live entry is later in the file
+    is kept."""
+    from . import AXIS_TO_INT, get_constraint_empties, group_constraints_by_channel
+    order = {e.name: i for i, e in enumerate(get_constraint_empties(root_obj))}
     out = {}
     for (b, transform, axis), members in group_constraints_by_channel(root_obj).items():
         entry = _DRIVABLE.get(transform)
         if b == bone and axis != 'W' and entry is not None and entry[0] == 'rotation_euler':
-            out[AXIS_TO_INT.get(axis, 0)] = members
+            a = AXIS_TO_INT.get(axis, 0)
+            if a not in out or order.get(members[-1].name, -1) > order.get(out[a][-1].name, -1):
+                out[a] = members
     return out
 
 
 def _needs_group(armature_obj, bone, chans):
+    """A bone whose rotation cannot be one independent driver per Euler channel:
+    a non-Euler rotation type (swing-twist, rotation vector, single axis -- round
+    9), or an Euler channel replacing a rest rotation (round 8)."""
+    if any(_target_mode(m) != 'euler' for m in chans.values()):
+        return True
     if not any(_replaces(m) for m in chans.values()):
         return False
     rest, _off = _rest_transform(armature_obj, bone)
@@ -338,8 +364,8 @@ def _needs_group(armature_obj, bone, chans):
 
 
 def replacing_bones(armature_obj, root_obj):
-    """{bone: {axis: members}} of the bones whose rotation is previewed as a group:
-    a channel written with Flags bit0 = 0 on a bone with a rest rotation."""
+    """{bone: {axis: members}} of the bones whose rotation is previewed as a group
+    (see _needs_group)."""
     from . import group_constraints_by_channel
     bones = {b for (b, t, a) in group_constraints_by_channel(root_obj)}
     out = {}
@@ -353,15 +379,17 @@ def replacing_bones(armature_obj, root_obj):
 def register_bone_group(armature_obj, root_obj, bone, chans):
     """Put one bone's rotation group in the channel table.  -> (keys, sources,
     reads) for the drivers, or None when a channel cannot be previewed."""
-    from . import jcns_drivers
+    from . import jcns_drivers, get_constraint_empties
+    order = {e.name: i for i, e in enumerate(get_constraint_empties(root_obj))}
     parts, all_sources, all_reads = [], [], []
-    for axis in sorted(chans):
+    # File order of the live entries: for a single-axis type the last one wins.
+    for axis in sorted(chans, key=lambda a: order.get(chans[a][-1].name, -1)):
         members = chans[axis]
         sources = channel_sources(armature_obj, root_obj, members[-1])
         if any(s['axis_name'] == 'W' for s in sources):
             return None
         reads = [jcns_drivers.source_read(s) for s in sources]
-        parts.append((axis, _replaces(members),
+        parts.append((axis, _target_mode(members), _replaces(members),
                       [jcns_drivers.source_map(s, 'Rotation') for s in sources], reads))
         all_sources += sources
         all_reads += reads
@@ -392,8 +420,9 @@ def _apply_bone(armature_obj, root_obj, bone, chans):
     for members in chans.values():
         for e in members:
             e.jcns_cns_props.preview_on = True
-    print("[JCNS DRIVER] [Rotation group] %s: %d channel(s), %d replacing the rest pose" % (
-        bone, len(chans), sum(_replaces(m) for m in chans.values())))
+    print("[JCNS DRIVER] [Rotation group] %s: %d channel(s) %s, %d replacing the rest pose" % (
+        bone, len(chans), sorted({_target_mode(m) for m in chans.values()}),
+        sum(_replaces(m) for m in chans.values())))
     return True, ""
 
 
@@ -603,7 +632,7 @@ def _apply_channel(armature_obj, root_props, members):
         chans = _rotation_channels(root_obj, bone)
         if _needs_group(armature_obj, bone, chans):
             ok, err = _apply_bone(armature_obj, root_obj, bone, chans)
-            label = "%s（整骨 %d 个旋转通道，含替换静止姿态的条目）" % (bone, len(chans))
+            label = "%s（整骨预览 %d 个旋转通道）" % (bone, len(chans))
             return ok, err, label
         if _group_driver_axes(armature_obj, bone):
             # The bone was grouped before (a bit0 or rest change): take the group

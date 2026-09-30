@@ -339,10 +339,13 @@ def _root_version(rp):
     return 35 if rp.detected_game == 'RE9' else 102
 
 
-_TRANSFORM_STR_TO_INT = {
-    'Translation': 0, 'Rotation': 1, 'Scale': 2, 'BlendShape': 3,
-    'Material': 7, 'Unknown': 4,
-}
+def _transform_int(transform_type, default=1):
+    """TransformType byte of an enum identifier (the inverse of TRANSFORM_TYPE_MAP)."""
+    from . import TRANSFORM_TYPE_MAP
+    for value, name in TRANSFORM_TYPE_MAP.items():
+        if name == transform_type:
+            return value
+    return default
 
 
 def _make_default_constraint_dict(empty_obj):
@@ -364,7 +367,7 @@ def _make_default_constraint_dict(empty_obj):
         'ConeDriverInfoCount':   0,
         'ConeDriverInfo':        [],
         'Flags':                 0x30,
-        'TransformType':         _TRANSFORM_STR_TO_INT.get(p.transform_type, 1),
+        'TransformType':         _transform_int(p.transform_type),
         'ParentVec4':            (0.0, 0.0, 0.0, 1.0),
         'ParentFloat2':          (0.0, 0.0),
         'ParentUInt8_72':        0,
@@ -402,6 +405,10 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
 
     # --- Target axis lives in ConstraintInfo[+73], not in any source block ---
     parsed_c['TransformAxis_parent'] = AXIS_TO_INT.get(p.target_axis, 0)
+    # The transform type used to be left as parsed, so editing it in the panel was
+    # lost on export (and new entries of types past 3 became Rotation).
+    parsed_c['TransformType'] = _transform_int(p.transform_type,
+                                               parsed_c.get('TransformType', 1))
 
     # --- Sources: rebuild the whole list from the UI collection ---
     # Rebuilding rather than patching in place means added/removed sources are

@@ -9,14 +9,14 @@ be a pure function of TransformationID — every one of the 15 observed types us
 a single value, with no exceptions at all:
 
     bit 4   the constraint drives a BONE rather than a material / blend weight
-            set for Translation, Rotation, Scale, UnkCtrl_4, UnkTopBank_5,
-            Unknown_6, UnkRotation_13/14; clear for Material_*, BlendShape,
+            set for Translation, Rotation, Scale, SwingTwist, TwistSwing,
+            RotationVector, AxisRotation/14; clear for Material_*, BlendShape,
             Scalar, Unknown_12.
             (the bt template guesses "isJoint?" — this confirms it)
 
     bit 5   the driven quantity is angular
-            set for Rotation, UnkCtrl_4, UnkTopBank_5, Unknown_6,
-            UnkRotation_13/14; clear for Translation, Scale, BlendShape,
+            set for Rotation, SwingTwist, TwistSwing, RotationVector,
+            AxisRotation/14; clear for Translation, Scale, BlendShape,
             Material_*, Scalar, Unknown_12.
             (unnamed in the bt template)
 
@@ -30,7 +30,7 @@ bit 0 is NOT derivable: it varies within a single type (Rotation appears as both
 template guesses "isAdd?".
 
 The rule holds for every constraint of v36 (Onimusha, 3596) and v102 (22839),
-but not for RE9's v35: 1149 of 2349 disagree, almost all UnkRotation_13/14 with
+but not for RE9's v35: 1149 of 2349 disagree, almost all AxisRotation/14 with
 bit 5 clear.  Only DERIVED_BITS_VERSIONS get the bits rewritten; older files
 have no Flags byte at all.
 
@@ -50,17 +50,17 @@ TRANSFORM_FLAGS = {
     'Rotation':       (True,  True),
     'Scale':          (True,  False),
     'BlendShape':     (False, False),
-    'UnkCtrl_4':      (True,  True),
-    'UnkTopBank_5':   (True,  True),
-    'Unknown_6':      (True,  True),
+    'SwingTwist':      (True,  True),
+    'TwistSwing':   (True,  True),
+    'RotationVector':      (True,  True),
     'Material_Color': (False, False),
     'Material_4D':    (False, False),
     'Material_3D':    (False, False),
     'Material_2D':    (False, False),
     'Scalar':         (False, False),
     'Unknown_12':     (False, False),
-    'UnkRotation_13': (True,  True),
-    'UnkRotation_14': (True,  True),
+    'AxisRotation': (True,  True),
+    'AxisRotation_14': (True,  True),
     # Not seen in any shipped file; assumed to follow their siblings.
     'UnkRotation_15': (True,  True),
     'UnkRotation_16': (True,  True),

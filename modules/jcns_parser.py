@@ -106,9 +106,15 @@ class JCNSParser:
                                              with bit0 of its sources' CurveMode in 93.5%, but
                                              that bit does nothing.  bit2/bit3: only on
                                              BlendShape / material targets.  bits 1/6/7: never.
-      +47:  TransformType         uint8    bt: TransformationID.  15 values; 0 Translation,
-                                             1 Rotation, 2 Scale measured, the rest named by bt
-                                             only (13 alone is 20% of constraints).
+      +47:  TransformType         uint8    bt: TransformationID.  15 values.  Measured: 0
+                                             Translation, 2 Scale, and the rotations, which
+                                             mirror the source ReadModes (round 9):
+                                             1 Euler rest*Rz*Ry*Rx, 4 swing*twist, 5 twist*swing,
+                                             6 rotation vector; 13 / 14 one rotation about the
+                                             written axis per bone, the bone's last 13/14 entry
+                                             winning whatever its axis (13 is 20% of all
+                                             constraints; 14 behaved identically).  3 and 7-12
+                                             drive blend shapes / materials, unmeasured.
       +48:  UnknownVector4D       vec4     (0,0,0,1) in every constraint.
       +64:  UnknownFloat2         float[2] (0,0) in 99.7%.  BlendShape targets mostly (0,1);
                                              11 rotation targets carry pairs like (-45,0),

@@ -22,7 +22,7 @@ The output side additionally depends on WHAT is being driven:
   scale, blend  multiplicative or 0..1, neutral value 1.0 — never negated
 
 flags_cns bit 5 turns out to be exactly the rotation/not-rotation distinction:
-across 19884 shipped constraints it is set for Rotation / UnkCtrl_4 /
+across 19884 shipped constraints it is set for Rotation / SwingTwist /
 UnkRotation_* and clear for Translation / Scale / BlendShape / Material_*,
 agreeing with the transform type 99.6% of the time.  An earlier version of this
 module treated it as an opaque "shipped file convention" flag; both descriptions
