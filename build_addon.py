@@ -57,6 +57,7 @@ INCLUDE_FILES = [
     "jcns_editors.py",
     "jcns_exporter.py",
     "jcns_importer.py",
+    "jcns_merge_ops.py",
     "jcns_operators.py",
     "jcns_preview.py",
     "jcns_ui.py",

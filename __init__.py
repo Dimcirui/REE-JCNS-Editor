@@ -999,6 +999,7 @@ from . import jcns_drivers
 from . import jcns_preview
 from . import jcns_capture
 from . import jcns_cm
+from . import jcns_merge_ops
 
 def _poll_jcns_collection(self, collection):
     """Restrict the active-collection picker to collections that hold a JCNS root."""
@@ -1038,9 +1039,11 @@ def register():
     jcns_editors.register()
     jcns_drivers.register()
     jcns_cm.register()
+    jcns_merge_ops.register()
 
 
 def unregister():
+    jcns_merge_ops.unregister()
     jcns_cm.unregister()
     jcns_drivers.unregister()
     jcns_editors.unregister()

@@ -351,6 +351,8 @@ class JCNS_PT_Ed_Ranges(_EditorMain, Panel):
                 row.label(text="本条会被靠后的那条整条覆盖，不产生任何效果。",
                           icon='ERROR')
                 scol.label(text="想让它生效，用列表右侧的 ▲▼ 把它移到最后。")
+            from . import jcns_merge_ops
+            jcns_merge_ops.draw_channel_merge(sbox, context, channel_members, c.rp)
 
 
 class JCNS_PT_Ed_Ranges_Sources(_Editor, Panel):

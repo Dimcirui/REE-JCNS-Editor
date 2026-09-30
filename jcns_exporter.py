@@ -552,6 +552,12 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
             self.report({'ERROR'}, msg.replace('\n', '  '))
             return {'CANCELLED'}
 
+        from . import jcns_merge_ops
+        shared = jcns_merge_ops.shared_channel_warning(empties, root_props)
+        if shared:
+            print("[JCNS EXPORT] " + shared)
+            self.report({'WARNING'}, shared)
+
         n_orig = len(parser.constraints)
         n_curr = len(empties)
 
