@@ -84,7 +84,7 @@ def aim_track_axis(vec):
     return ''
 
 
-def plan_aim(bone, target, vec1, influence, up_bone='', rotation_type=4):
+def plan_aim(bone, target, vec1, influence, up_bone='', rotation_type=4, offset=(0.0, 0.0, 0.0)):
     """Aim `bone` at `target`: a Damped Track along the record's aim axis (Vec1).
 
     Damped Track is the shortest-arc turn from the rest pose, which is what
@@ -106,13 +106,15 @@ def plan_aim(bone, target, vec1, influence, up_bone='', rotation_type=4):
         warnings.append("类型 5 从父骨朝向起最短弧（丢掉静止姿态），预览从静止姿态起，会差静止姿态")
     elif rotation_type != 4:
         warnings.append("类型 %d 的引擎行为还会固定绕瞄准轴的翻滚，预览只做最短弧，翻滚会不同" % rotation_type)
+    if any(abs(c) > 1e-6 for c in offset):
+        warnings.append("旋转偏移不参与预览")
     if up_bone:
         warnings.append("辅助骨骼（up）不参与预览")
     infl = min(1.0, max(0.0, float(influence)))
     if infl != influence:
         warnings.append("影响 %.2f 超出 0..1，预览按 %.0f 处理" % (influence, infl))
     elif abs(infl - 1.0) > 1e-6:
-        warnings.append("影响不为 1 时引擎的行为未知，预览按影响直接混合")
+        warnings.append("影响不为 1 时引擎的结果退化，预览按影响直接混合")
     return ConstraintPlan(
         True, warnings=warnings, bone=bone, name=CON_NAME['Aim'],
         con_type='DAMPED_TRACK', target=target,

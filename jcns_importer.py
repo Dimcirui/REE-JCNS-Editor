@@ -307,7 +307,7 @@ def do_import(filepath, context, armature_obj=None):
         p2.aim_target_bone = _nm(a['target'])
         p2.aim_up_bone = _nm(a['up']) if a['up'] is not None else ''
         p2.aim_influence = a['influence']
-        p2.aim_vec0, p2.aim_axis, p2.aim_up_axis, p2.aim_up_dir = a['vectors']
+        p2.aim_offset, p2.aim_axis, p2.aim_up_axis, p2.aim_up_dir = a['vectors']
         aim_type = INT_TO_AIM_TYPE.get(a['rotation_type'])
         if aim_type is None:
             print("[JCNS] Aim %d: RotationType %r is unknown, read as 0" % (idx, a['rotation_type']))

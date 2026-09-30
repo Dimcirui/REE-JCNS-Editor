@@ -90,7 +90,7 @@ INT_TO_INTERPOLATION = {i: ident for ident, i in INTERPOLATION_TO_INT.items()}
 AIM_TYPE_ITEMS = [
     ('WORLD_UP', "0 世界上方向", "上方向取世界 +Y，上方向向量无效"),
     ('UP_JOINT_POSITION', "1 辅助骨位置", "上方向取自己指向辅助骨的方向"),
-    ('UP_JOINT_AXIS', "2 辅助骨轴", "上方向取辅助骨自己的 +Y 轴（只在 Vec3=(0,1,0) 下测过）"),
+    ('UP_JOINT_AXIS', "2 辅助骨轴", "上方向取辅助骨自己的一根局部轴，由「上方向」向量选（(0,1,0) 是 Y 轴，(0,0,1) 是 Z 轴）"),
     ('UP_DIRECTION', "3 指定上方向", "上方向取「上方向」向量给出的世界方向"),
     ('SHORTEST_ARC', "4 最短弧", "从静止姿态朝目标转最短弧，不约束翻滚"),
     ('SHORTEST_ARC_PARENT', "5 父骨最短弧", "从父骨朝向起朝目标转最短弧，丢掉静止姿态"),
@@ -589,15 +589,17 @@ class JCNSConstraintProperties(PropertyGroup):
     aim_up_bone: StringProperty(name="辅助骨骼", description="AimVectorPointJoint；留空表示不使用",
                                 default="", update=_refresh_preview, search=_search_target_bone)
     aim_influence: FloatProperty(name="影响", default=1.0, update=_refresh_preview_values)
-    aim_vec0: FloatVectorProperty(name="Vec0", size=3, default=(0.0, 0.0, 0.0),
-                                  description="只在类型 2 非零，作用未知")
+    aim_offset: FloatVectorProperty(name="旋转偏移", size=3, default=(0.0, 0.0, 0.0), subtype='EULER',
+                                    description="XYZ 欧拉角（弧度，Rz·Ry·Rx）。瞄准结果再右乘这个旋转，"
+                                                "等于让本地瞄准轴偏离目标；只有类型 2 用到",
+                                    update=_refresh_preview)
     aim_axis: FloatVectorProperty(name="瞄准轴", size=3, default=(1.0, 0.0, 0.0),
                                   description="目标骨自己的局部轴，指向瞄准目标",
                                   update=_refresh_preview_values)
     aim_up_axis: FloatVectorProperty(name="上方向轴", size=3, default=(0.0, 1.0, 0.0),
                                      description="目标骨自己的局部轴，与「上」对齐")
     aim_up_dir: FloatVectorProperty(name="上方向", size=3, default=(0.0, 1.0, 0.0),
-                                    description="类型 3 下是世界里的上方向；类型 0 无效；类型 2 下作用没测")
+                                    description="类型 3 下是世界里的上方向；类型 2 下选辅助骨的哪根局部轴；类型 0 无效")
     aim_type: EnumProperty(name="类型", items=AIM_TYPE_ITEMS, default='WORLD_UP',
                            update=_refresh_preview)
     aim_bytes: IntVectorProperty(name="字节 +57..59", size=3, default=(1, 0, 5), min=0, max=255)

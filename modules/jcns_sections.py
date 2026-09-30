@@ -32,7 +32,11 @@ Derived data:
       the world direction Vec3, 1 from the up joint's position, 2 from the up joint's own +Y
       axis (tested with Vec3 (0,1,0)), 4 is the shortest arc from the rest pose, 5 the
       shortest arc from the parent's orientation alone (the rest pose is dropped).
-      Influence 0.5 leaves the world rotation almost constant; why is unknown
+      Vec0 is an XYZ Euler offset in radians (Rz*Ry*Rx) multiplied on the right of the look-at result
+      (round 17); with RotationType 2 the up reference is the up joint's local axis Vec3 selects.
+      Influence other than 1 is degenerate: type 0 leaves the world rotation almost constant
+      (rotated 180 deg between 0.25 and 2.0), types 1 and 4 match no blend model.  Every shipped
+      record has 1.0.
     * no derived data besides the target block; an unused up-joint is -1; the
       12 tail bytes and the target block's 8 tail bytes are carried, not assumed
   RotExpression

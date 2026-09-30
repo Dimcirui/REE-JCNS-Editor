@@ -638,15 +638,16 @@ class JCNS_PT_Ed_Aim(_EditorMain, Panel):
         for name in ("aim_axis", "aim_up_axis"):
             vec.prop(p, name)
         row = vec.column(align=True)
-        row.active = p.aim_type == 'UP_DIRECTION'
+        row.active = p.aim_type in ('UP_DIRECTION', 'UP_JOINT_AXIS')
         row.prop(p, "aim_up_dir")
+        vec.prop(p, "aim_offset")
 
 
-# 各类型怎样定翻滚；只有辅助骨轴（类型 2）是在上方向 (0,1,0) 下测的。
+# 各类型怎样定翻滚。
 _AIM_RULES = {
     'WORLD_UP': [("本地瞄准轴指向目标，本地上方向轴对齐世界 +Y", True)],
     'UP_JOINT_POSITION': [("本地瞄准轴指向目标，本地上方向轴对齐「自己指向辅助骨」的方向", True)],
-    'UP_JOINT_AXIS': [("本地瞄准轴指向目标，本地上方向轴对齐辅助骨自己的 +Y 轴（上方向为 (0,1,0) 时）", True)],
+    'UP_JOINT_AXIS': [("本地瞄准轴指向目标，本地上方向轴对齐辅助骨的一根局部轴，由「上方向」向量选（(0,1,0) 是 Y 轴，(0,0,1) 是 Z 轴）", True)],
     'UP_DIRECTION': [("本地瞄准轴指向目标，本地上方向轴对齐「上方向」向量给出的世界方向", True)],
     'SHORTEST_ARC': [("从静止姿态朝目标转最短弧，不约束翻滚", True)],
     'SHORTEST_ARC_PARENT': [("从父骨朝向起朝目标转最短弧，丢掉静止姿态", True)],
@@ -671,7 +672,7 @@ class JCNS_PT_Ed_Aim_Raw(_Editor, _Sub, Panel):
             return
         p = c.p
         _draw_raw_group(c.body, "未知字段", 'PREFERENCES', [
-            (p, [("aim_vec0", "")]), (p, [("aim_bytes", "")]),
+            (p, [("aim_bytes", "")]),
         ])
         _draw_raw_group(c.body, "保留字段（恒为 0）", 'PREFERENCES', [
             (p, [("aim_tail_hex", "尾部")]), (p, [("aim_target_tail_hex", "目标块尾部")]),
