@@ -1055,6 +1055,12 @@ def register():
 
     bpy.types.Object.jcns_root_props = PointerProperty(type=JCNSRootProperties)
     bpy.types.Object.jcns_cns_props  = PointerProperty(type=JCNSConstraintProperties)
+    # UI only: lives on the window manager, so it is not saved into .blend files.
+    bpy.types.WindowManager.jcns_hide_fixed = BoolProperty(
+        name="隐藏固定字段",
+        description="隐藏在全部原版文件里取值完全不变的原始字段，只留下还可能有含义、值得测试的",
+        default=False,
+    )
     bpy.types.Scene.jcns_active_collection = PointerProperty(
         type=bpy.types.Collection,
         name="工作集合",
@@ -1083,6 +1089,7 @@ def unregister():
     jcns_operators.unregister()
 
     del bpy.types.Scene.jcns_active_collection
+    del bpy.types.WindowManager.jcns_hide_fixed
     del bpy.types.Object.jcns_cns_props
     del bpy.types.Object.jcns_root_props
 

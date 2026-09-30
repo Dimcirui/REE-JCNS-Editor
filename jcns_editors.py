@@ -465,6 +465,16 @@ class JCNS_PT_Ed_Ranges_Tools(_Editor, Panel):
         sub.operator("jcns.mirror_constraints", text="镜像到另一侧…", icon='MOD_MIRROR')
 
 
+# Ranges 原始字段里在全部 1103 个原版 v102 文件（22839 条约束）中取值 100% 相同的那些
+# （2026-09-30 统计）。"隐藏固定字段"只藏它们；哪怕只有一个例外的字段（例如 U16(+22)
+# 有 1 例为 1）都照常显示，因为那正是还值得测的。
+FIXED_RANGES_FIELDS = frozenset((
+    'parent_vec4_x', 'parent_vec4_y', 'parent_vec4_z', 'parent_vec4_w',   # 恒为 (0,0,0,1)
+    'parent_tail_2', 'parent_tail_4', 'parent_tail_5',                     # +76/+78/+79 恒为 0
+    'flag_bit_1', 'flag_bit_6', 'flag_bit_7',                              # 从未置位
+))
+
+
 class JCNS_PT_Ed_Ranges_Advanced(_Editor, _Sub, Panel):
     """几乎每个文件都相同、或者含义尚未逆向出来的字段。"""
     bl_label  = "高级 / 原始字段"
@@ -478,6 +488,18 @@ class JCNS_PT_Ed_Ranges_Advanced(_Editor, _Sub, Panel):
             return
         layout, p = c.body, c.p
         sp = _active_source(p)
+
+        wm = context.window_manager
+        hide = wm.jcns_hide_fixed
+        top = layout.row(align=True)
+        top.prop(wm, "jcns_hide_fixed", toggle=True,
+                 icon='HIDE_ON' if hide else 'HIDE_OFF')
+        if hide:
+            layout.label(text="已隐藏 %d 个在全部原版文件里恒定不变的字段" % len(FIXED_RANGES_FIELDS),
+                         icon='INFO')
+
+        def keep(props):
+            return [(a, t) for a, t in props if not (hide and a in FIXED_RANGES_FIELDS)]
 
         if sp is not None:
             _draw_raw_group(layout, "驱动源：参考系四元数", 'ORIENTATION_GIMBAL', [
@@ -511,21 +533,24 @@ class JCNS_PT_Ed_Ranges_Advanced(_Editor, _Sub, Panel):
                 ("flag_bit_6", "位6"),
                 ("flag_bit_7", "位7"),
             ):
+                if hide and attr in FIXED_RANGES_FIELDS:
+                    continue
                 rb = bits.row(align=True)
                 rb.prop(p, attr, text="")
                 rb.label(text=desc)
 
-        _draw_raw_group(layout, "未知四维向量 [48..63]", 'PREFERENCES', [
-            (p, [(a, a[-1].upper()) for a in
-                 ("parent_vec4_x", "parent_vec4_y", "parent_vec4_z", "parent_vec4_w")]),
-        ])
+        vec4 = keep([(a, a[-1].upper()) for a in
+                     ("parent_vec4_x", "parent_vec4_y", "parent_vec4_z", "parent_vec4_w")])
+        if vec4:
+            _draw_raw_group(layout, "未知四维向量 [48..63]", 'PREFERENCES', [(p, vec4)])
         _draw_raw_group(layout, "杂项标量 [64..72]", 'PREFERENCES', [
             (p, [("parent_float2_x", "X"), ("parent_float2_y", "Y")]),
             (p, [("parent_uint8_72", "+72"), ("property_hash", "属性哈希")]),
         ])
         _draw_raw_group(layout, "尾部字节 [74..79]", 'PREFERENCES', [
-            (p, [(a, "") for a in ("parent_tail_0", "parent_tail_1", "parent_tail_2",
-                                   "parent_tail_3", "parent_tail_4", "parent_tail_5")]),
+            (p, keep([("parent_tail_0", "+74"), ("parent_tail_1", "+75"), ("parent_tail_2", "+76"),
+                      ("parent_tail_3", "+77 组"), ("parent_tail_4", "+78"),
+                      ("parent_tail_5", "+79")])),
         ])
 
 
