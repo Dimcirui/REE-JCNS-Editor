@@ -5,7 +5,8 @@ Flag high-risk words in user-visible text (docs/UI_COPY_GUIDE.md).
 
 Scans the add-on's own modules (not scripts/, tests/, tools/): every string literal
 that contains Chinese text or is passed as name= / description= / text= / a report
-message, docstrings excluded.  Prints file:line and the text for each hit; a hit
+message, docstrings excluded.  A line carrying `# ui-copy: internal` is skipped:
+its strings are never shown.  Prints file:line and the text for each hit; a hit
 still needs a human decision.  Exits 1 when anything was flagged.
 """
 import ast
@@ -17,7 +18,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 RISKY = re.compile('|'.join((
-    '实测', '实机', '测试台', '验证', '确认', '语料', '样本', '原版文件', '全部原版', '推测', '推断',
+    '实测', '实机', '测试台', '验证', '确认', '语料', '样本', '原版', '推测', '推断',
     '原名', r'\bbt\b', '曾', '误判', r'第\s*\d+\s*轮', r'20\d\d-\d\d', '未测', '待测', '置信',
     '社区', '官方', r'\bfallback\b', r'\braw\b', r'\bcorpus\b', r'\bformerly\b', r'\bunk\w*',
     'Traceback', r'[A-Za-z]:[\\/]',
@@ -62,9 +63,12 @@ def check(path):
     src = open(path, encoding='utf-8').read()
     tree = ast.parse(src, path)
     docs, ui = _docstring_nodes(tree), _ui_strings(tree)
+    internal = {i + 1 for i, l in enumerate(src.split('\n')) if 'ui-copy: internal' in l}
     hits = []
     for node in ast.walk(tree):
         if not (isinstance(node, ast.Constant) and isinstance(node.value, str)) or id(node) in docs:
+            continue
+        if node.lineno in internal:
             continue
         s = node.value
         if not (CJK.search(s) or id(node) in ui):
