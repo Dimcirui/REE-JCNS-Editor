@@ -206,7 +206,7 @@ def mirror_source(source, source_axis, target_axis, flags,
 
     The signs are handed back so the UI can show what was applied and how much
     to trust it. `mirror_in` / `mirror_out` — see signs_for().  What the source
-    reads comes from its own +25 byte (SrcTransformID / src_transform_id).
+    reads comes from its own +25 byte (ReadMode, read_mode in Blender).
     """
     def g(name):
         if isinstance(source, dict):

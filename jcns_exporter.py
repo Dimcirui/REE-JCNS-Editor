@@ -19,7 +19,10 @@ from bpy.props import StringProperty, BoolProperty
 from bpy.types import Operator
 from bpy_extras.io_utils import ExportHelper
 
-from .modules_shim import get_schema
+from .modules_shim import get_schema, ensure_path
+
+ensure_path()
+import jcns_source_read  # noqa: E402
 
 _SCHEMA = get_schema()
 
@@ -428,7 +431,7 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
         base['rest_quat_z']     = sp.rest_quat_z
         base['rest_quat_w']     = sp.rest_quat_w
         base['CurveMode']    = sp.update_timing
-        base['SrcTransformID']  = sp.src_transform_id
+        base['ReadMode']        = jcns_source_read.read_mode_value(sp.read_mode)
         base['UnkByte2']        = sp.unk_byte2
         base['UnknownUInt16']   = sp.unknown_uint16
         base['UnknownUInt32_2'] = sp.unknown_uint32_2

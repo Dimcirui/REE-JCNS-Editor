@@ -59,36 +59,28 @@ Degenerate anchors, measured separately in each mode:
 UNTESTED: +24 == 4 / 5 (9 sources in the whole corpus).
 """
 
-
-# +25 (SrcTransformID): which quantity of the source bone a mapping reads.
-# STATISTICAL, not yet measured in game.  Over all 1103 shipped v102 files:
-#   0  translation — facial slider bones (fcParam_*: 0 -> 1), weapon parts,
-#      HJ_Driven; bt names it Src_Translation
-#   2  scale       — Foot_XY_Ctrl, Sound_Scl, HJ_Driven: (0.01, 1, 3) ranges fed
-#      straight into a Scale target, never a multiple of 5
-#   3  rotation    — Thigh / UpperArm / fingers, +-180 ranges on multiples of 5
-#   1, 4, 5        rotation too (anatomical bones, angle-shaped ranges), most
-#      likely other decompositions of it: 5 only ever reads Thigh and drives
-#      ThighTwist / ThighRX / ThighRZ.  Swapping +25 between 1 and 3 was measured
-#      to shift the input slightly without changing the curve, which is what two
-#      decompositions of the same near-single-axis rotation would do.  All four
-#      are read as a plain local Euler angle until they are told apart.
-_SOURCE_QUANTITY = {0: 'Translation', 2: 'Scale'}
+from jcns_source_read import read_quantity, read_mode_value  # noqa: F401
 
 
-def source_quantity(src_transform_id):
-    """'Translation', 'Rotation' or 'Scale' for a +25 value (None -> Rotation)."""
-    if src_transform_id is None:
+# +25 (ReadMode): how the engine reads the source bone -- measured in game
+# 2026-09-30 for every value, see jcns_source_read.READ_MODES.  0 reads position,
+# 2 scale, the rest are four decompositions of the rotation.
+
+
+def source_quantity(read_mode):
+    """'Translation', 'Rotation' or 'Scale' for a +25 ReadMode (value or
+    identifier; None -> Rotation)."""
+    if read_mode is None:
         return 'Rotation'
-    return _SOURCE_QUANTITY.get(int(src_transform_id), 'Rotation')
+    return read_quantity(read_mode)
 
 
 def source_quantity_of(source):
     """source_quantity() of a parser dict or a JCNSSourceProperties instance."""
     if isinstance(source, dict):
-        v = source.get('SrcTransformID', source.get('src_transform_id'))
+        v = source.get('ReadMode', source.get('read_mode'))
     else:
-        v = getattr(source, 'src_transform_id', None)
+        v = getattr(source, 'read_mode', None)
     return source_quantity(v)
 
 

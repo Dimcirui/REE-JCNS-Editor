@@ -1,7 +1,7 @@
 """
 jcns_source_read.py
 -------------------
-What a JCNS source reads off its bone, per the source's +25 (SrcTransformID).
+What a JCNS source reads off its bone, per the source's +25 byte, ReadMode.
 
 Measured in game 2026-09-30 on the xaihi test rig (rounds 6-7): one bone turned
 hard on all three axes, with a -2 deg rest rotation and a rest offset, was read
@@ -21,11 +21,54 @@ included:
   +25=4  the same with q = twist * swing
   +25=5  rotation vector (axis * angle) component
 
+The byte is named ReadMode here (bt called it TransformIDSrc / InterpolationID).
+Only 0-5 occur: 2114 shipped files (v29 and v102), 54308 sources.
+
 Pure Python, no bpy.  Quaternions are (w, x, y, z); angles are radians.
 """
 import math
 
+# (value, identifier, name, quantity, description).  Shares are of the 54308
+# shipped sources.
+READ_MODES = (
+    (0, 'POSITION', "位置", 'Translation',
+     "相对父骨的位置分量（厘米），含静止偏移。多用于面部滑杆骨和武器部件。约 10% 的源"),
+    (1, 'EULER_XYZ', "欧拉 XYZ", 'Rotation',
+     "相对父骨完整旋转（含静止姿态）的 XYZ 欧拉分量，R = Rz·Ry·Rx。约 6% 的源"),
+    (2, 'SCALE', "缩放", 'Scale',
+     "缩放分量，静止为 1。约 5% 的源"),
+    (3, 'SWING_TWIST', "摆动·扭转", 'Rotation',
+     "绕 X 的摆动-扭转分解，q = 摆动·扭转（先扭转）。X 取扭转角，Y/Z 取摆动的 "
+     "2·atan2(s_轴, s_w)。含静止姿态。最常用，约 77% 的源"),
+    (4, 'TWIST_SWING', "扭转·摆动", 'Rotation',
+     "同摆动·扭转，但 q = 扭转·摆动（先摆动）；X 与前者相同，Y/Z 不同。约 1% 的源"),
+    (5, 'ROTATION_VECTOR', "旋转向量", 'Rotation',
+     "旋转向量（转轴×角度）的分量，含静止姿态。原版几乎只读大腿、驱动 ThighTwist 一类。约 2% 的源"),
+)
+_BY_VALUE = {m[0]: m for m in READ_MODES}
+_BY_ID = {m[1]: m for m in READ_MODES}
+DEFAULT_READ_MODE = 3
+
 ROTATION_MODES = {1: 'euler', 3: 'swing_twist', 4: 'twist_swing', 5: 'rotvec'}
+
+
+def read_mode_value(mode):
+    """A ReadMode as its byte value, from the value itself or its identifier."""
+    if isinstance(mode, str):
+        return _BY_ID[mode][0] if mode in _BY_ID else DEFAULT_READ_MODE
+    return int(mode)
+
+
+def read_mode_id(value):
+    """The identifier of a ReadMode byte; None for a value outside 0-5."""
+    m = _BY_VALUE.get(int(value))
+    return m[1] if m else None
+
+
+def read_quantity(mode):
+    """'Translation', 'Rotation' or 'Scale' for a ReadMode (value or identifier)."""
+    m = _BY_VALUE.get(read_mode_value(mode))
+    return m[3] if m else 'Rotation'
 
 
 def qmul(a, b):

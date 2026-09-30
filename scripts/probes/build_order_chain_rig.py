@@ -83,7 +83,7 @@ def main():
         s = c['sources'][0]
         s['SourceName'] = src
         s['source_axis'] = 0
-        s['SrcTransformID'] = 3
+        s['ReadMode'] = 3
         s['CurveMode'] = 0            # two-point line
         s['from_start'], s['from_kink'], s['from_end'] = -90.0, 0.0, 90.0
         s['to_start'], s['to_kink'], s['to_end'] = -90.0 * k, 0.0, 90.0 * k
@@ -101,7 +101,7 @@ def main():
         s = c['sources'][0]
         k = s['to_end'] / s['from_end'] if s['from_end'] else 0
         print(f"[{i:02}] {c['ObjectName']:<14}.{'XYZW'[c['target_axis']]} <- {s['SourceName']}.{'XYZW'[s['source_axis']]}"
-              f"  k={k:+.2f}  +25={s['SrcTransformID']}")
+              f"  k={k:+.2f}  +25={s['ReadMode']}")
 
 
 if __name__ == '__main__':

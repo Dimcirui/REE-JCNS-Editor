@@ -121,17 +121,14 @@ class JCNSParser:
                                               selects the curve — {0,1} two-point (kink ignored),
                                               {2,3} three-point piecewise; see jcns_mapping.
                                               Observed 0..5 (4 and 5: 9 sources, unmeasured).
-      +25:  SrcTransformID            uint8    MEANING UNCERTAIN — bt 0.65.13 called this
-                                              InterpolationID, bt 0.65.14 renamed it to
-                                              TransformIDSrc; the template author marks both
-                                              "Not sure".  Observed {0,1,2,3,4,5}: mostly
-                                              Src_Rotation_3 (82.7%), but value 5 is beyond the
-                                              bt enum's last defined entry.  Among real bone
-                                              rotation targets, the 70 sources tagged
-                                              Src_Translation(0) carry From ranges shaped like the
-                                              rotation ones (91% land on multiples of 5, same
-                                              magnitude band), so the tag alone does not establish
-                                              a distance-driven mechanism.  Treated as a raw byte.
+      +25:  ReadMode                  uint8    How the source bone is read (bt: TransformIDSrc /
+                                              InterpolationID, both marked "Not sure").  Measured
+                                              in game 2026-09-30 for every value, off the bone's
+                                              whole parent-relative transform, rest included:
+                                              0 position, 1 XYZ Euler, 2 scale, 3 swing-twist
+                                              about X (q = swing*twist), 4 the same with
+                                              q = twist*swing, 5 rotation vector.  Only 0-5 occur
+                                              (2114 files); see jcns_source_read.READ_MODES.
       +26:  source_axis               uint8    bt: SourceAxis  0=X 1=Y 2=Z 3=W.  Only {X,Y,Z} ever
                                               observed here — sources never use W, though targets do.
       +27:  UnkByte2                  uint8    NOT constant: {0:79.3%, 1:14.8%, 2:5.6%, 3:0.3%}.

@@ -88,7 +88,7 @@ def main():
         s = c['sources'][0]
         s['SourceName'] = 'L_Thigh'
         s['source_axis'] = 0
-        s['SrcTransformID'] = 3
+        s['ReadMode'] = 3
         s['CurveMode'] = 0            # two-point line
         s['from_start'], s['from_kink'], s['from_end'] = -90.0, 0.0, 90.0
         s['to_start'], s['to_kink'], s['to_end'] = -90.0 * k, 0.0, 90.0 * k

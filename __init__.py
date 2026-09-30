@@ -79,6 +79,20 @@ AXIS_ITEMS = [
 # 21 distinct (+24, +25) combinations occur; the two bytes are NOT locked together.
 UPDATE_TIMING_HINT = "bt 0.65.14 猜测为 0=MotionBegin 1=MotionEnd 2=ConstraintBegin 3=ConstraintEnd"
 
+
+def _read_mode_items():
+    from .modules_shim import ensure_path
+    ensure_path()
+    import jcns_source_read
+    items = [(ident, "%d %s" % (value, name), desc, value)
+             for value, ident, name, _q, desc in jcns_source_read.READ_MODES]
+    default = jcns_source_read.read_mode_id(jcns_source_read.DEFAULT_READ_MODE)
+    return items, default
+
+
+# +25 ReadMode; the table lives in modules/jcns_source_read.py.
+_READ_MODE_ITEMS, _READ_MODE_DEFAULT = _read_mode_items()
+
 TRANSFORM_ITEMS = [
     ('Translation',    "Translation",    "ID=0: Translational constraint"),
     ('Rotation',       "Rotation",       "ID=1: Rotational constraint (most common)"),
@@ -394,17 +408,16 @@ class JCNSSourceProperties(PropertyGroup):
         ),
         default=3, min=0, max=255,
     )
-    src_transform_id: IntProperty(
+    read_mode: EnumProperty(
         update=_refresh_preview,
-        name="源变换ID (+25)",
+        name="读取方式 (+25)",
         description=(
-            "ConstraintSource_v2 byte +25. Meaning UNCONFIRMED and disputed: bt 0.65.13 read "
-            "it as InterpolationID (0..6), bt 0.65.14 reads it as TransformIDSrc (0..4). "
-            "Observed values across 884 files are 0..5 — value 5 fits neither reading "
-            "cleanly. Tracks the transform type rather than anything about how sources "
-            "combine — 93% of rotation sources use 3. Change only if you know what you are doing"
+            "ConstraintSource_v2 byte +25（bt 叫 TransformIDSrc / InterpolationID）："
+            "引擎怎样读源骨。一律读相对父骨的完整变换，静止姿态和静止偏移都算在内，"
+            "这里只决定取位置、缩放，还是旋转的哪种分解。2026-09-30 实机逐个测定"
         ),
-        default=3, min=0, max=255,
+        items=_READ_MODE_ITEMS,
+        default=_READ_MODE_DEFAULT,
     )
     unk_byte2: IntProperty(
         name="未知字节 (+27)", description="ConstraintSource_v2 偏移 +27 的字节",

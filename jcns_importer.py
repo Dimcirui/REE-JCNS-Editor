@@ -17,7 +17,10 @@ from bpy.props import StringProperty, BoolProperty, EnumProperty
 from bpy.types import Operator
 from bpy_extras.io_utils import ImportHelper
 
-from .modules_shim import get_schema
+from .modules_shim import get_schema, ensure_path
+
+ensure_path()
+import jcns_source_read  # noqa: E402
 from . import jcns_cm
 
 _SCHEMA = get_schema()
@@ -223,7 +226,13 @@ def do_import(filepath, context, armature_obj=None):
             sp.rest_quat_z = s.get('rest_quat_z', 0.0)
             sp.rest_quat_w = s.get('rest_quat_w', 1.0)
             sp.update_timing    = s.get('CurveMode', 3)
-            sp.src_transform_id = s.get('SrcTransformID', 3)
+            mode = jcns_source_read.read_mode_id(s.get('ReadMode', 3))
+            if mode is None:
+                # Never seen in 2114 shipped files; the enum cannot hold it.
+                print("[JCNS] %s <- %s: ReadMode %r is unknown, read as SWING_TWIST"
+                      % (c.get('ObjectName', '?'), s.get('SourceName', '?'), s.get('ReadMode')))
+                mode = 'SWING_TWIST'
+            sp.read_mode = mode
             sp.unk_byte2        = s.get('UnkByte2', 0)
             sp.complex_mapping_info_count = s.get('ComplexMappingInfoCount', 0)
             sp.unknown_uint16   = s.get('UnknownUInt16', 0)

@@ -99,7 +99,7 @@ def source_map(s, target_q):
     Input side in the source's units (its +25), output side in the target's.
     """
     m = get_mapping()
-    src_q = m.source_quantity(s.get('src_transform_id'))
+    src_q = m.source_quantity(s.get('read_mode'))
     if s.get('cm'):
         return ('CM', tuple(jcns_complex.scaled(s['cm'], _unit_scale(src_q),
                                                 _unit_scale(target_q))))

@@ -72,6 +72,7 @@ _SOURCE_VARS = {
 def _sources_for_driver(cns_props):
     """Convert a constraint's JCNSSourceProperties collection into driver dicts."""
     from . import AXIS_TO_INT
+    from .modules_shim import get_mapping
     out = []
     for sp in cns_props.sources:
         out.append({
@@ -82,8 +83,9 @@ def _sources_for_driver(cns_props):
             'to_start':   sp.to_start,   'to_kink':   sp.to_kink,   'to_end':   sp.to_end,
             # +24 selects the curve mode; see modules.jcns_mapping.is_two_point.
             'update_timing': sp.update_timing,
-            # +25 selects what is read off the source bone; see _SOURCE_VARS.
-            'src_transform_id': sp.src_transform_id,
+            # +25 ReadMode, as its byte value: how the source bone is read
+            # (modules/jcns_source_read.py).
+            'read_mode': get_mapping().read_mode_value(sp.read_mode),
             # ComplexMapping keys, which replace the anchors when present.
             'cm': jcns_cm.keys(sp),
         })
@@ -147,7 +149,7 @@ def channel_sources(armature_obj, root_obj, owner):
     sources = [s for s in _sources_for_driver(owner.jcns_cns_props) if s['bone']]
     later = _written_from(root_obj, owner) if root_obj is not None else set()
     for s in sources:
-        sid = s.get('src_transform_id')
+        sid = s.get('read_mode')
         q = mp.source_quantity(sid)
         path = _DRIVABLE[q][0]
         axis = min(s.get('axis_idx', 0), 2)
@@ -250,7 +252,7 @@ def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
                 add_var(s['bone'], _LOC_TYPE[a])
             continue
         add_var(s['bone'], _SOURCE_VARS[get_mapping().source_quantity(
-            s.get('src_transform_id'))][min(s.get('axis_idx', 0), 2)])
+            s.get('read_mode'))][min(s.get('axis_idx', 0), 2)])
 
     expr = 'jcns_ch("%s"%s)' % (key, "".join("," + n for n in names))
     drv.expression = expr
@@ -764,7 +766,7 @@ class JCNS_OT_AddSource(Operator):
             prev = p.sources[len(p.sources) - 2]
             for attr in ('source_axis', 'from_start', 'from_kink', 'from_end',
                          'to_start', 'to_kink', 'to_end', 'update_timing',
-                         'src_transform_id', 'rest_quat_w'):
+                         'read_mode', 'rest_quat_w'):
                 setattr(sp, attr, getattr(prev, attr))
         p.active_source_index = len(p.sources) - 1
         idx = 0
@@ -1036,7 +1038,7 @@ class JCNS_OT_MirrorConstraints(Operator):
                 for k, v in vals.items():
                     setattr(ns, k, v)
                 for attr in ('rest_quat_x', 'rest_quat_y', 'rest_quat_z',
-                             'rest_quat_w', 'update_timing', 'src_transform_id',
+                             'rest_quat_w', 'update_timing', 'read_mode',
                              'unk_byte2', 'unknown_uint16', 'unknown_uint32_2'):
                     setattr(ns, attr, getattr(orig, attr))
                 if jcns_cm.has_curve(orig):
