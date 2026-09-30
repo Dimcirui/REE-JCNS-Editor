@@ -27,14 +27,19 @@ Derived data:
     normalized sum of the weighted source rotations, each flipped to the running sum's
     hemisphere.  A file's section table has to list the section (2) for it to run.
   Aim
-    * measured with Vec1 (1,0,0), Vec2 = Vec3 (0,1,0): local +X points at the target;
-      RotationType 0/3 take the up direction from world +Y, 1 from the up joint's
-      position, 2 from the up joint's own +Y axis, 4 is the shortest arc from the rest pose
+    * measured (rounds 12 and 14): local Vec1 points at the target and local Vec2 is the axis
+      lined up with "up".  RotationType 0 takes up from world +Y (Vec3 has no effect), 3 from
+      the world direction Vec3, 1 from the up joint's position, 2 from the up joint's own +Y
+      axis (tested with Vec3 (0,1,0)), 4 is the shortest arc from the rest pose, 5 the
+      shortest arc from the parent's orientation alone (the rest pose is dropped).
+      Influence 0.5 leaves the world rotation almost constant; why is unknown
     * no derived data besides the target block; an unused up-joint is -1; the
       12 tail bytes and the target block's 8 tail bytes are carried, not assumed
   RotExpression
-    * byte[1] = 0 replaces the rest pose, 48 gives rest * value (round 12); the value is each
-      axis scaled by the coefficient for small angles, and deviates for large ones
+    * byte[1] = 0 replaces the rest pose, 48 gives rest * value.  Coefficients (1,1,1) copy
+      the source rotation exactly; other coefficients scale each axis for small angles and
+      deviate for large ones (single-axis results are pure rotations about that axis, angle
+      unexplained)
     * the two hash-index arrays point at the record's inline JointHash /
       SourceJointHash
     * the map holds one value per file; new entries repeat it

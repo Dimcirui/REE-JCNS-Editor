@@ -660,9 +660,11 @@ class JCNS_PT_Ed_Aim_Vectors(_Editor, _Sub, Panel):
         if c is None:
             return
         p = c.p
-        c.body.label(text="Vec1=(1,0,0)、Vec2=Vec3=(0,1,0) 时：本地 +X 指向目标", icon='INFO')
-        c.body.label(text="类型 0/3 上方向取世界 +Y；1 取辅助骨的位置方向；2 取辅助骨自己的 +Y 轴；4 从静止姿态最短弧转过去")
-        c.body.label(text="其他向量取值的作用未知")
+        c.body.label(text="Vec1：本地瞄准轴（指向目标）；Vec2：本地对齐上方向的轴", icon='INFO')
+        c.body.label(text="类型 0：上方向取世界 +Y，Vec3 无效；3：上方向取 Vec3 给出的世界方向")
+        c.body.label(text="类型 1：取辅助骨的位置方向；2：取辅助骨自己的 +Y 轴（Vec3=(0,1,0) 时）")
+        c.body.label(text="类型 4：从静止姿态最短弧；5：从父骨朝向最短弧，丢掉静止姿态")
+        c.body.label(text="影响不为 1 时的行为和 Vec0 的作用未知")
         col = c.body.column(align=True)
         for name in ("aim_vec0", "aim_vec1", "aim_vec2", "aim_vec3"):
             col.row(align=True).prop(p, name, text="")

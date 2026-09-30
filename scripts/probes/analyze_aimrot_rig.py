@@ -23,7 +23,7 @@ import math
 from pathlib import Path
 
 import numpy as np
-from scipy.spatial.transform import Rotation as Rot, Slerp
+from scipy.spatial.transform import Rotation as Rot
 
 from analyze_sections_rig import (ang, frame_from, load, pos_cols, quat_cols, rests_from, report_rank,
                                   shortest_arc, unit)
@@ -37,12 +37,8 @@ SPEC = dict(
 
 
 def slerp_to(rest, full, k):
-    """Per-frame slerp from `rest` to `full` by fraction k."""
-    out = []
-    for a, b in zip(rest.as_quat(), full.as_quat()):
-        s = Slerp([0, 1], Rot.from_quat([a, b]))
-        out.append(s([k]).as_quat()[0])
-    return Rot.from_quat(np.array(out))
+    """Per-frame slerp from `rest` to `full` by fraction k (vectorized, shortest path)."""
+    return rest * Rot.from_rotvec(k * (rest.inv() * full).as_rotvec())
 
 
 def references(W):
@@ -79,27 +75,33 @@ def analyze_aim(W, rests, target, spec):
     refs['target_bone_x'] = quat_cols(W, f'b.{target}').apply([1.0, 0, 0])
     refs['target_bone_y'] = quat_cols(W, f'b.{target}').apply([0, 1.0, 0])
     refs['target_bone_z'] = quat_cols(W, f'b.{target}').apply([0, 0, 1.0])
-    errs, preds = {}, {}
+    refs['vec3_as_world_dir'] = np.tile(np.array(v3, float), (len(d), 1))
+    errs, preds, valid = {}, {}, {}
     for sec_name, sec in (('vec2', v2), ('vec3', v3)):
         if np.linalg.norm(np.cross(v1a, sec)) < 1e-6:
             continue
         L = frame_from(v1a[None], np.array(sec, float)[None])[0]
         for rn, rv in refs.items():
             w = rv - np.sum(rv * d, axis=1, keepdims=True) * d
-            if (np.linalg.norm(w, axis=1) < 0.05).any():
+            ok = np.linalg.norm(w, axis=1) > 0.05          # the reference is undefined when it is parallel to d
+            if ok.mean() < 0.9:
                 continue
             pred = Rot.from_matrix(frame_from(d, rv) @ L.T[None])
             name = f'lookat(local up={sec_name}, ref={rn})'
-            errs[name] = float(ang(R, pred).max())
-            preds[name] = pred
-    arc = shortest_arc(unit(rest_world.apply(v1a)), d) * rest_world
-    errs['shortest_arc_from_rest'] = float(ang(R, arc).max())
-    preds['shortest_arc_from_rest'] = arc
+            errs[name] = float(ang(R, pred)[ok].max())
+            preds[name], valid[name] = pred, ok
+    bases = {'rest_world': rest_world, 'parent_only': ear_q}
+    for bn, B in bases.items():
+        arc = shortest_arc(unit(B.apply(v1a)), d) * B
+        errs[f'shortest_arc_from_{bn}'] = float(ang(R, arc).max())
+        preds[f'shortest_arc_from_{bn}'] = arc
+        valid[f'shortest_arc_from_{bn}'] = np.ones(len(d), bool)
     errs['unchanged_rest'] = float(ang(R, rest_world).max())
     if infl != 1.0:
-        for name in sorted(preds, key=lambda n: errs[n])[:4]:
-            pr = preds[name]
-            errs[f'slerp({infl:g}) rest->{name}'] = float(ang(R, slerp_to(rest_world, pr, infl)).max())
+        for name in list(preds):
+            for bn, B in bases.items():
+                ok = valid[name]
+                errs[f'slerp({infl:g}) {bn}->{name}'] = float(ang(R, slerp_to(B, preds[name], infl))[ok].max())
     res['candidates'] = report_rank(errs)
     res['candidates']['ranked'] = res['candidates']['ranked'][:6]
     # model-free roll: which reference, projected perpendicular to the aim direction, is
