@@ -1,34 +1,24 @@
 """
-jcns_complex.py
----------------
 ComplexMapping: a source's keyframed transfer curve, used in place of the
-three-point mapping (whose six anchors are then all zero, 78/78 shipped).
-
-Measured in game 2026-09-29 on the xaihi test rig (x read back from an identity
-entry on the same source, 1777 and 2237 frames):
+three-point mapping (whose six anchors are then all zero).
 
   * each ComplexMappingInfo record is one key: FromX is the input, ToX the output;
   * (FromY, ToY) is the incoming tangent and (FromZ, ToZ) the outgoing one, as a
-    (dx, dy) vector; segments are cubic Hermite on the tangent *slopes* dy/dx
-    (flat tangents gave the exact S-curve, 1e-4 deg);
-  * the per-key UnknownUInt32 does not change the result: flags 0/1/2/5/8 on the
-    same keys were bit-identical;
-  * outside the keyed range the output holds the end value.
+    (dx, dy) vector; segments are cubic Hermite on the slopes dy/dx;
+  * the per-key UnknownUInt32 does not affect the result;
+  * outside the keyed range the output holds the end value;
+  * equal FromX on neighbouring keys make a step.
 
-Shipped files always write dx as the neighbouring segment length: FromY the one
+The shipped layout writes dx as the neighbouring segment length: FromY the one
 before the key, FromZ the one after, the first key's FromY a placeholder 1 and
-the last key's FromZ a copy of its FromY (47/47 non-zero curves).  The other 31
-curves have all-zero tangents; that is the same curve, since a zero rise means a
-flat tangent whatever dx says.  Equal FromX on neighbouring keys make a step.
+the last key's FromZ a copy of its FromY.  All-zero tangents mean flat tangents.
 
 A Blender Bezier F-Curve with each handle at the key +- (segment dx, rise)/3 is
-the same cubic, which is what the editor shows.
-
-Kept free of `bpy`.
+the same cubic.  No `bpy` import.
 """
 
-# A key as the rest of the addon passes it around: (x, y, slope_in, slope_out),
-# in the file's own units (degrees / centimetres / scale factors).
+# A key: (x, y, slope_in, slope_out), in the file's own units (degrees /
+# centimetres / scale factors).
 
 
 def keys_from_records(records):
@@ -69,8 +59,7 @@ def evaluate(keys, x):
         return keys[0][1]
     if x >= keys[-1][0]:
         return keys[-1][1]
-    # The last segment starting at or before x, so at a step (two keys on one x)
-    # the later key's value applies from that x on.
+    # Last segment starting at or before x: at a step the later key applies.
     for i in range(len(keys) - 2, -1, -1):
         x0, y0, _, m0 = keys[i]
         x1, y1, m1, _ = keys[i + 1]
@@ -86,8 +75,7 @@ def evaluate(keys, x):
 
 
 def scaled(keys, x_scale, y_scale):
-    """Keys with the input multiplied by x_scale and the output by y_scale
-    (unit conversion); slopes follow."""
+    """Keys with input and output scaled (unit conversion); slopes follow."""
     k = y_scale / x_scale
     return [(x * x_scale, y * y_scale, a * k, b * k) for x, y, a, b in keys]
 
@@ -98,15 +86,14 @@ def mirrored(keys, in_sign, out_sign):
     out = [(in_sign * x, out_sign * y, out_sign * in_sign * a, out_sign * in_sign * b)
            for x, y, a, b in keys]
     if in_sign < 0:
-        # the input runs the other way: reverse, and a key's incoming tangent
-        # becomes its outgoing one
+        # reversed input: incoming and outgoing tangents swap
         out = [(x, y, b, a) for x, y, a, b in reversed(out)]
     return out
 
 
 def from_three_point(fs, fk, fe, ts, tk, te, two_point=False):
-    """Keys drawing the same line segments as a three-point mapping, for turning
-    one into a ComplexMapping.  Descending `from` ranges come out ascending."""
+    """Keys drawing the same segments as a three-point mapping, sorted
+    ascending in x."""
     pts = [(fs, ts), (fe, te)] if two_point else [(fs, ts), (fk, tk), (fe, te)]
     pts.sort(key=lambda p: p[0])
     keys = []
@@ -120,7 +107,7 @@ def from_three_point(fs, fk, fe, ts, tk, te, two_point=False):
 
 
 def same_keys(a, b, tol=1e-5):
-    """Do two key lists describe the same curve (to float noise)?"""
+    """Do two key lists match within a relative tolerance?"""
     if len(a) != len(b):
         return False
     for ka, kb in zip(a, b):

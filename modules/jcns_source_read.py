@@ -1,13 +1,5 @@
 """
-jcns_source_read.py
--------------------
 What a JCNS source reads off its bone, per the source's +25 byte, ReadMode.
-
-Measured in game 2026-09-30 on the xaihi test rig (rounds 6-8): one bone turned
-hard on all three axes, with a -2 deg rest rotation and a rest offset, was read
-through identity mappings by every +25, every axis, every +27 and a non-identity
-rest_quat; each formula below matched the engine's own output to 0.002 deg /
-0.0001 cm over 2000+ frames.
 
 Every rotation read works on the bone's whole rotation relative to its parent,
 rest pose included (q = rest * Rz * Ry * Rx for a Blender XYZ Euler pose), and
@@ -16,31 +8,26 @@ included:
 
   +25=0  position component (the rest offset plus the posed offset turned by rest)
   +25=1  Euler component, in the order +27 names (0: Blender XYZ, R = Rz * Ry * Rx)
-  +25=2  scale component (1 at rest; read by the driver as is)
+  +25=2  scale component (the bone's rest scale at rest)
   +25=3  swing-twist about X with q = swing * twist: X is the twist angle, Y / Z
          are 2 * atan2(s_axis, s_w) of the swing
   +25=4  the same with q = twist * swing
   +25=5  rotation vector (axis * angle) component
 
-Two more source fields shape the rotation reads (round 8):
+Two more source fields shape the rotation reads:
 
-  +27 (EulerOrder, was UnkByte2)  the Euler order of +25=1, as a matrix product with
+  +27 (EulerOrder)  the Euler order of +25=1, as a matrix product with
          the rightmost factor applied first: 0 Rz*Ry*Rx (Blender XYZ), 1 Rx*Rz*Ry
-         (YZX), 2 Ry*Rx*Rz (ZXY), 3 Rx*Ry*Rz (ZYX).  +25 = 3/4/5 ignore it.  In
-         shipped files it follows the bone (Thigh / Hand 1, fingers 2, wings 3).
+         (YZX), 2 Ry*Rx*Rz (ZXY), 3 Rx*Ry*Rz (ZYX).  +25 = 3/4/5 ignore it.
   rest_quat (+56, the reference frame)  +25 = 3/4/5 decompose f^-1 * q * f instead of
          q, so the twist axis is f * X and the rotation vector is read in f's
-         axes.  +25=1 ignores it.  Identity in every shipped source but two.
+         axes.  +25=1 ignores it.
 
-The byte is named ReadMode here (bt called it TransformIDSrc / InterpolationID).
-Only 0-5 occur: 2114 shipped files (v29 and v102), 54308 sources.
-
-Pure Python, no bpy.  Quaternions are (w, x, y, z); angles are radians.
+Only ReadMode 0-5 occur.  Pure Python, no bpy.  Quaternions are (w, x, y, z); angles are radians.
 """
 import math
 
-# (value, identifier, name, quantity, description).  Shares are of the 54308
-# shipped sources.
+# (value, identifier, name, quantity, description)
 READ_MODES = (
     (0, 'POSITION', "位置", 'Translation',
      "相对父骨的位置分量（厘米），含静止偏移。多用于面部滑杆骨和武器部件。约 10% 的源"),
@@ -184,13 +171,10 @@ def override_basis(rest, replaced, added):
     """Blender pose basis (XYZ Euler, radians) of a bone whose rotation channels are
     written with Flags bit0 = 0 (replace) and / or 1 (add).
 
-    Measured 2026-09-30 (round 8): bit0 = 1 lays a value on the rest pose,
-    rest * R(v); bit0 = 0 replaces the channel -- a single-axis -2 deg rest turned
-    into the bare value. Round 11 also confirms multi-axis rest (-2,17,-23 deg):
-    take the rest pose's XYZ Euler angles,
-    put each replaced channel's value in place of its angle, then lay the added
-    channels on top, R(e') * R(v_add). Pure per-axis replacement has capture
-    evidence on multi-axis rest; mixed add/replace rotation remains modelled.
+    bit0 = 1 lays a value on the rest pose, rest * R(v); bit0 = 0 replaces the
+    channel: take the rest pose's XYZ Euler angles, put each replaced channel's
+    value in place of its angle, then lay the added channels on top,
+    R(e') * R(v_add).  The mixed add/replace case follows this model.
 
     `replaced` / `added` map axis (0-2) -> value; returns the basis (x, y, z) such
     that rest * basis is that rotation.
@@ -205,9 +189,8 @@ def override_basis(rest, replaced, added):
     return tuple(_euler(_pos_w(qmul(_conj(rest), q)), 0))
 
 
-# How a rotation target composes its three channel values, by TransformType
-# (measured 2026-09-30, round 9: every one to 0.001 deg).  They mirror the source
-# reads: 1 / 4 / 5 / 6 build the rotation the way ReadMode 1 / 3 / 4 / 5 take it
+# How a rotation target composes its three channel values, by TransformType.
+# They mirror the source reads: 1 / 4 / 5 / 6 build the rotation the way ReadMode 1 / 3 / 4 / 5 take it
 # apart.  13 and 14 hold a single rotation about the written axis per bone -- the
 # last such entry on the bone wins, whatever its axis.
 TARGET_MODES = {1: 'euler', 4: 'swing_twist', 5: 'twist_swing', 6: 'rotvec',
@@ -245,10 +228,9 @@ def target_basis(rest, parts):
 
     `parts` are (axis, mode, replaces, value) in file order of their winning
     entries.  Replacing (Flags bit0 = 0) drops the rest pose; adding lays the
-    rotation on it (rounds 8-9).  An 'euler' bone goes through override_basis,
-    which also covers a mix of replacing and adding channels.  For the other modes
-    the latest channel's mode and bit0 decide the whole bone (mixing modes on one
-    bone never occurs in shipped files and is unmeasured).
+    rotation on it.  An 'euler' bone goes through override_basis.  For the other
+    modes the latest channel's mode and bit0 decide the whole bone (mixing modes
+    on one bone is modelled this way, not measured).
     """
     if not parts:
         return (0.0, 0.0, 0.0)
@@ -296,13 +278,13 @@ def position(rest, offset, loc, axis):
 
 
 def translation_basis(rest, offset, parts):
-    """Blender location basis for parent-axis translations (round 10).
+    """Blender location basis for parent-axis translations.
 
     Parts are (axis, replaces, value) for winning channels in file order, in
-    the same length units as offset. Adding writes offset[axis] + value;
-    replacing writes value on that axis alone. Untouched axes retain offset.
-    Blender's location basis is rest-rotated, so convert the parent-axis delta
-    back through inverse rest. Do not rotate the engine's output before adding.
+    the same length units as offset.  Adding writes offset[axis] + value;
+    replacing writes value on that axis alone; untouched axes keep offset.
+    Blender's location basis is rest-rotated, so the parent-axis delta goes back
+    through inverse rest; the engine's output is not rotated before adding.
     """
     delta = [0.0, 0.0, 0.0]
     for axis, replaces, value in parts:
@@ -311,11 +293,8 @@ def translation_basis(rest, offset, parts):
     return tuple(p[1:])
 
 
-# ---------------------------------------------------------------------------
-# What the measurements mean, in words, for the panels (rounds 5-11)
-# ---------------------------------------------------------------------------
-# Each line is (text, measured).  measured = False marks a rule the preview follows
-# by inference; the UI shows those with a question mark.
+# Panel text for the engine rules.  Each line is (text, measured); measured =
+# False marks a modelled rule, which the UI shows with a question mark.
 
 _UNMEASURED_REPLACE = ("替换：丢掉静止旋转，只剩合成出的旋转", False)
 _TARGET_RULES = {

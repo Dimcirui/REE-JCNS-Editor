@@ -1,45 +1,24 @@
 """
-jcns_drivers.py
----------------
 Driver-namespace function backing the generated drivers.
 
-Blender hard-caps `Driver.expression` at 255 characters: assigning anything
-longer silently truncates it, which produces an unbalanced-parenthesis
-SyntaxError the moment the driver evaluates.  A single three-point mapping
-already costs ~170 characters inline, so two sources on one channel overflow —
-and shipped files contain channels with up to eight.
+Blender truncates `Driver.expression` at 255 characters, so the expression is
+only a call, `jcns_ch("<channel key>", var, var_001, ...)`; the mapping lives in
+_CHANNELS, and the real driver variables still declare the dependency on the
+source bones for the depsgraph.  Values in _CHANNELS are already in driver
+units (radians for rotation), so jcns_ch does no unit conversion.
 
-So the expression no longer carries the maths.  It reduces to a call:
+Engine rules the reads follow:
+  * a rotation source is read off the bone's whole parent-relative rotation, rest
+    included, and a translation source off its whole position, rest offset
+    included; +25 picks the decomposition (modules/jcns_source_read.py).
+  * entries run in file order within one frame, so a source channel written by
+    this entry or a later one reads its rest value and gets no variable.
 
-    jcns_ch("Armature|L_Dress_HJ_01|Rotation|Z", var, var_001)
-
-which stays well under the cap for any number of sources.  The anchors live in
-_CHANNELS, keyed by channel, and the actual dependency on the source bones is
-still declared through real driver variables so the depsgraph updates correctly.
-
-Values in _CHANNELS are pre-converted to the driver's own units (radians for
-rotation), so the function does no unit conversion.
-
-How a source is read is part of the channel too (measured in game 2026-09-30, xaihi
-rig rounds 6-7):
-
-  * the engine reads a rotation source off the bone's whole parent-relative rotation,
-    rest pose included, and a translation source off its whole position, rest offset
-    included; +25 picks the decomposition (modules/jcns_source_read.py).  The driver
-    hands over the bone's three XYZ Euler (or location) channels and jcns_ch rebuilds
-    the whole transform from them.
-  * entries run in file order within one frame, so a source whose channel is only
-    written by a LATER entry is still at its unconstrained pose when it is read.  Such
-    a channel gets no variable and reads its rest value.
-
-Two things make a bone's rotation more than three independent Euler channels, and
-such a bone's three rotation_euler drivers are built as one group, each evaluating
-the whole bone (jcns_source_read.target_basis) and returning its axis of the basis:
-  * a rotation TransformType other than 1 -- 4 / 5 / 6 compose by swing-twist,
-    twist-swing and rotation vector, 13 / 14 hold one rotation about the last
-    written axis (round 9);
-  * a target entry with Flags bit0 = 0 on a bone with a rest rotation: it replaces
-    the rest pose instead of adding to it (round 8).
+A bone's three rotation_euler drivers are built as one group, each evaluating the
+whole bone (jcns_source_read.target_basis), when its rotation TransformType is not
+1 (4 / 5 / 6 compose by swing-twist, twist-swing and rotation vector; 13 / 14 hold
+one rotation about the last written axis), or when a target entry with Flags
+bit0 = 0 lands on a bone with a rest rotation (it replaces the rest pose).
 """
 
 import bpy
@@ -127,7 +106,7 @@ def channel_id(armature_name, bone, transform, axis):
 
 
 def register_channel(key, maps, reads=None, post=1.0):
-    """`post` multiplies the summed engine value into the Blender channel's space
+    """`post` converts the summed engine value into the Blender channel's space
     (1 / rest scale for a scale target; see jcns_operators.target_post_factor)."""
     maps = list(maps)
     _CHANNELS[key] = {'maps': maps, 'reads': list(reads or [READ_VALUE] * len(maps)),
@@ -145,10 +124,10 @@ def clear_channels():
 
 
 # gid -> {'rest': (w, x, y, z), 'parts': [(axis, mode, replaces, maps, reads), ...]}
-# with parts in file order of their live entries
-# for a bone whose rotation/location drivers are built together. Location groups
-# also carry the parent-relative rest offset, in metres.
-# The channels of such a bone are in _CHANNELS as {'group': gid, 'axis': a}.
+# for a bone whose rotation or location drivers are built together; parts are in
+# file order of their live entries.  Location groups also carry 'offset', the
+# parent-relative rest offset in metres.  The bone's channels are in _CHANNELS as
+# {'group': gid, 'axis': a}.
 _GROUPS = {}
 
 
@@ -177,7 +156,7 @@ def _total(maps, reads, values):
     for m, read in zip(maps, reads):
         width = read_width(read)
         if at + width > len(values):
-            break                  # the driver predates this layout; Apply rebuilds it
+            break                  # driver built for another layout; Apply rebuilds it
         if read[0] == 'c':
             v = read[1]
         elif read[0] in ('rot', 'loc'):
@@ -214,26 +193,20 @@ def jcns_ch(key, *values):
     """Evaluate one driven channel. Called from every generated driver."""
     ch = _CHANNELS.get(key)
     if ch is None:
-        # Cache miss — the .blend was reloaded without the channels being rebuilt.
-        # Deliberately do NOT touch bpy.data here: this runs during depsgraph
-        # evaluation.  rebuild_all() is called from a load_post handler instead.
+        # Channels not rebuilt yet.  This runs during depsgraph evaluation, so it
+        # must not touch bpy.data; rebuild_all() runs from load_post instead.
         return 0.0
     if 'group' in ch:
         return _group_value(ch, values)
-    # Each source maps independently and the outputs add up — verified in-game
-    # against a two-source constraint swept over its whole input range.
-    #
-    # A map entry is (fs, fk, fe, ts, tk, te, two_point).  Entries registered by
-    # an older build are 6-long; treat those as three-point, which is what the
-    # shipped data uses in ~86% of sources.
+    # Each source maps independently and the outputs are summed.  A 6-long map
+    # entry (no two_point flag) is three-point.
     return _total(ch['maps'], ch['reads'], values)[0] * ch.get('post', 1.0)
 
 
 def rebuild_all():
     """Recreate the channel table from the scene, without touching the drivers.
 
-    Runs after a .blend load so drivers saved in the file keep working without
-    the user having to press Apply again.
+    Runs after a .blend load so drivers saved in the file work without Apply.
     """
     from . import group_constraints_by_channel
     from .jcns_operators import (channel_sources, replacing_bones, register_bone_group,

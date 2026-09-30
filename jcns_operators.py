@@ -1,16 +1,9 @@
 """
-jcns_operators.py
------------------
-Driver maths and entry management operators.
+Ranges driver building and the entry editing operators.
 
-The driver code here is the Ranges preview backend (see jcns_preview.py, which owns
-the apply / clear operators for every section).
-
-Operators:
-  JCNS_OT_AddConstraint      – add a new empty constraint to the active JCNS collection
-  JCNS_OT_DeleteConstraint   – remove the selected constraint Empty and reindex names
-  JCNS_OT_MoveConstraint     – move a Ranges entry one place earlier / later
-  ... and the per-entry editing operators below.
+The driver code is the Ranges preview backend; jcns_preview.py owns the apply /
+clear operators for every section.  A Ranges entry's file order is its '[N]' name
+prefix.
 """
 
 import os
@@ -42,22 +35,16 @@ _LOC_TYPE   = ['LOC_X',   'LOC_Y',   'LOC_Z']
 _SCALE_TYPE = ['SCALE_X', 'SCALE_Y', 'SCALE_Z']
 
 
-# TransformationID -> (Blender data path, driver variables, quantity driven)
-# bt TransformationID names ID 0 "Translation"; Blender's data path is "location".
-# These used to disagree ('Translation' vs 'Location'), so every Translation
-# constraint silently failed to produce a driver — and Translation is the single
-# most common type in shipped files (5852 of 19884 constraints).
+# TransformType name -> (Blender data path, driver variables, quantity driven)
 _AXIS_NAME = ['X', 'Y', 'Z', 'W']
 
 _DRIVABLE = {
     'Translation':     ('location',        ['LOC_X', 'LOC_Y', 'LOC_Z'],     'Translation'),
     'Rotation':        ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     'Rotation'),
     'Scale':           ('scale',           ['SCALE_X', 'SCALE_Y', 'SCALE_Z'], 'Scale'),
-    # Unresolved variant seen driving cloth-offset bones; treated as a plain
-    # Euler rotation until its actual semantics are reverse-engineered.
-    # The other rotation types (measured 2026-09-30, round 9) drive the same Euler
-    # channels; how they compose is jcns_source_read.TARGET_MODES, so a bone that
-    # carries one is previewed as a group (see _needs_group).
+    # The other rotation types drive the same Euler channels; how they compose is
+    # jcns_source_read.TARGET_MODES, so a bone carrying one is previewed as a
+    # group (see _needs_group).
     'SwingTwist':      ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     'Rotation'),
     'TwistSwing':      ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     'Rotation'),
     'RotationVector':  ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     'Rotation'),
@@ -110,9 +97,8 @@ _REST_VALUE = {'Translation': 0.0, 'Rotation': 0.0, 'Scale': 1.0}
 def mesh_rest_scale(bone):
     """Recover positive native rest scale omitted by Blender edit bones.
 
-    RE Mesh Editor preserves the original row-vector local matrix as a bone
-    property. Ordinary Blender rigs use unit rest scale. Mirrored/sheared rest
-    matrices are not covered by the round-11 experiment.
+    RE Mesh Editor keeps the original row-vector local matrix as a bone property;
+    without it, or for a mirrored or sheared matrix, the rest scale is unit.
     """
     from mathutils import Matrix
     import math
@@ -131,12 +117,11 @@ def mesh_rest_scale(bone):
     return scale if max(abs(v-1) for v in scale) > 1e-5 else (1.0, 1.0, 1.0)
 
 
-# Scale lives in two spaces.  The engine's scale is absolute -- a written axis
-# takes the value, an unwritten one keeps the rest scale (round 11) -- while a
-# Blender bone has no rest scale at all: the mesh is bound at the rest pose, so
-# pose scale 1 already *is* the rest scale, and anything else deforms the mesh and
-# moves the children.  So a scale target drives pose scale = engine value / rest
-# scale, and a scale source reads pose scale * rest scale.
+# Scale lives in two spaces.  The engine's scale is absolute (a written axis takes
+# the value, an unwritten one keeps the rest scale), while Blender pose scale is a
+# ratio to the rest scale: pose scale 1 is the rest scale.  So a scale target
+# drives pose scale = engine value / rest scale, and a scale source reads
+# pose scale * rest scale.
 
 def _rest_scale_axis(armature_obj, bone_name, axis):
     b = armature_obj.data.bones.get(bone_name)
@@ -156,9 +141,8 @@ def _written_from(root_obj, owner):
     """{(bone, data path, axis)} of every channel whose live writer is `owner` or an
     entry after it in the file.
 
-    Entries run in file order within one frame (measured in game 2026-09-30), so when
-    `owner` reads one of these channels the writer has not run yet and the bone is
-    still at its unconstrained pose.
+    Entries run in file order within one frame, so when `owner` reads one of these
+    channels the writer has not run yet and the bone is at its unconstrained pose.
     """
     from . import AXIS_TO_INT, get_constraint_empties, group_constraints_by_channel
     order = {e.name: i for i, e in enumerate(get_constraint_empties(root_obj))}
@@ -220,14 +204,11 @@ def channel_sources(armature_obj, root_obj, owner):
     """The source dicts of constraint Empty `owner`, each with the 'read' that tells
     the driver how to feed it (see jcns_drivers._CHANNELS).
 
-    Measured in game 2026-09-30 (xaihi rig rounds 6-7):
-      * rotation (+25 = 1/3/4/5) and translation (+25 = 0) sources read the bone's
-        whole parent-relative transform, rest included, decomposed as
-        modules/jcns_source_read.py says, so the driver takes all three channels and
-        the rest transform goes into the channel table;
-      * a channel written by this entry or a later one is read at its rest value.
-    Scale (+25 = 2) keeps a single variable, multiplied back by the bone's rest
-    scale (see target_post_factor).
+    * rotation (+25 = 1/3/4/5) and translation (+25 = 0) sources read the bone's
+      whole parent-relative transform, rest included (modules/jcns_source_read.py),
+      so the driver takes all three channels and the rest goes into the table;
+    * a channel written by this entry or a later one is read at its rest value;
+    * scale (+25 = 2) keeps one variable, multiplied by the bone's rest scale.
     """
     from . import jcns_drivers
     from .modules_shim import get_mapping
@@ -259,20 +240,12 @@ def channel_sources(armature_obj, root_obj, owner):
 
 def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
                   sources, transform_type='Rotation'):
-    """
-    Install (or replace) the SCRIPTED driver for one channel of one pose bone.
+    """Install (or replace) the SCRIPTED driver for one channel of one pose bone.
 
-    `sources` is a list of dicts, one per ConstraintSource_v2 of a SINGLE
-    constraint — they map independently and their outputs are summed:
-        {bone, axis_idx, from_start, from_kink, from_end,
-                         to_start,   to_kink,   to_end}
-
-    The anchors are handed to jcns_drivers.register_channel() and the expression
-    is reduced to a jcns_ch(...) call — Blender truncates expressions past 255
-    characters, and a single inline mapping already costs ~170 of them.
-
-    Sources are read in LOCAL_SPACE, as their 'read' says (channel_sources).
-    Returns (ok: bool, error_str: str).
+    `sources` are the channel_sources dicts of a single constraint; their outputs
+    are summed.  The anchors go to jcns_drivers.register_channel() and the
+    expression is only a jcns_ch(...) call (see jcns_drivers).
+    Returns (ok, error_str).
     """
     from . import jcns_drivers
     from .modules_shim import get_mapping
@@ -291,9 +264,7 @@ def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
         return False, "未设置驱动骨骼"
 
     # The engine composes q = rest * Rz * Ry * Rx whatever order the file writes the
-    # axes in (measured in game 2026-09-30: 0.4 deg; every other order off by 52+).
-    # That is Blender's XYZ Euler mode; any other order, or a quaternion, shows a
-    # different pose once more than one axis turns.
+    # axes in, which is Blender's XYZ Euler mode.
     if data_path == 'rotation_euler' and pose_bone.rotation_mode != 'XYZ':
         pose_bone.rotation_mode = 'XYZ'
 
@@ -369,7 +340,7 @@ def _install_driver(armature_obj, bone_name, data_path, index, key, sources, rea
 
 
 # ---------------------------------------------------------------------------
-# Bones whose rotation replaces the rest pose (Flags bit0 = 0)
+# Bones previewed as one group (see _needs_group, translation_channels)
 # ---------------------------------------------------------------------------
 
 _GROUP_TAG = 'Rot*'          # transform slot of a grouped driver's channel key
@@ -456,8 +427,8 @@ def _rotation_channels(root_obj, bone):
 
 def _needs_group(armature_obj, bone, chans):
     """A bone whose rotation cannot be one independent driver per Euler channel:
-    a non-Euler rotation type (swing-twist, rotation vector, single axis -- round
-    9), or an Euler channel replacing a rest rotation (round 8)."""
+    a non-Euler rotation type (swing-twist, rotation vector, single axis), or an
+    Euler channel replacing a rest rotation."""
     if any(_target_mode(m) != 'euler' for m in chans.values()):
         return True
     if not any(_replaces(m) for m in chans.values()):
@@ -563,7 +534,6 @@ def _get_root_and_armature(context):
 
     obj, root_props = get_jcns_root(context)
     if obj is None:
-        # Maybe a constraint Empty is active — walk up to root
         cns_obj, _ = get_jcns_constraint(context)
         if cns_obj:
             obj, root_props = get_jcns_root_from_constraint(cns_obj)
@@ -603,11 +573,8 @@ def _caps_for(root_props, kind_id):
 def refresh_channel_values(obj):
     """Update an applied driver's anchors without rebuilding the driver.
 
-    Dragging a mapping value fires an update per mouse tick, and tearing the
-    F-Curve down and recreating it each time is far more work than is needed:
-    only the numbers in the channel table changed.  Structural edits (bone,
-    axis, transform type) still go through the full path, since those change the
-    driver's variables and its channel key.
+    For value edits, which fire per mouse tick.  Structural edits (bone, axis,
+    transform type) change the driver's variables and key and take the full path.
     """
     from . import (get_jcns_root_from_constraint, group_constraints_by_channel,
                    channel_key)
@@ -661,17 +628,13 @@ def refresh_channel_values(obj):
 def refresh_applied_driver(obj):
     """Re-apply the driver for obj's channel if one is already on it.
 
-    The generated driver reads its anchors out of jcns_drivers._CHANNELS, which
-    is filled in at apply time, so editing a mapping value leaves the rig showing
-    the old curve until the user presses the button again.  Property update
-    callbacks route here so the viewport keeps up while numbers are being dragged.
-
-    Silent no-op when nothing is applied yet — this must never interrupt editing.
+    jcns_drivers._CHANNELS is filled at apply time, so an edit must re-register
+    the channel.  Silent no-op when nothing is applied; must never interrupt editing.
     """
     from . import (get_jcns_root_from_constraint, group_constraints_by_channel,
                    channel_key, get_constraint_empties)
 
-    # Changing the file-level combine rule affects every applied channel.
+    # Called on a root: re-apply every previewed channel.
     rp = getattr(obj, 'jcns_root_props', None)
     if rp is not None and rp.source_filepath:
         if rp.target_armature is None:
@@ -712,20 +675,11 @@ def refresh_applied_driver(obj):
 
 
 def _apply_channel(armature_obj, root_props, members):
-    """Apply the driver for one channel, following the engine's two rules.
+    """Apply the driver for one channel.
 
     `members` are constraint Empties with identical (bone, transform, axis), in
-    file order.  Measured against an in-game capture (see
-    REE-JCNS-Research/scripts/corpus_stats):
-
-      * several constraints on one channel — only the LAST one in file order has
-        any effect; the earlier ones are discarded outright.
-      * several sources inside one constraint — each maps independently and the
-        outputs are SUMMED.
-
-    So the driver is built from the winning constraint alone.  Concatenating
-    every member's sources, as this used to do, made earlier constraints
-    contribute when the engine ignores them entirely.
+    file order.  Only the last one has any effect, and its sources are summed, so
+    the driver is built from members[-1] alone.
     """
     from . import AXIS_TO_INT
     bone, transform, axis = _channel_of(members[0])
@@ -822,23 +776,15 @@ def _clear_channel(armature_obj, members):
 # Duplicate-index bookkeeping
 # ---------------------------------------------------------------------------
 #
-# Native Blender duplication (Shift+D, Ctrl+C/V, Outliner duplicate, Alt+D, ...)
-# copies jcns_cns_props verbatim, including whatever '[N]' text was baked into
-# the source Empty's name. Blender itself only guarantees obj.name is unique
-# (appending '.001'), so right after duplicating, two Ranges Empties can carry
-# the exact same parsed index. get_constraint_empties() sorts by that same
-# text, so which of the two sorts first is then decided by root_obj.children
-# order rather than anything meaningful — and any operator that renumbers by
-# position from that order (JCNS_OT_MirrorConstraints, JCNS_OT_DeleteConstraint)
-# can then shuffle an unrelated Empty's index. A depsgraph handler below fixes
-# collisions the moment they appear, before anything else has a chance to run.
+# Native Blender duplication copies the '[N]' name prefix, and Blender only
+# appends '.001', so two Ranges Empties can share an index and their file order
+# becomes arbitrary.  The depsgraph handler below renumbers collisions as soon
+# as they appear.
 
 def dedupe_constraint_indices(root_obj):
     """Give every duplicate '[N]' index directly under root_obj a free number.
 
-    Only ever touches Empties that are actually colliding (or unparsable);
-    a file with no collisions is left completely untouched, so this is safe
-    to call opportunistically. Returns how many Empties were renumbered.
+    Touches only colliding or unparsable Empties.  Returns how many were renumbered.
     """
     from . import get_constraint_empties, constraint_name_from_props
 
@@ -974,10 +920,8 @@ class JCNS_OT_DeleteConstraint(Operator):
         root_obj, root_props = get_jcns_root_from_constraint(cns_obj)
         kind = cns_props.constraint_type
 
-        # Remove the selected Empty
         bpy.data.objects.remove(cns_obj, do_unlink=True)
 
-        # Reindex remaining Empties
         if root_obj:
             if kind in ('Skin', 'Aim', 'RotExpression'):
                 _renumber_sections(root_obj, kind)
@@ -995,10 +939,8 @@ class JCNS_OT_DeleteConstraint(Operator):
 def _renumber_in_order(ordered):
     """Rewrite every Empty's '[N]' prefix to match its position in `ordered`.
 
-    Done in two passes because Blender silently appends '.001' when a name is
-    already taken.  Two constraints driving the same channel differ only by that
-    prefix, so assigning final names in one pass would mangle exactly the case
-    reordering exists for.
+    Two passes, because Blender appends '.001' to a taken name and two constraints
+    on the same channel differ only by the prefix.
     """
     from . import constraint_name_from_props
 
@@ -1317,7 +1259,7 @@ class JCNS_OT_MirrorConstraints(Operator):
                         break
                     src_sigma = sigma(sp.source_bone)
                 else:
-                    # Source is fixed — same reasoning as the target above.
+                    # Source is fixed, as for the target above.
                     mate = sp.source_bone
                     src_sigma = None
                 vals, i_s, o_s = mirror.mirror_source(
@@ -1602,7 +1544,7 @@ class JCNS_OT_CMCreate(Operator):
             two_point=m.is_two_point(sp.update_timing))
         sp.cm_cache.clear()
         jcns_cm.set_keys(sp, keys)
-        # Shipped keyframed sources carry all-zero anchors (78/78).
+        # Shipped keyframed sources carry all-zero anchors.
         for name in ('from_start', 'from_kink', 'from_end', 'to_start', 'to_kink', 'to_end'):
             setattr(sp, name, 0.0)
         refresh_applied_driver(obj)

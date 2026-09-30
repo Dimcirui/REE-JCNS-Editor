@@ -70,8 +70,7 @@ class JCNSWriter:
         def _get_or_add(name):
             """Return (hash32, index) for a bone name, adding to list if missing.
 
-            The empty name is a real name here: 52 shipped v102 sources (the *_UVT
-            files) have an empty name string and store murmur("") = 0x81F16F39.
+            The empty name is a real name: it stores murmur("") = 0x81F16F39.
             """
             h = hashUTF16(name) & 0xFFFFFFFF
             for i, v in enumerate(new_hash_list):
@@ -98,9 +97,8 @@ class JCNSWriter:
         def _target_hash(c):
             """Hash to store in ObjectHash for a direct-hash (non-indexed) target.
 
-            Normally this is the MurmurHash of ObjectName.  But ObjectName can be an
-            RSZ object or property target (e.g. 'via.motion.Chain') whose ObjectHash is
-            derived from something else — recomputing it there would corrupt the field,
+            Normally the MurmurHash of ObjectName.  An RSZ object or property
+            target (e.g. 'via.motion.Chain') derives ObjectHash from something else,
             so the parser records whether the two agreed in the original file.
             """
             name = c.get('ObjectName', '')
@@ -131,7 +129,7 @@ class JCNSWriter:
                     ac[idx_key] = _get_or_add_hash(ac[hash_key])
 
         # RotExpression's two index arrays point at the record's own inline
-        # SourceJointHash / JointHash (57/57 shipped entries).
+        # SourceJointHash / JointHash.
         for re in getattr(p, 'rot_expressions', []):
             for idx_key, hash_key in (('SrcJointHashIndex', 'SourceJointHash'),
                                       ('JntHashIndex', 'JointHash')):
@@ -157,8 +155,7 @@ class JCNSWriter:
             A bone / blendshape target is filed under its own hash.  A target with
             a property is filed under the hash of "object<sep>property": '.' for
             materials ('face.Blend_A', TransformType 7-10) and ':' for RSZ component
-            properties ('via.motion.Chain:BlendRate', TransformType 11).  Checked
-            against every constraint in the shipped v102 corpus (22839).
+            properties ('via.motion.Chain:BlendRate', TransformType 11).
             """
             prop = c.get('PropertyName', '')
             if not prop:
@@ -178,8 +175,7 @@ class JCNSWriter:
             from jcns_parser import read_header
             hdr = read_header(orig, check_layout=False)
 
-        # The header ends 16-aligned.  In RE9 (v35) every block below follows it
-        # in this order: ConeDriver[] and their names, ConstraintInfo[], every
+        # The header ends 16-aligned.  The blocks below follow it in this order: ConeDriver[] and their names, ConstraintInfo[], every
         # constraint's ConeDriverInfo[] (16-aligned each), ConstraintSource[].
         # Without ConeDrivers ConstraintInfo starts right at the header's end.
         HEADER_END     = hdr['HeaderEnd']
@@ -197,7 +193,7 @@ class JCNSWriter:
             name_blob = bytearray()
             recs = []
             for cd in cones:
-                # names are 8-aligned (614/614 in RE9)
+                # names are 8-aligned
                 name_blob.extend(b'\x00' * (_align(names_at + len(name_blob), 8) - (names_at + len(name_blob))))
                 name_off = names_at + len(name_blob)
                 name_blob.extend(cd['Name'].encode('utf-16le') + b'\x00\x00')
@@ -240,27 +236,22 @@ class JCNSWriter:
         SRC_START = _align(raw_src_start, 16)
 
         # ── Phase 3: build ConstraintSource_v2 blobs ───────────────────
-        # Layout per constraint (matches shipped multi-source files, e.g.
-        # ch02_027_0002 where L_Foot/R_Foot sit at 0x140/0x188 with both name
-        # strings pooled afterwards at 0x1D0/0x1DE):
+        # Layout per constraint:
         #
         #     [Source_v2 #0][Source_v2 #1]…[name #0][name #1]…[pad to 8]
         #
-        # Writing each name directly after its own struct — as this code used to —
-        # puts the string exactly where the engine expects Source_v2 #1, which
-        # corrupts every constraint with SourceCount > 1.
+        # The engine reads the structs as one contiguous array, so no name may sit
+        # between them.
         src_blob      = bytearray()
         src_offsets   = []  # absolute offset of each constraint's Source_v2 array (0 = none)
 
         for c in p.constraints:
             srcs = c.get('sources', [])
             if not srcs:
-                # SourceCount == 0 (e.g. BlendShape targets): emit nothing and leave
-                # OffsetSourceList null rather than inventing a phantom source block.
+                # SourceCount == 0 (e.g. BlendShape targets): SourceListOffset stays 0.
                 src_offsets.append(0)
                 continue
 
-            # Align the array to a 16-byte boundary
             abs_base = SRC_START + len(src_blob)
             pad = _align(abs_base, 16) - abs_base
             src_blob.extend(b'\x00' * pad)
@@ -277,8 +268,7 @@ class JCNSWriter:
                 if len(name_blob) % 2:
                     name_blob.extend(b'\x00')
 
-            # ComplexMappingInfo arrays follow the names, each 16-aligned (as in
-            # every shipped file).  The count is taken from the data itself.
+            # ComplexMappingInfo arrays follow the names, each 16-aligned.
             cm_blob = bytearray()
             cm_offsets = []
             cm_base = names_start + len(name_blob)
@@ -302,9 +292,8 @@ class JCNSWriter:
                 rec.update({k: v for k, v in s.items() if not k.startswith('_')})
                 rec['SourceName_Offset'] = abs_name
                 rec['ComplexMappingInfoOffset'] = cm_off
-                # Byte +29 is 1 exactly when the source has ComplexMapping (78/78);
-                # it also takes the value 2 in 39 sources without, so only a 1 is
-                # cleared when the keyframes go away.
+                # Byte +29 is 1 exactly when the source has ComplexMapping; a source
+                # without one may also hold 2, so only a 1 is cleared.
                 flag = (rec['UnknownUInt32_2'] >> 8) & 0xFF
                 flag = 1 if cm_off else (0 if flag == 1 else flag)
                 rec['UnknownUInt32_2'] = (rec['UnknownUInt32_2'] & ~0xFF00) | (flag << 8)
@@ -327,7 +316,6 @@ class JCNSWriter:
                 tgt_name_to_offset[name] = abs_off
                 wstr = name.encode('utf-16le') + b'\x00\x00'
                 tgt_pool_blob.extend(wstr)
-                # Pad to 2-byte alignment so the next string is word-aligned
                 if (TGT_POOL_START + len(tgt_pool_blob)) % 2:
                     tgt_pool_blob.extend(b'\x00')
 
@@ -339,23 +327,19 @@ class JCNSWriter:
             if c.get('PropertyName'):
                 _pool(c['PropertyName'])
 
-        # Pad pool to 8-byte boundary
         rem = (TGT_POOL_START + len(tgt_pool_blob)) % 8
         if rem:
             tgt_pool_blob.extend(b'\x00' * (8 - rem))
 
         # ── Phase 5: build Dependency table + data ─────────────────────
-        # Original file has 8 bytes of zero padding before DependencyTableEntry.
+        # 8 zero bytes precede the dependency table.
         DEP_PAD_SIZE   = 8
         DEP_TABLE_START = TGT_POOL_START + len(tgt_pool_blob) + DEP_PAD_SIZE
 
-        # bt: DependencyInfo = {uint64 Offset, uint64 SourceCount}, and at Offset
-        #     {hash ObjectHash; hash SourceHash[SourceCount]}.
-        # So one entry per driven object, carrying all of its source hashes — NOT one
-        # entry per (target, source) pair.  Checked against 358 shipped files: 297 have
-        # DependencyCount == number of distinct target objects (and real entries carry
-        # SourceCount up to 6), while only 2 match the one-entry-per-pair reading.
-        # Always derive target hash from the name so renamed bones get correct hashes.
+        # DependencyInfo = {uint64 Offset, uint64 SourceCount}, and at Offset
+        # {hash ObjectHash; hash SourceHash[SourceCount]}: one entry per driven
+        # object with all of its source hashes, not one per (target, source) pair.
+        # The target hash comes from the name so renamed bones hash correctly.
         dep_order = []            # target hashes, in first-seen order
         dep_sources = {}          # target hash -> list of source hashes (unique, ordered)
         for c in p.constraints:
@@ -374,7 +358,7 @@ class JCNSWriter:
                 src_h = new_hash_list[src_idx] if src_idx < len(new_hash_list) else 0
                 if src_h not in bucket:
                     bucket.append(src_h)
-            # A cone-driven constraint depends on each cone's joint (RE9 v35).
+            # A cone-driven constraint depends on each cone's joint.
             for ci in c.get('ConeDriverInfo') or []:
                 h = cones[ci['ConeDriverIndex']]['JointHash']
                 if h not in bucket:
@@ -394,8 +378,7 @@ class JCNSWriter:
                 dep_data_blob.extend(struct.pack('<I', h))
 
         # ── Phase 5b: ObjectSettings (last thing in Section 0) ─────────
-        # 16-byte records followed by the hashes they point at, as in the one
-        # shipped file that has any (it6017_0000_0).
+        # 16-byte records followed by the hashes they point at.
         obj_settings = getattr(p, 'object_settings', [])
         N_OBJSET = len(obj_settings)
         OBJSET_START = 0
@@ -411,7 +394,6 @@ class JCNSWriter:
         # ── Phase 6: build SectionTable ────────────────────────────────
         SEC_TABLE_START = (OBJSET_START + len(objset_blob) if N_OBJSET
                            else DEP_DATA_START + len(dep_data_blob))
-        # Pad to 4-byte alignment
         rem = SEC_TABLE_START % 4
         if rem:
             SEC_TABLE_START += (4 - rem)
@@ -453,8 +435,8 @@ class JCNSWriter:
                 'ConeDriverInfoCount':  len(c.get('ConeDriverInfo') or []),
                 'PropertyOffset':       (tgt_name_to_offset[c['PropertyName']]
                                          if c.get('PropertyName') else 0),
-                # Derived from the source list, never copied — a stale SourceCount is
-                # exactly what made multi-source constraints read past their own data.
+                # Derived from the source list, never copied: a stale count makes
+                # the engine read past the constraint's own sources.
                 'SourceCount_parent':   len(c.get('sources', [])),
                 axis_key:               c.get('TransformAxis_parent', 0),
             })
@@ -476,7 +458,6 @@ class JCNSWriter:
                 rot_blob.extend(re['info_raw'])           # 56 bytes verbatim
             ROT_MAP_START = ROT_INFO_START + len(rot_blob)
             rot_blob.extend(rot_map)
-            # Align source-index table to 4 bytes
             pad = (4 - len(rot_blob) % 4) % 4
             rot_blob.extend(b'\x00' * pad)
             ROT_SRC_IDX_START = ROT_INFO_START + len(rot_blob)
@@ -515,15 +496,13 @@ class JCNSWriter:
                 jxg_blob.extend(b'\x00' * (8 - rem))
 
         # ── Phase 8e: build Aim section ─────────────────────────────────
-        # Aim constraints (read-only passthrough) are stored in parser.aim_constraints.
-        # Each consists of a 80-byte inline block (offset+body) and a 16-byte target block.
-        # We rebuild with corrected absolute offset pointers.
+        # Each Aim is an 80-byte record (pointer + body) and a 16-byte target block,
+        # carried over with new pointers and remapped hash indices.
         aim_list = getattr(p, 'aim_constraints', [])
         N_AIM = len(aim_list)
         AIM_SECTION_START = 0
         aim_blob = bytearray()
         if N_AIM > 0:
-            # Aim section comes after hash table + any preceding non-Range sections
             if jxg is not None:
                 _prev_end = JXG_START + len(jxg_blob)
             elif N_MAT > 0:
@@ -757,12 +736,11 @@ def tail_group_counts(constraints):
     the engine folds into its joint group.
 
     The engine writes a whole group to the *first* entry's target, whatever the others
-    name, so a stale count makes neighbours land on the wrong bone (measured in game
-    2026-09-30: entries cloned with count 2 wrote every third test bone, last one
-    winning).  Shipped files set it to the length of the run of consecutive entries
-    sharing target, property, TransformType and Flags, minus one, and 0 on the rest
-    (22818/22839).  The other 21 are still well-formed groups, so counts that already
-    form valid groups are kept; if any does not, all are re-derived.
+    name, so a stale count makes neighbours land on the wrong bone.  Counts that
+    already form valid groups (members share target, property and TransformType and
+    carry 0) are kept; otherwise all are re-derived as the length of each run of
+    consecutive entries sharing target, property, TransformType and Flags, minus one,
+    and 0 on the rest.
     """
     def ident(c):
         return (c.get('ObjectName', ''), c.get('PropertyName', ''), c.get('TransformType'))
@@ -797,12 +775,10 @@ def tail_group_counts(constraints):
 
 
 def _align(value, boundary):
-    """Round value UP to the next multiple of boundary."""
     rem = value % boundary
     return value if rem == 0 else value + (boundary - rem)
 
 
 def _pad_to(buf, target):
-    """Extend bytearray buf with zeros until len(buf) == target."""
     if len(buf) < target:
         buf.extend(b'\x00' * (target - len(buf)))

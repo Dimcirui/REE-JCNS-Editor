@@ -29,7 +29,7 @@ from bpy.types import Panel
 # ---------------------------------------------------------------------------
 
 def _mapping():
-    """modules/jcns_mapping.py —— 和驱动器跑同一套数学。"""
+    """和驱动器共用同一套映射数学。"""
     modules_dir = os.path.join(os.path.dirname(__file__), "modules")
     if modules_dir not in sys.path:
         sys.path.insert(0, modules_dir)
@@ -38,7 +38,6 @@ def _mapping():
 
 
 def _curve():
-    """modules/jcns_curve.py —— 折线图光栅化。"""
     modules_dir = os.path.join(os.path.dirname(__file__), "modules")
     if modules_dir not in sys.path:
         sys.path.insert(0, modules_dir)
@@ -46,18 +45,14 @@ def _curve():
     return jcns_curve
 
 
-# 同一时刻只画当前选中的约束，所以共用一个预览槽位就够，
-# 点来点去也不会不断累积图像数据。
+# 只画当前选中的约束，共用一个预览槽位，图像数据不会累积。
 _preview_coll = None
 _preview_key = None
 CURVE_W, CURVE_H = 180, 110
 
 
 def _curve_icon(sources):
-    """当前映射的 icon_id，数值没变就不重新光栅化。
-
-    面板会频繁重绘，每次都重算两万个浮点数纯属浪费，所以先把锚点算成缓存键。
-    """
+    """当前映射的 icon_id；缓存键不变就不重新光栅化。"""
     global _preview_key
     if _preview_coll is None:
         return None
@@ -76,11 +71,7 @@ def _curve_icon(sources):
 
 
 def _swatch_icon(index):
-    """icon_id for a flat colour square, one per palette slot.
-
-    Palette colours are fixed, so these are built once and reused — unlike
-    the curve preview they never need to be redrawn.
-    """
+    """icon_id for a flat colour square, one per palette slot, built once."""
     if _preview_coll is None:
         return None
     c = _curve()
@@ -101,17 +92,14 @@ def _active_source(p):
 
 
 def _fmt(v):
-    """去掉无意义的小数尾巴：-15.0 -> -15，1.25 保留。"""
+    """-15.0 -> -15，1.25 保留。"""
     return ("%+.0f" % v) if abs(v - round(v)) < 0.005 else ("%+.2f" % v)
 
 
 def _field_row(layout, label, data, prop, icon='NONE', **kwargs):
-    """一行「标签 | 取值」，标签和输入框固定按比例分栏对齐。
+    """一行「标签 | 取值」，按固定比例分栏，所有面板的主字段共用这套排版。
 
-    面板里凡是"一个字段配一个说得清楚的标签"就走这个函数，保证不管在哪个面板，
-    骨骼名、轴向、变换类型这类主字段的排版看起来都是同一套东西。真正紧凑的
-    向量/四元数分量、字节尾巴这种"一组数字共享一个概念"的字段不走这里——
-    那些短标签直接写在 prop(text=...) 里更省地方，见 _draw_raw_group()。
+    一组共享一个概念的紧凑数值（向量分量、字节尾巴）走 _draw_raw_group()。
     """
     row = layout.row(align=True)
     split = row.split(factor=0.4)
@@ -121,7 +109,7 @@ def _field_row(layout, label, data, prop, icon='NONE', **kwargs):
 
 
 def _draw_raw_group(layout, title, icon, rows):
-    """一组"共享一个概念"的紧凑数值（向量、字节尾巴……），各自一个小 box。
+    """一组共享一个概念的紧凑数值，放在一个 box 里。
 
     `rows` 是若干 (data, [(prop, short_label), ...]) 对，每一对占一行。
     """
@@ -268,7 +256,6 @@ class JCNS_PT_Status(Panel):
     def draw(self, context):
         layout = self.layout
 
-        # 常驻操作：不管选中了什么都在，导入/导出不用先找根节点
         row = layout.row(align=True)
         row.operator("jcns.import_file", text="导入 JCNS", icon='IMPORT')
         row.operator("jcns.export_file", text="导出 JCNS", icon='EXPORT')
@@ -290,7 +277,6 @@ class JCNS_PT_Status(Panel):
 # ---------------------------------------------------------------------------
 
 def _draw_version_note(layout, rp):
-    """File version and whether it has been checked against real files."""
     from .modules_shim import get_schema
     from .jcns_exporter import _root_version
     schema = get_schema()

@@ -1,38 +1,15 @@
 """
-jcns_schema.py
---------------
 Declarative, version-aware layouts for every JCNS record the editor touches.
 
-Instead of reading `data[+47]` or patching `0xB8` by hand, each record is a list
-of named fields in file order.  A field may carry a version predicate, which is
-how one declaration covers every RE Engine release (the same idea as ReeLib's
-`ReadWrite` models and the EFX editor's schema tables):
+Each record is a list of named fields in file order; a field may carry a version
+predicate, so one declaration covers every RE Engine release.
 
-    CONSTRAINT_INFO = Struct('ConstraintInfo', [
-        F('ConeDriverInfoOffset', 'Q'),
-        ...
-        F('ObjectHashIndex', 'I', since(35)),
-        F('ObjectHash',      'I'),
-        ...
-    ])
-
-    rec  = CONSTRAINT_INFO.read(data, off, version)   # -> dict
-    blob = CONSTRAINT_INFO.pack(rec, version)          # -> bytes
-
-Invariant (checked by tests/test_versions.py over the shipped corpus):
+Invariant (checked by tests/test_versions.py):
     pack(read(data, off, v), v) == data[off:off + size(v)]
-so unknown bytes are fields too — they are named `Unk*` and carried verbatim.
+so unknown bytes are fields too, named `Unk*` and carried verbatim.  A version
+outside VERIFIED_VERSIONS is guarded by check_header_layout().
 
-Sources for the layouts, in order of trust:
-  1. real files (v22 RE4, v29/v102 MH Wilds, v35 RE9, v36 Onimusha — see tests/)
-  2. the per-version header table of RE_Engine_JCNS.bt 0.65.13 (written out by
-     hand for every game)
-  3. RE_Engine_JCNS.bt 0.65.14 (unified `if (Version >= N)` rewrite) and ReeLib's
-     JcnsFile.cs.
-Where 2 and 3 disagree the header check in JCNSParser refuses the file rather
-than guess — see `check_header_layout()`.
-
-Kept free of any `bpy` import.
+No bpy import.
 """
 
 import struct
@@ -177,9 +154,8 @@ VERSION_GAMES = {
 }
 SUPPORTED_VERSIONS = tuple(sorted(VERSION_GAMES))
 
-# Versions whose layout has been checked against real files (every record
-# round-trips and every stored hash matches its name).  Anything else is parsed
-# from the templates alone; check_header_layout() is the guard.
+# Versions whose layout round-trips real files with every stored hash matching
+# its name.  The others are laid out from the templates alone.
 VERIFIED_VERSIONS = frozenset({22, 29, 35, 36, 102})
 
 # For Blender's file browser / drag-and-drop handler.
@@ -188,13 +164,8 @@ FILE_EXTENSIONS = ';'.join(f'.{v}' for v in SUPPORTED_VERSIONS)
 
 
 # ── Header ("DataInfo" table at Tags.DataEntry, normally 0x50) ─────────────
-# 0.65.13 wrote this out per version; 0.65.14 and ReeLib unified it.  The only
-# disagreements are resolved as follows (2-of-3, then real files):
-#   * v12 has SkinConstraintSource{Entry,Count}, not Aim  (0.65.13 + ReeLib)
-#   * DependencyCount / DependencyTableEntry start at v21  (0.65.13 + ReeLib;
-#     0.65.14 has the count from v16)
-#   * no ReadJointTableItemCount before v36   (v29 files; ReeLib
-#     reads one from v29 and mis-assigns every later count)
+# v12 has SkinConstraintSource{Entry,Count} and no Aim; Dependency fields start
+# at v21; ReadJointTable fields start at v36.
 
 _has_skin_src = any_of(since(29), only(12))
 
@@ -214,7 +185,7 @@ HEADER = Struct('Header', [
     F('SectionTableEntry',                   'Q', since(16)),
     F('DependencyTableEntry',                'Q', since(21)),
     F('HashListOffset',                      'Q', since(35)),
-    F('ReadJointTableEntry',                 'Q', since(36)),   # bt / REE-Lib: SkinConstraintHashTable*
+    F('ReadJointTableEntry',                 'Q', since(36)),
 
     F('HashCount',                           'i', since(35)),
     F('ConeDriverCount',                     'H'),
@@ -238,11 +209,10 @@ HEADER_POINTERS = [f.name for f in HEADER.fields if f.fmt == 'Q']
 def check_header_layout(header, version, data_entry):
     """Return '' if the parsed header is self-consistent, else a reason.
 
-    The data table begins right after the header in every file seen (the
-    ConeDriver table comes first and, when empty, shares its offset with
-    ConstraintInfo), so the header's own computed end must equal
-    ConeDriverTableEntry.  A wrong field list for a version shifts that end,
-    which makes this a cheap, reliable detector for the unverified versions.
+    The data table begins right after the header (the ConeDriver table comes
+    first and, when empty, shares its offset with ConstraintInfo), so the
+    header's computed end must equal ConeDriverTableEntry.  A wrong field list
+    for a version shifts that end.
     """
     end = data_entry + HEADER.size(version)
     cd = header.get('ConeDriverTableEntry', 0)
@@ -264,9 +234,8 @@ def section_count(header, version):
 
 
 # ── ConstraintInfo (Section 0) ─────────────────────────────────────────────
-# 80 bytes from v21, 64 at v16/v19, 56 at v11/v12.  Keys match what the importer
-# and exporter already use.  Before v35 there is no hash-table index, the byte
-# the newer format uses for Flags is an unnamed byte, and TransformAxis sits in
+# 80 bytes from v21, 64 at v16/v19, 56 at v11/v12.  Before v35 there is no
+# hash-table index, the Flags byte is an unnamed byte, and TransformAxis sits in
 # the first byte block instead of the tail.
 
 CONSTRAINT_INFO = Struct('ConstraintInfo', [
@@ -351,16 +320,15 @@ def source_hash_key(version):
 
 # ── Other sections ─────────────────────────────────────────────────────────
 
-# Section 0 ConeDrivers (v35 layout; bt ConeDriver_v2).  A cone around a joint's
-# direction: constraints read how far a joint has swung into it through their
-# ConeDriverInfo list, as an alternative to ConstraintSource ranges.  RE9 v35:
-# 614 records in 10 of 12 files.  NameHash is murmur(Name) (614/614), the joint
-# fields are hash-list indices (SymmetryJoint -1 when unpaired), UnknownUInt32
-# is 0 and Tail is 06 06 00 {0,1} 00 00 00 00 in every one.
+# Section 0 ConeDrivers (v35 layout).  A cone around a joint's direction:
+# constraints read how far a joint has swung into it through their
+# ConeDriverInfo list, as an alternative to ConstraintSource ranges.  NameHash
+# is murmur(Name), the joint fields are hash-list indices (SymmetryJoint -1 when
+# unpaired), UnknownUInt32 is 0 and Tail is 06 06 00 {0,1} 00 00 00 00.
 CONE_DRIVER = Struct('ConeDriver', [
     F('Name_Offset',            'Q'),
     F('Direction',              '4f'),
-    F('Matrix',                 '12f'),          # matrix4x3 (ReeLib reads a 4x4 here)
+    F('Matrix',                 '12f'),          # matrix4x3
     F('NameHash',               'I'),
     F('JointHashIndex',         'i'),
     F('ParentJointHashIndex',   'i'),
@@ -371,14 +339,14 @@ CONE_DRIVER = Struct('ConeDriver', [
 ])
 
 # ConstraintInfo.ConeDriverInfoOffset -> ConeDriverInfo[ConeDriverInfoCount].
-# Rest is (0,0,0,0), or (0,0,0,1) on scale targets whose neutral value is 1
-# (588 of 10512 in RE9); Value is what the target takes for that cone — bt calls
-# it AngleDeg, but on scale targets it holds factors like 1.002 or 3.5.
+# Rest is (0,0,0,0), or (0,0,0,1) on scale targets whose neutral value is 1;
+# Value is what the target takes for that cone (a factor on scale targets, not
+# an angle).
 CONE_DRIVER_INFO = Struct('ConeDriverInfo', [
     F('Rest0',           'f'),
     F('Rest123',         '3f', since(24)),
     F('Value',           'f'),
-    F('UnkByte0',        'B'),                   # 0, or 2 in 30 of 10512
+    F('UnkByte0',        'B'),                   # 0 or 2
     F('ConeDriverIndex', 'H'),
     F('UnkByte3',        'B'),                   # always 0
 ])
@@ -387,7 +355,7 @@ CONE_DRIVER_INFO = Struct('ConeDriverInfo', [
 AIM = Struct('ConstraintAim', [
     F('TargetInfoOffset',   'Q'),
     F('JointHashIndex',     'i', since(35)),
-    F('UnkJointHashIndex',  'i', since(35)),      # bt: AimVectorPointJointHash
+    F('UnkJointHashIndex',  'i', since(35)),
     F('JointHash',          'I', before(35)),
     F('UnkJointHash',       'I', before(35)),
     F('Body',               '64s'),               # 4 vec3 + RotationType + 15 bytes
@@ -418,8 +386,8 @@ DEPENDENCY = Struct('DependencyInfo', [
     F('SourceCount',        'Q'),
 ])
 
-# ComplexMappingInfo[ComplexMappingInfoCount], pointed to by a ConstraintSource_v2.
-# Shipped files always place it 16-aligned right after the source's name strings.
+# ComplexMappingInfo[ComplexMappingInfoCount], pointed to by a ConstraintSource_v2,
+# placed 16-aligned right after the source's name strings.
 COMPLEX_MAPPING = Struct('ComplexSrcMapping', [
     F('FromX', 'f'), F('ToX', 'f'),
     F('FromY', 'f'), F('ToY', 'f'),

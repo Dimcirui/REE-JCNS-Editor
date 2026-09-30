@@ -1,43 +1,33 @@
 """
-jcns_sections.py
-----------------
 Editable forms of the non-range sections (SkinConstraint, Aim, RotExpression)
-and the rules that regenerate their derived data.  Kept free of any `bpy`
-import so the rules can be checked against the shipped corpus offline.
+and the rules that regenerate their derived data.  No bpy import.
 
 Editable form = what a person edits (bones as hashes, weights, vectors).
 Parser form   = what JCNSParser produces and JCNSWriter consumes.
 
-Derived data and the evidence for each rule (1103 shipped v102 files):
+Derived data:
 
   SkinConstraint
     * the source-info table is the distinct source bones in first-use order,
-      with no repeated hash                                      (90/90 files)
+      with no repeated hash
     * the record's first tail byte and the source-info u32 are one per-file
-      constant, usually 5                                        (90/90)
-    * the other two tail bytes are 00 00 in every v102 record (1851), but vary
-      per record in RE9 v35 (01 00 / 01 01 / 02 00 / 02 01) and Onimusha v36
-      (00 01), so they are carried per record
-    * ReadJointTable (SkinConstraintHashTable in bt / REE-Lib, though Skin
-      shares it with Aim) lists the joints whose world matrices the Skin and Aim sections read: every skin
-      source, and the parent of every joint they write (a result computed in
-      world space has to be brought back into its parent's space).  Written
-      joints themselves are left out, and so is any joint that is an ancestor
-      of another listed one — walking up from the deepest ones covers it.  The
-      list is sorted by hierarchy depth.  Aim targets and up joints are not in
-      it.  Set 42/42, depth order 42/42; ties within a depth follow first use
-      in 23/42, the rest look like the authoring tool's container order, which
-      cannot matter since no two entries are related.  It needs the skeleton
-      (see derive_read_joint_table).  Only monster rigs carry one: player and NPC
-      files with Skin or Aim sections leave it empty (0 of 65), so an empty
-      table stays empty.
+      constant, usually 5
+    * the other two tail bytes vary per record from v35 on, so they are carried
+      per record
+    * ReadJointTable lists the joints whose world matrices the Skin and Aim
+      sections read: every skin source, and the parent of every joint they
+      write (a result computed in world space is brought back into its parent's
+      space).  Written joints are left out, and so is any joint that is an
+      ancestor of another listed one.  The list is sorted by hierarchy depth;
+      order within a depth does not matter, since no two entries are related.
+      Aim targets and up joints are not in it.  Deriving it needs the skeleton.
+      A file without a table (player and NPC rigs) keeps none.
   Aim
-    * no derived data besides the target block; an unused up-joint is -1
-      (180/277); the 12 tail bytes and the target block's 8 tail bytes are
-      always zero, but are carried rather than assumed
+    * no derived data besides the target block; an unused up-joint is -1; the
+      12 tail bytes and the target block's 8 tail bytes are carried, not assumed
   RotExpression
-    * the two hash-index arrays point at exactly the record's inline JointHash /
-      SourceJointHash                                            (57/57)
+    * the two hash-index arrays point at the record's inline JointHash /
+      SourceJointHash
     * the map holds one value per file; new entries repeat it
 """
 
@@ -165,8 +155,8 @@ def resolve_read_joint_table(records, aim_joints, meta, locked, parent=None, nam
 
 
 def skin_weight_warnings(records, names=None):
-    """Records whose weights do not sum to 1 (6 of 1851 shipped ones sum to 0.9,
-    so this warns rather than refuses)."""
+    """Records whose weights do not sum to 1.  Shipped records can sum to 0.9,
+    so this warns rather than refuses."""
     out = []
     for i, r in enumerate(records):
         w = sum(s['weight'] for s in r['sources'])

@@ -1,50 +1,24 @@
 """
-jcns_flags.py
--------------
-What the bits of ConstraintInfo's `flags_cns` mean, and which of them follow
-from the transform type.
+Meaning of ConstraintInfo's `flags_cns` bits, and which follow from the
+transform type.
 
-Derived from 19884 constraints in 884 shipped v102 files.  Two bits turn out to
-be a pure function of TransformationID — every one of the 15 observed types uses
-a single value, with no exceptions at all:
-
-    bit 4   the constraint drives a BONE rather than a material / blend weight
-            set for Translation, Rotation, Scale, SwingTwist, TwistSwing,
-            RotationVector, AxisRotation/14; clear for Material_*, BlendShape,
-            Scalar, Unknown_12.
-            (the bt template guesses "isJoint?" — this confirms it)
-
+    bit 4   the constraint drives a bone, not a material / blend weight
     bit 5   the driven quantity is angular
-            set for Rotation, SwingTwist, TwistSwing, RotationVector,
-            AxisRotation/14; clear for Translation, Scale, BlendShape,
-            Material_*, Scalar, Unknown_12.
-            (unnamed in the bt template)
+    bit 0   per-constraint, not derivable from the type; no effect on the curve
 
-Because they are redundant with the transform type, the exporter recomputes them
-instead of trusting whatever is sitting in the raw field — otherwise changing a
-constraint's transform type in the UI would leave the flags describing the old
-one, and nothing would complain.
-
-bit 0 is NOT derivable: it varies within a single type (Rotation appears as both
-49 and 48), so it is a genuine per-constraint setting and is left alone.  The bt
-template guesses "isAdd?".
-
-The rule holds for every constraint of v36 (Onimusha, 3596) and v102 (22839),
-but not for RE9's v35: 1149 of 2349 disagree, almost all AxisRotation/14 with
-bit 5 clear.  Only DERIVED_BITS_VERSIONS get the bits rewritten; older files
-have no Flags byte at all.
-
-No `bpy` import, so this stays testable without Blender.
+In v36 and v102 bits 4 and 5 are a pure function of the transform type, so the
+exporter recomputes them; otherwise changing a transform type in the UI would
+leave stale flags.  In v35 the rule does not hold (AxisRotation often has bit 5
+clear), so those files keep their raw bits; older versions have no Flags byte.
+No `bpy` import.
 """
 
 JOINT_BIT = 4
 
-# Versions where bits 4/5 follow the transform type without exception.
 DERIVED_BITS_VERSIONS = frozenset({36, 102})
 ANGULAR_BIT = 5
 
 # transform type -> (drives a bone, quantity is angular)
-# Unanimous across every shipped constraint of that type.
 TRANSFORM_FLAGS = {
     'Translation':    (True,  False),
     'Rotation':       (True,  True),
@@ -61,7 +35,7 @@ TRANSFORM_FLAGS = {
     'Unknown_12':     (False, False),
     'AxisRotation': (True,  True),
     'AxisRotation_14': (True,  True),
-    # Not seen in any shipped file; assumed to follow their siblings.
+    # Assumed to follow their siblings; not seen in shipped files.
     'UnkRotation_15': (True,  True),
     'UnkRotation_16': (True,  True),
 }
@@ -73,10 +47,10 @@ def expected_bits(transform_type):
 
 
 def is_angular(transform_type, flags=None):
-    """Whether the driven quantity is a rotation rather than a position.
+    """Whether the driven quantity is a rotation.
 
-    Prefers the transform type, which is what the user actually edits.  Falls
-    back to the file's own bit for a type nobody has identified yet.
+    The transform type wins, since that is what the user edits; bit 5 of
+    `flags` is the fallback for unknown types.
     """
     known = TRANSFORM_FLAGS.get(transform_type)
     if known is not None:
@@ -87,11 +61,9 @@ def is_angular(transform_type, flags=None):
 
 
 def apply_derived_bits(flags, transform_type):
-    """Return `flags` with bits 4 and 5 rewritten to match the transform type.
+    """`flags` with bits 4 and 5 rewritten to match the transform type.
 
-    Every other bit is preserved, so per-constraint settings such as bit 0
-    survive untouched.  An unrecognised transform type leaves the flags alone
-    rather than guessing.
+    Other bits are preserved; an unknown transform type leaves the flags alone.
     """
     known = TRANSFORM_FLAGS.get(transform_type)
     if known is None:

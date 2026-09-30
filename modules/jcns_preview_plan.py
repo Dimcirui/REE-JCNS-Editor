@@ -2,17 +2,13 @@
 jcns_preview_plan.py
 --------------------
 Turn a Skin / Aim / RotExpression entry into a description of the native Blender
-pose-bone constraint that shows what it does, so the result can be seen in the
-viewport (the counterpart of the driver the Ranges section gets).
+pose-bone constraint that previews it (the counterpart of the Ranges driver).
 
-Pure data in, pure data out: the Blender side (jcns_preview.ConstraintBackend)
-only has to create the constraint a plan describes.  That keeps the decisions -
-which constraint, which axis, what to warn about - testable offline.
-
-None of these is a claim about the engine.  The sections' semantics are
-inferred, not measured (see docs/memory/jcns-section-semantics.md); a preview is a
-way to *look at* the hypothesis and compare it with the game.  Each plan says
-what it left out.
+Pure data in, pure data out: jcns_preview.ConstraintBackend only creates the
+constraint a plan describes, so the choice of constraint, axis and warnings is
+testable offline.  These sections' semantics are inferred, so a plan is a
+preview of that reading, not a claim about the engine; its warnings list what
+it leaves out.
 """
 
 import math
@@ -87,8 +83,7 @@ def aim_track_axis(vec):
 def plan_aim(bone, target, vec1, influence, up_bone=''):
     """Aim `bone` at `target`: a Damped Track along the record's aim axis (Vec1).
 
-    The up bone and the other vectors are not previewed; Vec1 being the aim axis
-    is the strongest reading of the data (mostly +X) but is itself unmeasured.
+    The up bone and the other vectors are not previewed.
     """
     if not bone:
         return _no("没有被瞄准的骨骼")
@@ -117,9 +112,6 @@ def plan_aim(bone, target, vec1, influence, up_bone=''):
 def plan_rot(bone, source, coeffs):
     """Copy `source`'s local rotation onto `bone`, each Euler axis times its
     coefficient: a Transformation constraint mapping rotation to rotation.
-
-    Whether the engine multiplies Euler angles (and in which axis order) is
-    unmeasured; this is the plainest reading of "copy rotation by axis".
     """
     if not bone:
         return _no("没有被驱动的骨骼")

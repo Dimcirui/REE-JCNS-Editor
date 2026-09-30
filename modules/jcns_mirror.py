@@ -1,43 +1,20 @@
 """
-jcns_mirror.py
---------------
 Mirror a constraint mapping from one side of a rig to the other.
 
-A mirrored pair relates as
+A mirrored pair relates as f_R(x) = out_sign * f_L(in_sign * x).  Both signs
+come from the two bones' local frames: a reflection reverses handedness, so a
+rotation of +t about world axis u becomes -t about M*u; if the other bone's
+local axis is +M*u the mirrored angle is -t, if it is -M*u the negations cancel.
+That per-axis sign (sigma) is a pseudovector sign, and each side applies it
+according to its quantity:
 
-    f_R(x) = out_sign * f_L(in_sign * x)
+  rotation      follows sigma
+  translation   an ordinary vector, so -sigma
+  scale, blend  neutral value 1.0, never negated
 
-and both signs come from the two bones' local frames, read off the armature.
-A reflection reverses handedness, so a rotation of +t about a world axis u
-becomes -t about M*u: if the right bone's local axis equals +M*u the mirrored
-angle is -t, and if it equals -M*u the two negations cancel.  Measured against
-an unmodified game skeleton this predicts the SOURCE sign for 80 of 80 pairs.
-
-The output side additionally depends on WHAT is being driven:
-
-  rotation      a pseudovector — mirrors as sigma says
-  translation   an ordinary vector — mirrors the opposite way, so -sigma
-                (reflecting across x=0 negates a position's X while leaving
-                 Y and Z alone; a rotation about X survives and Y/Z flip)
-  scale, blend  multiplicative or 0..1, neutral value 1.0 — never negated
-
-flags_cns bit 5 turns out to be exactly the rotation/not-rotation distinction:
-across 19884 shipped constraints it is set for Rotation / SwingTwist /
-UnkRotation_* and clear for Translation / Scale / BlendShape / Material_*,
-agreeing with the transform type 99.6% of the time.  An earlier version of this
-module treated it as an opaque "shipped file convention" flag; both descriptions
-reproduce the same 6271 of 7451 shipped pairs, but only the vector/pseudovector
-reading explains why, and it needs no unexplained bit.
-
-Caveats worth keeping in view:
-  * sigma was measured on two skeletons, both giving X:+1, Y:-1, Z:-1 for
-    rotations.  Other character rigs may differ, which is why the caller passes
-    measured values in rather than trusting the default.
-  * roughly one shipped pair in six still does not match, mostly differing in
-    magnitude rather than sign — that is deliberate asymmetric authoring and
-    must not be overwritten silently.
-
-No `bpy` import, so the rule stays testable without Blender.
+flags_cns bit 5 marks exactly the rotation/non-rotation distinction.  Some
+shipped pairs are deliberately asymmetric, so an existing counterpart must not
+be overwritten silently.  No `bpy` import.
 """
 
 import re
@@ -45,24 +22,22 @@ import re
 from jcns_flags import is_angular as _is_angular_by_type
 from jcns_mapping import source_quantity_of as _source_quantity_of
 
-# Measured on two skeletons.  Used only when the armature is unavailable.
+# Fallback when the armature is unavailable; other rigs may differ.
 SIGMA_DEFAULT = {'X': +1, 'Y': -1, 'Z': -1, 'W': None}
 
-# flags_cns bit that predicts the output sign convention.
 OUTPUT_SIGN_BIT = 5
 
 
 def output_sign_from_flags(flags):
-    """+1 when flags_cns bit 5 is set, -1 otherwise."""
     return +1 if (int(flags) >> OUTPUT_SIGN_BIT) & 1 else -1
 
 
 def sigma_from_frames(left_cols, right_cols, tol=1e-3):
     """Per-axis mirror sign for one L/R bone pair.
 
-    `left_cols` / `right_cols` are the three local-axis direction vectors of the
-    two bones in world space, as (x, y, z) triples.  Returns {'X': ±1, …} with
-    None for any axis whose frames are not mirror-compatible.
+    `left_cols` / `right_cols` are the two bones' three local axes in world
+    space, as (x, y, z) triples.  Returns {'X': ±1, …} with None for an axis
+    whose frames are not mirror-compatible.
     """
     def sub(a, b):
         return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
@@ -87,31 +62,20 @@ def sigma_from_frames(left_cols, right_cols, tol=1e-3):
     return out
 
 
-# Outputs that carry no sign at all: scale factors and blend weights are
-# multiplicative or 0..1, so their neutral value is 1.0 rather than 0 and
-# negating them is meaningless.  Shipped files agree — L_Calf_HJ_00's Scale
-# constraint carries To=[1, 1, 1.4] on BOTH sides.
+# Outputs with neutral value 1.0 (scale factors, blend weights): never negated.
 UNSIGNED_OUTPUT_TYPES = frozenset({
     'Scale', 'BlendShape', 'Scalar',
     'Material_Color', 'Material_4D', 'Material_3D', 'Material_2D',
 })
 
 def is_angular_output(transform_type, flags=None):
-    """Whether the driven quantity is a rotation rather than a position.
-
-    Delegates to jcns_flags, which holds the transform-type table measured off
-    the shipped files.  flags_cns bit 5 encodes exactly this distinction and is
-    used only as a fallback for transform types nobody has identified yet.
-    """
+    """Whether the driven quantity is a rotation; flags bit 5 is the fallback
+    for unknown transform types."""
     return _is_angular_by_type(transform_type, flags)
 
 
 def _signed(sigma, quantity):
-    """Mirror sign of one side, given the pseudovector sigma for its axis.
-
-    Rotations follow sigma, positions the opposite way, scales not at all —
-    the same rule for a source (what is read) as for a target (what is driven).
-    """
+    """Mirror sign of one side (source or target) from its axis's sigma."""
     if quantity == 'Scale':
         return +1
     return -sigma if quantity == 'Translation' else sigma
@@ -126,35 +90,14 @@ def signs_for(source_axis, target_axis, flags, src_sigma=None, tgt_sigma=None,
     the source and target bones; SIGMA_DEFAULT is used where they are missing.
     Returns (None, None) when either axis has no usable sign.
 
-    `mirror_in` / `mirror_out` say whether the source side / target side is
-    actually being reflected to a different bone at all. A constraint can be
-    "mirrored" on only one side — e.g. a centre-line bone (no L/R pair) driven
-    independently from both thighs: the target stays put and only the source
-    flips L_Thigh -> R_Thigh. The side that is not flipping keeps its value
-    as-is (sign +1); the vector/pseudovector distinction below only matters
-    where a reflection is actually happening, so it is skipped entirely for a
-    fixed side rather than defaulting to SIGMA_DEFAULT (which describes a real
-    mirror pair, not "unchanged").
+    `mirror_in` / `mirror_out` say whether the source / target side is
+    reflected to a different bone at all.  A centre-line target driven from
+    both thighs flips only its source.  A side that is not reflected keeps sign
+    +1; SIGMA_DEFAULT describes a real mirror pair, not "unchanged".
 
-    sigma_from_frames() reports the PSEUDOVECTOR sign, which is what a rotation
-    follows.  A position is an ordinary vector and mirrors the other way round —
-    reflecting across x=0 negates a position's X component while leaving Y and Z
-    alone, whereas a rotation about X survives and Y/Z flip.  The two are exact
-    negatives of one another, so a translation output simply takes -sigma.
-
-    This is what an earlier version of this module mistook for a "shipped file
-    convention" governed by flags_cns bit 5.  Both descriptions score identically
-    (6271 of 7451 pairs), because the bit merely tracks the transform type — but
-    only this one explains *why*.
-
-    The same applies to the input: `source_quantity` is what the source reads
-    (+25, see jcns_mapping.source_quantity).  A translation source flips
-    opposite to sigma and a scale source never flips.  Checked against the
-    shipped L/R pairs of MH Wilds with sigma measured from each mesh's bind
-    pose: translation sources reproduce 117 of 152 (23 when read as rotations),
-    scale sources 186 of 186 (62).  With SIGMA_DEFAULT instead of measured
-    frames translation sources do worse, because the helper bones they are
-    mostly read from do not share the main skeleton's frames.
+    `source_quantity` is what the source reads (+25, see
+    jcns_mapping.source_quantity).  Translation sources are mostly helper bones
+    that do not share the main skeleton's frames, so they need measured sigma.
     """
     if mirror_in:
         if source_quantity == 'Scale':
@@ -202,12 +145,8 @@ def mirror_triples(from_triple, to_triple, in_sign, out_sign):
 def mirror_source(source, source_axis, target_axis, flags,
                   src_sigma=None, tgt_sigma=None, transform_type='Rotation',
                   mirror_in=True, mirror_out=True):
-    """Mirror one source mapping. Returns (dict_of_anchors, in_sign, out_sign).
-
-    The signs are handed back so the UI can show what was applied and how much
-    to trust it. `mirror_in` / `mirror_out` — see signs_for().  What the source
-    reads comes from its own +25 byte (ReadMode, read_mode in Blender).
-    """
+    """Mirror one source mapping. Returns (dict_of_anchors, in_sign, out_sign),
+    or (None, None, None) when a sign is unusable; see signs_for()."""
     def g(name):
         if isinstance(source, dict):
             return float(source.get(name, 0.0) or 0.0)
@@ -240,9 +179,8 @@ _SIDE_TOKEN = re.compile(r'(?<![A-Za-z])([LR])(?![A-Za-z])')
 def token_swap(name):
     """Swap every standalone L/R token in a name.
 
-    Blender's flip_name only understands side markers at the start or end of a
-    name, so mid-name ones like 'hair_base_L_a_01_jnt_ctrl' slip past it — that
-    silently skipped 110 of 509 sided bones on a real character rig.
+    Covers mid-name markers such as 'hair_base_L_a_01_jnt_ctrl', which Blender's
+    flip_name (start/end markers only) misses.
     """
     out, n = _SIDE_TOKEN.subn(lambda m: 'R' if m.group(1) == 'L' else 'L', name)
     return out if n else name
@@ -251,11 +189,9 @@ def token_swap(name):
 def counterpart(name, exists, flip_name):
     """Name of the bone on the other side, or None if it cannot be resolved.
 
-    Name-driven on purpose.  Matching by mirrored position is tempting but wrong
-    on real rigs: hair and cloth strands are named symmetrically yet modelled
-    asymmetrically (partners measured 0.013–0.042 away from the true mirror),
-    and coincident helper joints make nearest-bone ambiguous — position picked
-    'R_DoubleEyeLidJ_LOD02' over the correct 'R_LoEyeLidJ_LOD02' at distance 0.
+    Name-driven, not position-driven: hair and cloth strands are named
+    symmetrically but modelled asymmetrically, and coincident helper joints make
+    the nearest mirrored bone ambiguous.
     """
     if not name:
         return None
@@ -266,11 +202,9 @@ def counterpart(name, exists, flip_name):
 
 
 def side_from_position(x, deadzone=1e-4):
-    """Which side a bone instance is on, from its position along the mirror axis.
+    """Side of a bone from its X position: L is +X, R is -X.
 
-    The better classifier: on the rig this was checked against, all 163 L-named
-    bones sat at positive X and all 163 R-named ones at negative X with no
-    disagreement, while 110 sided bones carried no marker flip_name could see.
+    Preferred over side_of(), since many sided bones carry no name marker.
     """
     if x > deadzone:
         return 'L'
@@ -301,8 +235,8 @@ def side_of(name, flip_name):
 def constraint_signature(target_bone, transform_type, target_axis, sources):
     """Identity used to decide whether a mirrored counterpart already exists.
 
-    Includes the source bones because one bone axis can legitimately carry
-    several constraints, and overwriting the wrong one would be silent.
+    Includes the source bones because one bone axis can carry several
+    constraints.
     """
     return (target_bone, transform_type, target_axis,
             tuple((s[0], s[1]) for s in sources))

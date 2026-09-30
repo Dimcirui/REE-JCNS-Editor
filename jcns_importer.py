@@ -3,11 +3,8 @@ jcns_importer.py
 ----------------
 Import operator for RE Engine JCNS files (every version in jcns_schema).
 
-Creates a green collection (JCNS_<filename>) containing:
-  - One root Empty (PLAIN_AXES) with JCNSRootProperties
-  - N child Empties (ARROWS), one per constraint, with JCNSConstraintProperties
-
-Each child Empty is named:  [idx] SrcBone → TgtBone Axis
+Builds a collection JCNS_<filename> holding one root Empty (JCNSRootProperties)
+and one child Empty per entry (JCNSConstraintProperties).
 """
 
 import os
@@ -38,7 +35,6 @@ def _ensure_modules_path():
 
 
 def _get_armature_items(self, context):
-    """Dynamic EnumProperty callback: list all Armature objects in the scene."""
     items = [("NONE", "(None — skip hash resolution)", "", 'X', 0)]
     for i, obj in enumerate(context.scene.objects):
         if obj.type == 'ARMATURE':
@@ -47,10 +43,8 @@ def _get_armature_items(self, context):
 
 
 def _build_hash_dict(armature_obj):
-    """
-    Build { uint32_hash: bone_name } for every bone in the armature,
-    trying both UTF-8 and UTF-16 MurmurHash3 variants.
-    """
+    """{uint32_hash: bone_name} over UTF-8 and UTF-16 MurmurHash3 of each bone name
+    and its lower-case form."""
     _ensure_modules_path()
     hashing_dir = os.path.join(os.path.dirname(__file__), "modules", "hashing")
     if hashing_dir not in sys.path:
@@ -115,12 +109,7 @@ def do_import(filepath, context, armature_obj=None):
     except Exception as exc:
         return None, 0, f"解析失败：{exc}"
 
-    # This is an editor, not just a viewer: a structure the writer can never
-    # reproduce (checked on a fresh parse, so the source file is definitely
-    # available — this is not the cached-header stub) makes the whole file
-    # un-exportable, and there is no point opening something you can only
-    # look at and never save back. Refuse the import outright rather than
-    # letting the user edit for a while before finding out at export time.
+    # A file the writer cannot reproduce could never be exported back: refuse it.
     from jcns_validate import check_exportable
     problems = check_exportable(parser)
     if problems:
@@ -128,17 +117,14 @@ def do_import(filepath, context, armature_obj=None):
                + "\n".join(f"  * {p}" for p in problems))
         return None, 0, msg
 
-    # Build hash → bone-name dict if an armature was supplied
     hash_dict = _build_hash_dict(armature_obj) if armature_obj else {}
 
-    # --- Create collection ---
     filename = _strip_ext(os.path.basename(filepath))
     coll_name = f"JCNS_{filename}"
     coll = bpy.data.collections.new(coll_name)
     coll.color_tag = 'COLOR_04'   # green
     context.scene.collection.children.link(coll)
 
-    # --- Create root Empty ---
     root = bpy.data.objects.new(coll_name, None)
     root.empty_display_type = 'PLAIN_AXES'
     root.empty_display_size = 0.2
@@ -149,11 +135,10 @@ def do_import(filepath, context, armature_obj=None):
     if armature_obj:
         root.jcns_root_props.target_armature = armature_obj
 
-    # Detected version (drives the export extension and the in-place hint)
+    # Drives the export extension and the writer mode.
     root.jcns_root_props.source_version = parser.version
 
-    # Cache structural data needed for export without source file (Tags block +
-    # DataInfo header, and the section table)
+    # Header and section table, cached for export when the source file is missing.
     import base64
     raw = parser.original_bytes
     root.jcns_root_props.cached_file_header = base64.b64encode(
@@ -166,15 +151,13 @@ def do_import(filepath, context, armature_obj=None):
         sec_data = b'\x00\x00\x00\x00'
     root.jcns_root_props.cached_section_table = base64.b64encode(sec_data).decode('ascii')
 
-    # Legacy custom property for easy Outliner tag
     root["jcns_source"] = filepath
 
-    # --- Create one child Empty per constraint ---
     for idx, c in enumerate(constraints):
         file_sources = c.get('sources', [])
         target_bone_name_from_file = c.get('ObjectName', '')
 
-        # Resolve target bone name: try name from WStringOffset first, then hash lookup
+        # The file's own name first, then the armature's hash lookup.
         target_bone = target_bone_name_from_file
         if not target_bone and hash_dict:
             tgt_hash = c.get('TargetHash', 0)
@@ -182,7 +165,6 @@ def do_import(filepath, context, armature_obj=None):
 
         tgt_ax_str = INT_TO_AXIS.get(min(c.get('target_axis', 0), 3), 'X')
 
-        # Transform type
         transform_int = c.get('TransformType', 1)
         transform_str = TRANSFORM_TYPE_MAP.get(transform_int, 'Unknown')
 
@@ -200,7 +182,6 @@ def do_import(filepath, context, armature_obj=None):
         obj.parent = root
         coll.objects.link(obj)
 
-        # Populate JCNSConstraintProperties
         p = obj.jcns_cns_props
         p.is_jcns_constraint = True
         p.constraint_type = 'Ranges'
@@ -208,13 +189,11 @@ def do_import(filepath, context, armature_obj=None):
         p.transform_type = transform_str
         p.target_axis    = tgt_ax_str
 
-        # One entry per ConstraintSource_v2 block in the file
         p.sources.clear()
         for s in file_sources:
             sp = p.sources.add()
             sp.source_bone = s.get('SourceName', '')
             sp.source_axis = INT_TO_AXIS.get(min(s.get('source_axis', 0), 3), 'X')
-            # mapping values are degrees; the file stores degrees directly
             sp.from_start  = s.get('from_start', 0.0)
             sp.from_kink   = s.get('from_kink',  0.0)
             sp.from_end    = s.get('from_end',   0.0)
@@ -228,14 +207,14 @@ def do_import(filepath, context, armature_obj=None):
             sp.update_timing    = s.get('CurveMode', 3)
             mode = jcns_source_read.read_mode_id(s.get('ReadMode', 3))
             if mode is None:
-                # Never seen in 2114 shipped files; the enum cannot hold it.
+                # The enum cannot hold an unknown mode.
                 print("[JCNS] %s <- %s: ReadMode %r is unknown, read as SWING_TWIST"
                       % (c.get('ObjectName', '?'), s.get('SourceName', '?'), s.get('ReadMode')))
                 mode = 'SWING_TWIST'
             sp.read_mode = mode
             order = jcns_source_read.EULER_ORDER_NAMES.get(s.get('EulerOrder', 0))
             if order is None:
-                # Only 0-3 occur in shipped files; the enum cannot hold anything else.
+                # The enum holds only orders 0-3.
                 print("[JCNS] %s <- %s: EulerOrder %r is unknown, read as XYZ"
                       % (c.get('ObjectName', '?'), s.get('SourceName', '?'), s.get('EulerOrder')))
                 order = 'XYZ'
@@ -246,7 +225,7 @@ def do_import(filepath, context, armature_obj=None):
             if s.get('ComplexMapping'):
                 jcns_cm.load(sp, s['ComplexMapping'])
 
-        # ConstraintInfo raw fields — set cns_flags (update callback syncs the 8 bits)
+        # cns_flags' update callback syncs the 8 bit properties.
         p.cns_flags = c.get('Flags', 0x30)
         vec4                    = c.get('ParentVec4', (0.0, 0.0, 0.0, 1.0))
         p.parent_vec4_x, p.parent_vec4_y, p.parent_vec4_z, p.parent_vec4_w = vec4
@@ -261,7 +240,7 @@ def do_import(filepath, context, armature_obj=None):
             k.rest = (ci['Rest0'],) + tuple(ci.get('Rest123', (0.0, 0.0, 0.0)))
             k.unk_byte0, k.unk_byte3 = ci['UnkByte0'], ci['UnkByte3']
         if len(p.cone_infos):
-            # named while the cone list was still empty (target_bone's update)
+            # Rename: target_bone's update named it while the cone list was empty.
             from . import constraint_name_from_props
             obj.name = constraint_name_from_props(idx, p)
         tail = c.get('ParentTailBytes', b'\x00' * 6)
@@ -269,11 +248,9 @@ def do_import(filepath, context, armature_obj=None):
         p.parent_tail_3, p.parent_tail_4, p.parent_tail_5 = tail[3], tail[4], tail[5]
 
 
-    # --- Non-Range sections: SkinConstraint, Aim, RotExpression, Material, JXG ---
-    # These store hashes only.  Resolve them through the armature, then through the
-    # bone names this file's range constraints spell out, then through the bundled
-    # name dictionary, else show the raw hash (the exporter reads a "0x1234ABCD"
-    # name back as that hash).
+    # Non-Ranges sections store hashes only.  Resolve through the armature, then the
+    # names this file's Ranges spell out, then the bundled dictionary, else show the
+    # raw hash (the exporter reads a "0x1234ABCD" name back as that hash).
     import json
     from jcns_sections import skin_editable, read_joint_signature, aim_editable, rot_editable
     from jcns_names import name_of
@@ -381,10 +358,7 @@ def do_import(filepath, context, armature_obj=None):
         p2.constraint_type = 'JointExportGraph'
         p2.jxg_path = path
 
-    # --- Populate available_bones_json from all bone names in hash_list ---
-    # Collect every SourceName and ObjectName that was decoded from the file.
-    # These are exactly the bones that have entries in the hash_list, and are
-    # therefore valid choices for source_bone editing.
+    # Every bone name the Ranges spell out: the choices offered for source_bone.
     all_bone_names = set()
     for c in constraints:
         tgt = c.get('ObjectName', '').strip()
@@ -414,7 +388,7 @@ class JCNS_OT_ImportFile(Operator, ImportHelper):
         options={'HIDDEN'},
     )
 
-    # Armature selection (EnumProperty because PointerProperty is invalid on Operators)
+    # EnumProperty: PointerProperty is invalid on Operators.
     target_armature_name: EnumProperty(
         name="目标骨架",
         description="导入时用于把哈希还原成骨骼名的骨架",
@@ -454,8 +428,7 @@ class JCNS_OT_ImportFile(Operator, ImportHelper):
         arm_label = armature_obj.name if armature_obj else "无"
         summary = f"已导入 {count} 条约束 → 「{root.name}」（骨架：{arm_label}）"
         self.report({'INFO'}, summary)
-        # Select the root Empty, and make its collection the new working
-        # collection so export is reachable without having to keep it selected.
+        # Make its collection the working collection so export works without a selection.
         bpy.ops.object.select_all(action='DESELECT')
         root.select_set(True)
         context.view_layer.objects.active = root
@@ -464,7 +437,6 @@ class JCNS_OT_ImportFile(Operator, ImportHelper):
         return {'FINISHED'}
 
     def invoke(self, context, event):
-        # Pre-select first armature in the scene
         for obj in context.scene.objects:
             if obj.type == 'ARMATURE':
                 self.target_armature_name = obj.name

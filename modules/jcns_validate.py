@@ -1,35 +1,21 @@
 """
 jcns_validate.py
 ----------------
-Pre-export safety checks — also used to gate import.
+Pre-export safety checks, also used to gate import.
 
-The writer rebuilds a JCNS file from scratch: it emits ConstraintInfo, one
-ConstraintSource_v2 per constraint (with its ComplexMappingInfo), the string
-pools, the dependency table, ObjectSettings, the section table, the hash table,
-and the RotExpression / Material / JXG / Aim / SkinConstraint sections.  Anything it does *not* emit is silently dropped from the output while
-the corresponding header pointer and count are copied verbatim from the source
-file — leaving a dangling pointer into unrelated data.
-
-That failure mode is invisible: the file writes fine, MD5 changes, and the
-breakage only shows up in-game.  check_exportable() turns it into a loud refusal.
-
-This is an editor, not a viewer: the importer runs the same check on the fresh
-parse and refuses to even open a file that could never be exported back, rather
-than let the user edit for a while before finding out it was pointless.
+The rebuild writer drops any structure it does not emit while the header's
+pointer and count for it are copied from the source file, leaving a dangling
+pointer that only breaks in-game.  check_exportable() turns that into a refusal.
+The importer runs the same check on the fresh parse, so a file that could never
+be exported back is not opened at all.
 
 Kept free of any `bpy` import so it can be run from a plain Python test harness.
 """
 
 
-# Structures the writer cannot currently reproduce.  Each entry is
-# (human-readable name, callable(parser) -> count of offending items).
 def _count_truncated_sources(parser):
-    """Constraints whose declared SourceCount does not match the blocks actually read.
-
-    Multi-source constraints are fully supported, but a file can declare a
-    SourceCount that runs past EOF (hand-edited files do this), in which case the
-    parser reads fewer blocks than claimed and exporting would silently drop them.
-    """
+    """Constraints whose declared SourceCount does not match the blocks actually read
+    (a SourceCount running past EOF; exporting would drop the missing sources)."""
     return sum(1 for c in parser.constraints
                if len(c.get('sources', [])) != c.get('SourceCount_parent', 0))
 
@@ -48,10 +34,8 @@ def check_exportable(parser):
     """
     Return a list of human-readable problem descriptions.  Empty list == safe to export.
 
-    Every check here corresponds to a structure that is present in the source file
-    but would be lost or corrupted by JCNSWriter.build_lossless().  The in-place
-    writer (every version but v102) keeps all bytes it does not re-pack, so the
-    "section not reproduced" checks only apply to the rebuild writer.
+    The in-place writer keeps all bytes it does not re-pack, so the "section not
+    reproduced" checks apply only to the rebuild writer (JCNSWriter.build_lossless).
     """
     problems = []
     in_place = getattr(parser, 'write_mode', 'rebuild') == 'inplace'
@@ -90,14 +74,10 @@ def check_exportable(parser):
             "（只认 v35 起的布局，或源文件缺失而 Blender 里没有缓存），重建会丢掉它们。"
         )
 
-    # RotExpression / Aim / SkinConstraint / ObjectSettings are only reproduced from
-    # a freshly re-parsed source file — nothing in Blender caches their content
-    # (at most a read-only display Empty), so the stub builder used when the source
-    # file is missing leaves them empty. That is correct for a file that never had
-    # any, but silent data loss for one that did.  (ComplexMappingInfo is caught by
-    # the writer: its count survives in Blender, its data does not.)
-    # A root imported by a section-caching importer carries all of these in
-    # Blender (parser.sections_from_blender), ObjectSettings included.
+    # When the source file is missing, the stub parser has RotExpression / Aim /
+    # SkinConstraint / ObjectSettings only if Blender cached them
+    # (parser.sections_from_blender); otherwise a non-zero header count means the
+    # section would be dropped.  ComplexMappingInfo is checked by the writer.
     if getattr(parser, 'is_stub', False):
         from_blender = getattr(parser, 'sections_from_blender', False)
         for field, label, attr in (

@@ -2,12 +2,8 @@
 modules_shim.py
 ---------------
 Single place that puts `modules/` on sys.path and hands back the pure-Python
-helpers living there.
-
-Several files need jcns_mapping / jcns_parser and each used to repeat its own
-_ensure_modules_path().  Centralising it means the path is inserted once, and
-the driver-namespace function can grab the evaluator without paying for a path
-check on every evaluation.
+helpers living there.  The getters cache the module so the driver-namespace
+function reaches the evaluator without a path check on every evaluation.
 """
 
 import os
@@ -27,7 +23,6 @@ def ensure_path():
 
 
 def get_mapping():
-    """modules/jcns_mapping.py, imported once and cached."""
     global _mapping
     if _mapping is None:
         ensure_path()
@@ -37,7 +32,6 @@ def get_mapping():
 
 
 def get_mirror():
-    """modules/jcns_mirror.py, imported once and cached."""
     global _mirror
     if _mirror is None:
         ensure_path()
@@ -47,14 +41,12 @@ def get_mirror():
 
 
 def get_schema():
-    """modules/jcns_schema.py (version table, record layouts)."""
     ensure_path()
     import jcns_schema
     return jcns_schema
 
 
 def get_flags():
-    """modules/jcns_flags.py, imported once and cached."""
     global _flags
     if _flags is None:
         ensure_path()
@@ -64,7 +56,6 @@ def get_flags():
 
 
 def get_kinds():
-    """modules/jcns_kinds.py (section registry, capabilities), imported once."""
     global _kinds
     if _kinds is None:
         ensure_path()
@@ -74,7 +65,6 @@ def get_kinds():
 
 
 def get_plan():
-    """modules/jcns_preview_plan.py (constraint-preview planners), imported once."""
     global _plan
     if _plan is None:
         ensure_path()

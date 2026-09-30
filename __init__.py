@@ -40,43 +40,15 @@ AXIS_ITEMS = [
     ('W', "W", "四元数 W 分量（暂不支持生成驱动器）"),
 ]
 
-# ConstraintSource_v2 bytes +24 / +25.
-#
-# bt v0.65.13 exposed +25 as InterpolationID (Linear / FastInAndOut / …); v0.65.14
-# renamed +24 to UpdateTimingID and +25 to TransformIDSrc, marking BOTH "Not sure".
-#
-# MEASURED IN-GAME 2026-08-21 (MHWilds, live capture against a purpose-built rig):
-#
-#   +24 is the CURVE MODE, not an update timing.
-#       0, 1 -> two-point: the kink is ignored outright; the output is the
-#              straight line (from_start,to_start) -> (from_end,to_end).
-#       2, 3 -> three-point: the classic piecewise curve; the kink is honoured.
-#       Within each pair the members were bit-identical across every geometry
-#       tested, so the split is exactly bit 1 (0x02).  Evidence: sources with
-#       identical geometry and identical +25, differing only in +24, produced an
-#       exact straight line vs an exact piecewise curve, and changing to_kink
-#       moved the output by 30 deg in three-point mode and by 0.00000 deg in
-#       two-point mode.  See modules.jcns_mapping.is_two_point.
-#
-#   In three-point mode, a kink lying strictly outside the [start, end] span
-#       kills the source outright — the output is a flat 0, not a clamped
-#       constant.  Measured over three such geometries.  (3.1% of shipped sources
-#       have an out-of-range kink, but 96% of those are two-point, where the kink
-#       is ignored anyway; only 26 sources are actually affected.)
-#
-#   +25 shifts the sampled input quantity slightly but does NOT change the curve
-#       shape (isolating it moved the output by ~15 deg while the shape held).
-#
-#   The constraint-level Flags bit 0 has NO effect on the curve (bit-identical).
-#
-# UNTESTED, and part of why both bytes stay raw editable numbers:
-#   +24 == 4 / 5 (9 sources in the whole corpus).  is_two_point() sticks to the
-#   values actually measured rather than extrapolating the bit-1 reading.
-#
-# Survey of 23031 constraint sources across 884 v102 files:
-#     +24 ∈ {0: 1700, 1: 3137, 2: 1879, 3: 16306, 4: 2, 5: 7}
-#     +25 ∈ {0: 1285, 1: 1455, 2: 373, 3: 19053, 4: 273, 5: 592}
-# 21 distinct (+24, +25) combinations occur; the two bytes are NOT locked together.
+# ConstraintSource_v2 bytes +24 / +25 (the .bt calls them UpdateTimingID and
+# TransformIDSrc).
+#   +24 is the curve mode: 0 / 1 are two-point (the kink is ignored; a straight
+#       line from start to end), 2 / 3 three-point.  4 / 5 are unmodelled and
+#       treated as three-point (modules.jcns_mapping.is_two_point).  In
+#       three-point mode a kink strictly outside [start, end] disables the
+#       source: the output is 0, not a clamped constant.
+#   +25 is the read mode (below); it does not change the curve shape.
+# The two bytes vary independently, so both stay raw editable numbers.
 
 
 def _read_mode_items():
@@ -149,7 +121,7 @@ TRANSFORM_TYPE_MAP = {
 
 
 # ---------------------------------------------------------------------------
-# Search callback for source_bone (populated from hash_list at import time)
+# Update and search callbacks
 # ---------------------------------------------------------------------------
 
 def _update_flags_from_bits(self, context):
@@ -186,11 +158,9 @@ def _refresh_preview_values(self, context):
 
 
 def _sync_constraint_name(self):
-    """Re-derive this constraint's Empty name from its own current properties.
+    """Re-derive this Empty's name from its properties, keeping its '[N]' index.
 
-    Only touches this one Empty and keeps its existing '[N]' index — renumbering
-    everyone is a separate, deliberate step (see JCNS_OT_DeleteConstraint and
-    JCNS_OT_MirrorConstraints), not a side effect of editing a field.
+    Renumbering is left to JCNS_OT_DeleteConstraint and JCNS_OT_MirrorConstraints.
     """
     obj = self.id_data
     if obj is None:
@@ -198,8 +168,8 @@ def _sync_constraint_name(self):
     p = getattr(obj, 'jcns_cns_props', None)
     if p is None or not p.is_jcns_constraint:
         return
-    # Section Empties keep their '[AimNN] …' style names: the exporter reads the
-    # entry order back out of the prefix.  Material / JXG labels never change.
+    # Section Empties keep their '[AimNN] …' prefix (see SECTION_PREFIX).
+    # Material / JXG labels never change.
     if p.constraint_type in ('Skin', 'Aim', 'RotExpression'):
         obj.name = section_empty_name(p.constraint_type, section_index(obj), p)
         return
@@ -250,14 +220,8 @@ def section_empties(root_empty, kind):
 
 
 def _refresh_preview(self, context):
-    """Keep an already-applied preview in step with the field being edited, and
-    keep the Empty's name in sync.  Used by the fields (bone / axis / transform
-    type, and each section's bones) that the display name and the preview are
-    built from.
-
-    Without the refresh the rig keeps showing what it showed when Apply was last
-    pressed.  Does nothing when no preview is on, so it costs nothing while
-    authoring.
+    """Update for the fields the display name and the preview are built from:
+    re-sync the Empty's name and rebuild an applied preview (no-op without one).
     """
     try:
         from . import jcns_preview
@@ -273,9 +237,8 @@ def _refresh_preview(self, context):
 def _search_bone_names(context, edit_text):
     """Return bone names from available_bones_json that match edit_text (case-insensitive).
 
-    If the typed text is not already in the known list it is prepended as the
-    first suggestion so the user can confirm a brand-new bone name by pressing
-    Enter or clicking the first item, without being forced onto a partial match.
+    Text not in the list is prepended, so a new bone name can be confirmed
+    instead of being forced onto a partial match.
     """
     import json
     obj = context.active_object
@@ -310,10 +273,10 @@ def _search_target_bone(self, context, edit_text):
 class JCNSCMKey(PropertyGroup):
     """One ComplexMappingInfo record (28 bytes), as read from the file.
 
-    Not the data: the source's F-Curve is (jcns_cm.py).  These are kept so an
-    untouched curve exports its original bytes; see jcns_cm.records().
-    FromX/ToX are a key, (FromY, ToY) / (FromZ, ToZ) its incoming / outgoing
-    tangent as (dx, dy), and the flag does not change the result in game.
+    The source's F-Curve is the data (jcns_cm.py); these let an untouched curve
+    export its original bytes (jcns_cm.records()).  FromX/ToX are a key,
+    (FromY, ToY) / (FromZ, ToZ) its incoming / outgoing tangent as (dx, dy); the
+    flag does not affect the curve.
     """
     from_x: FloatProperty(name="From X", default=0.0)
     to_x:   FloatProperty(name="To X",   default=0.0)
@@ -346,13 +309,7 @@ class JCNSWeightedSource(PropertyGroup):
 
 
 class JCNSSourceProperties(PropertyGroup):
-    """
-    One driving source of a constraint — maps 1:1 onto a 72-byte
-    ConstraintSource_v2 block in the file.
-
-    A constraint has SourceCount of these (about 12% of constraints in shipped
-    files have more than one; up to 8 have been observed).
-    """
+    """One driving source: one 72-byte ConstraintSource_v2 block."""
 
     source_bone: StringProperty(
         update=_refresh_preview,
@@ -403,9 +360,8 @@ class JCNSSourceProperties(PropertyGroup):
     )
 
     # --- Reference frame (+56, stored as "rest_quat") ---
-    # Not the bone's rest pose (the engine takes that from the skeleton): it is the
-    # frame the swing-twist and rotation-vector reads decompose in, f^-1 * q * f
-    # (measured 2026-09-30, round 8).  Identity in all but two shipped sources.
+    # Not the bone's rest pose (the engine takes that from the skeleton): the frame
+    # the swing-twist and rotation-vector reads decompose in, f^-1 * q * f.
     rest_quat_x: FloatProperty(name="参考系 X", default=0.0, precision=5,
                                update=_refresh_preview)
     rest_quat_y: FloatProperty(name="参考系 Y", default=0.0, precision=5,
@@ -416,7 +372,7 @@ class JCNSSourceProperties(PropertyGroup):
                                update=_refresh_preview)
 
     # --- Raw bytes ---
-    # +24 and +25 both default to 3, the most common value in shipped files.
+    # +24 and +25 default to 3, the most common value.
     update_timing: IntProperty(
         update=_refresh_preview_values,
         name="曲线模式 (+24)",
@@ -469,14 +425,9 @@ class JCNSSourceProperties(PropertyGroup):
 # ---------------------------------------------------------------------------
 
 class JCNSConstraintProperties(PropertyGroup):
-    """
-    Stored on every per-constraint child Empty inside a JCNS collection.
-    Maps onto one 80-byte ConstraintInfo block plus its list of sources.
-    """
+    """On every entry Empty: one 80-byte ConstraintInfo block plus its sources."""
 
-    # Explicit marker — set at import / Add Constraint.  Previously the addon
-    # detected constraint Empties by 'source_bone is non-empty', which stopped
-    # working once sources moved into their own collection.
+    # Marks an entry Empty; set at import and by Add Constraint.
     is_jcns_constraint: BoolProperty(default=False)
 
     sources: CollectionProperty(type=JCNSSourceProperties)
@@ -511,7 +462,7 @@ class JCNSConstraintProperties(PropertyGroup):
     )
 
     # --- ConstraintInfo raw fields (editable, exported) ---
-    # flags_cns: editable int + 8 bit checkboxes (bidirectional sync via update callbacks)
+    # cns_flags and flag_bit_N sync both ways through their update callbacks.
     cns_flags: IntProperty(
         name="标志位", description="位0 为叠加开关：1 把值叠加在静止姿态上，0 替换所写的轴，对缩放不起作用。位4、位5 导出时按变换类型自动设置",
         default=0x31, min=0, max=255, update=_update_bits_from_flags,
@@ -546,10 +497,8 @@ class JCNSConstraintProperties(PropertyGroup):
     # ConeDriverInfo[]: the cones this constraint reads (RE9 uses them heavily)
     cone_infos: CollectionProperty(type=JCNSConeInfo)
     active_cone_info_index: IntProperty(default=0)
-    # Of these six, only [1] (+75) and [3] (+77) ever hold anything: [2]/[4]/[5]
-    # are zero in all 19884 shipped constraints and [0] in 98.8% of them.
-    # [1]=2 is both the corpus mode (70%) and what the verified hand-authored
-    # file uses.  [3] is the joint-group count (jcns_writer.tail_group_counts).
+    # [3] (+77) is the joint-group count (jcns_writer.tail_group_counts); the
+    # others are unknown, and [1] defaults to its most common value.
     parent_tail_0: IntProperty(name="Tail[0]", default=0, min=0, max=255,
                                description="具体作用未知。通常为 0（约 99%）")
     parent_tail_1: IntProperty(name="Tail[1]", default=2, min=0, max=255,
@@ -759,10 +708,7 @@ def _browser_kind_items():
 
 
 class JCNSRootProperties(PropertyGroup):
-    """
-    Stored on the root Empty of a JCNS collection.
-    The collection contains one root Empty + N per-constraint Empties.
-    """
+    """On the root Empty of a JCNS collection (one root plus N entry Empties)."""
     source_filepath: StringProperty(
         name="源文件",
         description="原始 .jcns 文件的绝对路径",
@@ -790,23 +736,17 @@ class JCNSRootProperties(PropertyGroup):
         description="Base64 of section table data from source file",
         default="",
     )
-    # There used to be a `source_combine` enum here (SUM/MAX/MIN/AVERAGE/FIRST)
-    # because the engine's folding rule was unknown.  It is known now, measured
-    # in-game by sweeping synthetic driver bones across their whole input range:
-    #
-    #   several sources in ONE constraint  -> each maps independently, outputs SUM
-    #   several constraints on ONE channel -> the LAST in file order wins outright
-    #
-    # Both are fixed behaviour, so there is nothing left for the user to choose,
-    # and leaving the enum in place would only invite mis-configuration.
+    # Combining is fixed engine behaviour, so there is no setting for it: sources
+    # in one constraint are summed; of several constraints on one channel the
+    # last in file order wins.
     source_version: IntProperty(
         name="JCNS 版本",
         description="Version number of the imported file (the .jcns.<N> suffix); 0 = imported by an older add-on",
         default=0,
     )
     # Set by importers that store Skin / Aim / RotExpression / ComplexMapping in
-    # Blender.  Files imported before that keep exporting those sections from the
-    # re-parsed source file, since their Empties hold no data.
+    # Blender.  When False, the exporter takes those sections from the re-parsed
+    # source file, since the Empties hold no data.
     sections_cached: BoolProperty(default=False)
     # Browser state (UI only)
     browser_kind: EnumProperty(
@@ -824,8 +764,7 @@ class JCNSRootProperties(PropertyGroup):
     object_settings_json: StringProperty(default="")
     # ConeDriver table (v35+), cached so a rebuild can re-emit it
     cone_drivers_json: StringProperty(default="")
-    # Superseded by source_version; kept so files imported by 0.14 still export
-    # with the right suffix.
+    # Read only when source_version is 0 (see jcns_exporter._root_version).
     detected_game: EnumProperty(
         name="游戏",
         description="Game this JCNS file belongs to (detected at import)",
@@ -883,12 +822,7 @@ def get_jcns_root_from_constraint(constraint_empty):
 
 
 def get_jcns_root_from_collection(collection):
-    """Find the JCNS root Empty inside a Collection, or (None, None).
-
-    Each import creates exactly one root per collection, so a plain scan is
-    enough — no parent/child walk needed here since we start from the
-    collection itself.
-    """
+    """The JCNS root Empty inside a Collection (one per import), or (None, None)."""
     if collection is None:
         return None, None
     for obj in collection.objects:
@@ -901,10 +835,8 @@ def get_jcns_root_from_collection(collection):
 def get_export_root(context):
     """(root, root_props) that operators like export should act on.
 
-    The scene's "工作集合" (active collection) wins when set, so export is
-    reachable from anywhere in the scene without hunting down the right
-    Empty first. With nothing set, falls back to whatever JCNS object is
-    currently selected — the previous, only, behaviour.
+    The scene's jcns_active_collection wins when set; otherwise the selected
+    JCNS object decides.
     """
     coll = getattr(context.scene, 'jcns_active_collection', None)
     if coll is not None:
@@ -922,11 +854,9 @@ def get_export_root(context):
 
 
 def get_constraint_empties(root_empty):
-    """
-    Return an ordered list of constraint Empty objects under the root.
-    Prefers direct children (parent-child hierarchy); falls back to flat
-    collection search for legacy imports.
-    Sorted by the numeric prefix '[N]' in their names.
+    """Range Empties under the root, sorted by their '[N]' prefix.
+
+    Falls back to a flat collection search for imports without parenting.
     """
     def _is_range(obj):
         p = getattr(obj, 'jcns_cns_props', None)
@@ -961,11 +891,9 @@ def get_constraint_empties(root_empty):
 def channel_key(cns_props):
     """The Blender F-Curve channel a constraint drives: (bone, transform, axis).
 
-    JCNS happily stores several ConstraintInfo blocks that drive the same bone on
-    the same axis, and the engine evidently folds them together.  Blender allows
-    exactly one driver per F-Curve channel, so constraints sharing a key have to
-    be merged into a single driver — applying them one by one just means the last
-    one silently replaces all the others.
+    Several ConstraintInfo blocks can drive the same channel, and Blender allows
+    one driver per F-Curve channel, so constraints sharing a key are built as a
+    single driver.
     """
     return (cns_props.target_bone, cns_props.transform_type, cns_props.target_axis)
 
@@ -990,12 +918,10 @@ def sibling_constraints(constraint_empty):
 
 def make_constraint_empty_name(idx, source_bone, target_bone, target_axis,
                                source_axis='X', extra_sources=0, cones=0):
-    """
-    Generate the canonical display name for a constraint Empty.
+    """Canonical display name for a constraint Empty.
 
-    extra_sources > 0 appends '(+N)' so multi-source constraints are visible in
-    the Outliner without opening the panel.  A constraint driven only by
-    ConeDrivers shows 'Cone×N' where the source would be.
+    extra_sources > 0 appends '(+N)'; a constraint driven only by ConeDrivers
+    shows 'Cone×N' in place of the source.
     """
     src_ax = source_axis if isinstance(source_axis, str) else INT_TO_AXIS.get(source_axis, 'X')
     tgt_ax = target_axis if isinstance(target_axis, str) else INT_TO_AXIS.get(target_axis, 'X')

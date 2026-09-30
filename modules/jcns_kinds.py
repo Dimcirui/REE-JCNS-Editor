@@ -3,13 +3,9 @@ jcns_kinds.py
 -------------
 What each kind of JCNS entry is, and what may be done to it.
 
-The add-on's UI is driven from this table: the browser tabs, the + / - / up / down
-column, the "why is this greyed out" banner, and which entries can be previewed
-in the viewport.  Every section works differently (a Ranges entry is a mapping
-curve, a Skin entry is a weight list, an Aim entry is a look-at...), so this
-module says nothing about *how* a kind is edited or previewed; it only holds the
-facts the framework needs to route to the right editor and backend.  Those live
-in jcns_editors.py and jcns_preview.py.
+The UI's tabs, + / - / up / down buttons, lock banner and preview availability
+are driven from this table.  How a kind is edited or previewed lives in
+jcns_editors.py and jcns_preview.py; this module only routes to them.
 
 Kept free of `bpy` so the rules can be tested offline (tests/test_kinds.py).
 
@@ -34,10 +30,8 @@ class Kind:
     summary: str          # one line: what the section is for
 
 
-# `ordered` is only true where in-game measurement showed order decides the
-# result: several Ranges on one channel -> the last one wins (jcns-combine-rules).
-# For the other sections file order is written out faithfully but nobody has
-# shown that it changes anything, so the UI does not invite reordering.
+# `ordered` is true only for Ranges: several Ranges on one channel -> the last one
+# wins.  Other sections keep file order on export but offer no reordering.
 KINDS = (
     Kind('Ranges', "范围约束", 'DRIVER', tab=True, ordered=True, addable=True,
          preview='driver', confidence="实机验证",  # ui-copy: internal
@@ -112,8 +106,8 @@ def _caps(_edit, _add, _remove, _move, _banner='', **why):
 
 
 def complex_mapping_editable(st):
-    """(editable, reason) for ComplexMapping keyframes, which belong to a Ranges
-    source but are only rebuilt (and only held in Blender) like the other sections."""
+    """(editable, reason) for ComplexMapping keyframes: they belong to a Ranges
+    source but are rebuilt and cached like the non-Ranges sections."""
     if not st.rebuild:
         return False, f"v{st.version} 只能就地回写，这部分导出时原样保留"
     if not st.sections_cached:
@@ -122,11 +116,7 @@ def complex_mapping_editable(st):
 
 
 def capabilities(kind_id, st):
-    """Caps of a kind under the file state `st`.
-
-    These rules used to be spread over the UI (_sections_editable,
-    _draw_version_note, _skin_table_locked) and over operator polls.
-    """
+    """Caps of a kind under the file state `st`."""
     k = kind_of(kind_id)
     v = st.version
 

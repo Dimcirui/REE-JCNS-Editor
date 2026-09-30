@@ -3,12 +3,10 @@ jcns_exporter.py
 ----------------
 Export operator for RE Engine JCNS files (v102 and v35 rebuilt, other versions in place).
 
-Strategy:
-  1. Detect the JCNS root Empty from the active object.
-  2. Re-parse the original source file (structural skeleton, hash list, etc.).
-  3. Gather constraint Empties from the collection, sorted by index prefix.
-  4. For each constraint, patch the parsed dict with current Blender values.
-  5. Call JCNSWriter.build_lossless() to write the output.
+The source file is re-parsed (or a stub is built from the import cache when it is
+missing), each parsed record is patched with the Blender values, and
+JCNSWriter.build_lossless() writes the result.  Constraint Empties map to parsed
+constraints by position.
 """
 
 import os
@@ -46,8 +44,8 @@ def _get_active_root(context):
 
 def _build_stub_parser(root_props, empties):
     """
-    Reconstruct a minimal parser-like object from cached data when the source
-    file is unavailable.  All constraints are treated as 'new' (n_orig = 0).
+    A minimal parser-like object from cached data when the source file is
+    unavailable.  All constraints are treated as new (n_orig = 0).
     """
     import base64, struct
 
@@ -57,7 +55,6 @@ def _build_stub_parser(root_props, empties):
         sys.path.insert(0, hashing_dir)
     from mmh3.pymmh3 import hashUTF16
 
-    # Rebuild hash_list from all bone names referenced by current empties
     hash_list = []
     def _add_name(name):
         if not name:
@@ -72,17 +69,16 @@ def _build_stub_parser(root_props, empties):
         for s in p.sources:
             _add_name(s.source_bone)
 
-    # Reconstruct original_bytes stub: header block + section table at its offset.
-    # The cached header is the Tags block plus the whole DataInfo table, so the
-    # real header reader works on it; check_exportable() then still sees e.g.
-    # SkinConstraintCount / AimConstraintCount without the source file.
+    # original_bytes stub: cached header + section table at its offset.  The header
+    # includes the whole DataInfo table, so check_exportable() still sees the
+    # section counts without the source file.
     from jcns_parser import read_header, write_mode
     tags = base64.b64decode(root_props.cached_file_header)
     sec_data = base64.b64decode(root_props.cached_section_table)
     try:
         header = read_header(tags)
     except (ValueError, struct.error):
-        header = {}   # cached header from an older add-on version — counts unknown
+        header = {}   # cached by an older add-on: counts unknown
     orig_sec_off = header.get('SectionTableEntry', 0)
     head_len = max(len(tags), header.get('HeaderEnd', 0))
     stub_size = max(head_len, orig_sec_off + len(sec_data)) if orig_sec_off > 0 else head_len
@@ -95,7 +91,7 @@ def _build_stub_parser(root_props, empties):
         pass
 
     parser = _StubParser()
-    parser.constraints = []       # n_orig = 0, all constraints built from empties
+    parser.constraints = []
     parser.hash_list = hash_list
     parser.original_bytes = bytes(stub)
     parser.filepath = root_props.source_filepath
@@ -103,7 +99,7 @@ def _build_stub_parser(root_props, empties):
     parser.version = header.get('Version', 102)
     parser.write_mode = write_mode(parser.version)
     parser.is_stub = True
-    # Non-Range sections are not cached — they will be absent from stub exports
+    # Filled by _sync_sections_to_parser / _sync_non_range_to_parser when cached.
     parser.aim_constraints    = []
     parser.object_settings    = []
     parser.skin_constraints   = []
@@ -119,13 +115,11 @@ def _build_stub_parser(root_props, empties):
 
 def _sync_sections_to_parser(root_obj, root_props, parser):
     """
-    Rebuild parser.skin_* / aim_constraints / rot_expressions (and, for the
-    cached-header stub, object_settings) from the section Empties.  Returns a list
-    of refusals; empty == OK.
+    Rebuild parser.skin_* / aim_constraints / rot_expressions / cone_drivers (and,
+    for the stub, object_settings) from Blender.  Returns refusals; empty == OK.
 
-    Only for roots whose importer cached the section data (sections_cached) and
-    only in rebuild mode: in-place versions never re-emit these sections, and the
-    Empties of an older import hold no data.
+    Runs only for sections_cached roots in rebuild mode: in-place versions never
+    re-emit these sections.
     """
     import json
     from . import section_empties, get_constraint_empties
@@ -138,7 +132,6 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
     def H(name):
         return _name_to_hash(name.strip())
 
-    # SkinConstraint
     def _tail(hexstr):
         try:
             raw = bytes.fromhex(hexstr.strip())
@@ -172,7 +165,6 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
               % (len(meta['read_joint_table']), len(table)))
     parser.read_joint_table = table
 
-    # Aim
     aims = []
     for o in section_empties(root_obj, 'Aim'):
         p = o.jcns_cns_props
@@ -187,7 +179,6 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
         })
     parser.aim_constraints = X.aim_parser_form(aims)
 
-    # RotExpression
     rots = [{'joint': H(o.jcns_cns_props.target_bone), 'source': H(o.jcns_cns_props.rot_source_bone),
              'rotation': tuple(o.jcns_cns_props.rot_rotation), 'scale': tuple(o.jcns_cns_props.rot_scale),
              'bytes': tuple(o.jcns_cns_props.rot_bytes), 'floats': tuple(o.jcns_cns_props.rot_floats)}
@@ -198,7 +189,7 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
     except ValueError as exc:
         return [str(exc)]
 
-    # ConeDrivers: not editable yet, re-emitted from the import cache
+    # ConeDrivers are not editable; re-emitted from the import cache.
     n_cone = parser.header.get('ConeDriverCount', 0)
     if root_props.cone_drivers_json:
         parser.cone_drivers = [dict(cd, Direction=tuple(cd['Direction']), Matrix=tuple(cd['Matrix']),
@@ -223,16 +214,9 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
 
 def _sync_non_range_to_parser(root_obj, parser):
     """
-    Rebuild parser.material_cns / parser.joint_export_graph entirely from the
-    cached properties on the Material / JointExportGraph child Empties.
-
-    Blender's copy is authoritative: unlike RotExpression/Aim (which have no
-    editable backing store and can only be reproduced by re-parsing the source
-    file), every field the writer needs for Material and JXG already round-trips
-    through jcns_cns_props. Rebuilding from scratch — rather than patching a
-    pre-existing parser.material_cns entry by index — means this also works when
-    exporting from the cached-header stub (no source file), and means deleting a
-    Material/JXG Empty in Blender removes it from the export too.
+    Rebuild parser.material_cns / parser.joint_export_graph from the Material /
+    JointExportGraph Empties.  Blender's copy is authoritative, so this works on the
+    stub too and a deleted Empty is dropped from the export.
     """
     import struct
 
@@ -242,11 +226,7 @@ def _sync_non_range_to_parser(root_obj, parser):
     from mmh3.pymmh3 import hashUTF16
 
     def _ensure_hash(name, hash_list):
-        """Return index of name's MurmurHash3 in hash_list, appending if missing.
-
-        A bone the importer could not resolve is shown as its raw hash
-        ("0x1234ABCD"); that string is the hash itself, not a name to hash.
-        """
+        """Index of name's hash in hash_list, appending if missing (see _name_to_hash)."""
         h = _name_to_hash(name)
         for i, v in enumerate(hash_list):
             if v == h:
@@ -333,7 +313,7 @@ def _name_to_hash(name):
 
 
 def _root_version(rp):
-    """JCNS version of a root, falling back to the pre-0.15 detected_game enum."""
+    """JCNS version of a root; roots without source_version fall back to detected_game."""
     if rp.source_version:
         return rp.source_version
     return 35 if rp.detected_game == 'RE9' else 102
@@ -350,17 +330,13 @@ def _transform_int(transform_type, default=1):
 
 def _make_default_constraint_dict(empty_obj):
     """
-    Build a minimal constraint dict for a newly-added constraint Empty
-    (one that has no corresponding entry in the original parsed file).
-    All preserved/unknown fields are set to safe defaults that match what
-    the writer expects; the editable fields will be overwritten immediately
-    afterwards by _patch_constraint_from_empty().
+    Constraint dict for an Empty with no record in the parsed file.  Opaque fields
+    get writer defaults; _patch_constraint_from_empty() fills the editable ones.
     """
     from . import AXIS_TO_INT
     p = empty_obj.jcns_cns_props
     tgt_ax = AXIS_TO_INT.get(p.target_axis, 0)
     return {
-        # ConstraintInfo preserved fields
         'ConeDriverInfoOffset':  0,
         'PropertyOffset':        0,
         'PropertyHash':          0,
@@ -374,21 +350,17 @@ def _make_default_constraint_dict(empty_obj):
         'TransformAxis_parent':  tgt_ax,
         'ParentTailBytes':       b'\x00' * 6,
         'ObjectName':        '',
-        # Sources are built entirely by _patch_constraint_from_empty()
         'sources':               [],
     }
 
 
 def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached=False, version=102):
     """
-    Overwrite the editable fields in the parsed constraint dict with
-    values from the Empty's JCNSConstraintProperties.
+    Overwrite the editable fields of a parsed constraint dict from the Empty.
 
-    Source bone: if changed, hash_list is searched for the MurmurHash3 value
-    and SourceHashIndex is updated (or the hash is appended by the writer).
-
-    Target bone: if changed, ObjectName is updated; the writer recomputes
-    TargetHash and ObjectHashIndex from the name automatically.
+    SourceHashIndex points at the source name's hash in hash_list, or keeps its old
+    value when absent (the writer appends it).  The writer recomputes TargetHash
+    and ObjectHashIndex from ObjectName.
     """
     from . import AXIS_TO_INT
     _ensure_modules_path()
@@ -398,25 +370,20 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
         hashUTF16 = None
     p = empty_obj.jcns_cns_props
 
-    # --- Target bone name (writer recomputes TargetHash/ObjectHashIndex from it) ---
     new_target_name = p.target_bone.strip()
     if new_target_name:
         parsed_c['ObjectName'] = new_target_name
 
-    # --- Target axis lives in ConstraintInfo[+73], not in any source block ---
+    # Target axis lives in ConstraintInfo[+73], not in any source block.
     parsed_c['TransformAxis_parent'] = AXIS_TO_INT.get(p.target_axis, 0)
-    # The transform type used to be left as parsed, so editing it in the panel was
-    # lost on export (and new entries of types past 3 became Rotation).
     parsed_c['TransformType'] = _transform_int(p.transform_type,
                                                parsed_c.get('TransformType', 1))
 
-    # --- Sources: rebuild the whole list from the UI collection ---
-    # Rebuilding rather than patching in place means added/removed sources are
-    # handled for free, and SourceCount can never disagree with the actual data.
+    # Sources are rebuilt whole, so SourceCount always matches the data; opaque
+    # fields are carried over from the original source at the same index.
     old_sources = parsed_c.get('sources', [])
     new_sources = []
     for i, sp in enumerate(p.sources):
-        # Carry over opaque fields from the matching original source when there is one
         base = dict(old_sources[i]) if i < len(old_sources) else {'ComplexMappingInfoOffset': 0}
         name = sp.source_bone.strip()
         base['SourceName'] = name
@@ -453,12 +420,8 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
     parsed_c['sources'] = new_sources
 
 
-    # --- ConstraintInfo raw fields ---
-    # Bits 4 and 5 are redundant with the transform type in v36 / v102 (every
-    # shipped constraint), so there they are recomputed rather than trusted —
-    # otherwise changing a constraint's transform type would silently leave the
-    # flags describing the old one.  RE9's v35 does not follow the rule, so its
-    # flags are written as they are.
+    # In DERIVED_BITS_VERSIONS (v36, v102) Flags bits 4 and 5 follow the transform
+    # type and are recomputed; v35 does not follow the rule and is written as is.
     from .modules_shim import get_flags
     flags = get_flags()
     parsed_c['Flags'] = (flags.apply_derived_bits(p.cns_flags, p.transform_type)
@@ -508,7 +471,6 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
     def invoke(self, context, event):
         _, rp = _get_active_root(context)
         if rp:
-            # Auto-append the source file's own version suffix
             self.filename_ext = f".jcns.{_root_version(rp)}"
 
             if rp.source_filepath:
@@ -546,7 +508,6 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
             self.report({'WARNING'}, "没有找到任何约束，无内容可导出。")
             return {'CANCELLED'}
 
-        # --- Build parser: re-parse source if present, else use cached stub ---
         _ensure_modules_path()
         if source_exists:
             try:
@@ -567,7 +528,6 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
             self.report({'WARNING'}, "源文件缺失，将使用导入时缓存的文件头导出。")
             parser = _build_stub_parser(root_props, empties)
 
-        # --- Skin / Aim / RotExpression from Blender (rebuild mode only) ---
         problems = _sync_sections_to_parser(root_obj, root_props, parser)
         if problems:
             msg = format_problems_early(problems, os.path.basename(source_path))
@@ -575,7 +535,6 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
             self.report({'ERROR'}, msg.replace('\n', '  '))
             return {'CANCELLED'}
 
-        # --- Refuse to write a file the writer cannot faithfully reproduce ---
         from jcns_validate import check_exportable, check_in_place_edits, format_problems
         problems = check_exportable(parser)
         if problems:
@@ -587,7 +546,6 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
         n_orig = len(parser.constraints)
         n_curr = len(empties)
 
-        # --- Build the final constraint list (one entry per Empty) ---
         final_constraints = []
         for i, empty in enumerate(empties):
             if i < n_orig:
@@ -601,11 +559,9 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
 
         parser.constraints = final_constraints
 
-        # Sync editable JXG / Material empty values back into parser
         _sync_non_range_to_parser(root_obj, parser)
 
-        # In-place versions: values only — refuse structural edits up front, with
-        # the full list, instead of as a one-line write failure.
+        # In-place versions change values only; report every structural edit at once.
         if parser.write_mode == 'inplace':
             problems = check_in_place_edits(parser)
             if problems:
@@ -614,13 +570,11 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
                 self.report({'ERROR'}, msg.replace('\n', '  '))
                 return {'CANCELLED'}
 
-        # --- MD5 before write (only if source file exists) ---
         md5_before = None
         if source_exists:
             with open(source_path, 'rb') as f:
                 md5_before = hashlib.md5(f.read()).hexdigest()
 
-        # --- Write ---
         out_path = self.filepath
         try:
             from jcns_writer import JCNSWriter
@@ -630,7 +584,6 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
             self.report({'ERROR'}, f"写入失败：{exc}")
             return {'CANCELLED'}
 
-        # --- MD5 after write ---
         with open(out_path, 'rb') as f:
             md5_after = hashlib.md5(f.read()).hexdigest()
 

@@ -1,20 +1,15 @@
 """
 jcns_editors.py
 ---------------
-每种 section 自己的编辑器面板。
-
-每个 section 的编辑方式都不一样（Ranges 是映射曲线，Skin 是权重表，Aim 是
-look-at……），所以这里没有一个通用表单，而是每种类型各一组面板：
+每种 section 各一组编辑器面板，没有通用表单：
 
   主面板              JCNS_PT_Ed_<Kind>        只在当前条目是这一类型时出现
     子面板            JCNS_PT_Ed_<Kind>_<Sub>  按需要拆出来，原始字段一律默认折叠
 
-新增一种 section 的编辑器：继承 _Editor，设 KIND，写 draw；注册进 _classes
-（父面板必须排在子面板前面）。类型本身的事实（图标、能不能增删）在
-modules/jcns_kinds.py，预览在 jcns_preview.py，这里都不重复。
+新增编辑器：继承 _Editor，设 KIND，写 draw，注册进 _classes（父面板排在子面板前面）。
+类型本身的事实在 modules/jcns_kinds.py，预览在 jcns_preview.py。
 
-锁定：每个面板调 _begin()，它按 jcns_kinds.capabilities() 给出的结果决定整块能否
-编辑，并在需要时画出原因。
+每个面板调 _begin()，它按 jcns_kinds.capabilities() 决定整块能否编辑并画出原因。
 """
 
 from types import SimpleNamespace
@@ -129,11 +124,9 @@ class _PreviewSub(_Editor, _Sub):
 # ---------------------------------------------------------------------------
 
 def draw_plain(layout, p, sp, m):
-    """用大白话讲这条映射到底干什么。
+    """用文字描述这条映射，从静止姿态出发逐段讲。
 
-    文件里锚点是按 A→B→C 存的，但静止姿态不一定落在 A 上 —— 递减区间
-    （比如 [-60,-15,0]）的静止点在 C，照着数值从左往右念等于把动作念反了。
-    所以这里从静止姿态出发，朝源骨骼实际能转的方向逐段描述。
+    锚点按 A→B→C 存，但递减区间（如 [-60,-15,0]）的静止点在 C，所以不能照数值从左往右念。
     """
     d = m.plain_description(sp)
     box = layout.box()
@@ -144,9 +137,8 @@ def draw_plain(layout, p, sp, m):
     su = m.source_unit(sp)
     tu = _target_unit(p.transform_type)
 
-    # '<' / '>' shaped anchors in three-point mode: the engine discards the
-    # whole source.  Louder than the unreachable-anchor notice below, because
-    # the symptom is "nothing happens at all" with no hint as to why.
+    # '<' / '>' shaped anchors in three-point mode: the engine discards the whole
+    # source, so the output is silently 0.
     if d.get('folded_dead'):
         warn = col.column(align=True)
         warn.alert = True
@@ -281,8 +273,8 @@ def draw_keyframes(layout, m, sp, cm_ok, reason):
 
 
 def _draw_rules(layout, lines):
-    """Measured-behaviour lines from jcns_source_read: a tick when measured in game,
-    a question mark when the preview only infers it."""
+    """Rule lines from jcns_source_read: a tick for a measured rule, a question mark
+    for an inferred one."""
     col = layout.column(align=True)
     for text, measured in lines:
         col.label(text=text, icon='CHECKMARK' if measured else 'QUESTION')
@@ -329,8 +321,7 @@ class JCNS_PT_Ed_Ranges(_EditorMain, Panel):
         from .jcns_exporter import _transform_int
         _draw_rules(box, sr.target_rule(_transform_int(p.transform_type), bool(p.cns_flags & 1)))
 
-        # 顺序不是装饰：导出时按 [N] 前缀排列，同一根骨骼同一轴上有多条时后写的
-        # 那条会盖掉前面的。换序的按钮在列表右侧。
+        # 导出按 [N] 前缀排列；同一通道上后写的那条覆盖前面的。
         sibs = sibling_constraints(obj)
         if sibs:
             ordered = get_constraint_empties(c.root) if c.root else []
@@ -377,7 +368,7 @@ class JCNS_PT_Ed_Ranges_Sources(_Editor, Panel):
         if not len(p.sources):
             c.body.label(text="没有驱动源，此约束不会产生任何效果。", icon='INFO')
             return
-        # 只有一个源时列表是纯浪费：下面的详情已经把骨骼和轴写了一遍。
+        # 只有一个源时不画列表：下面的详情已写出骨骼和轴。
         if len(p.sources) > 1:
             c.body.template_list("JCNS_UL_sources", "", p, "sources",
                                  p, "active_source_index",
@@ -495,9 +486,8 @@ class JCNS_PT_Ed_Ranges_Tools(_Editor, Panel):
         sub.operator("jcns.mirror_constraints", text="镜像到另一侧…", icon='MOD_MIRROR')
 
 
-# Ranges 原始字段里在全部 1103 个原版 v102 文件（22839 条约束）中取值 100% 相同的那些
-# （2026-09-30 统计）。"隐藏固定字段"只藏它们；哪怕只有一个例外的字段（例如 U16(+22)
-# 有 1 例为 1）都照常显示，因为那正是还值得测的。
+# 游戏自带 v102 文件里取值固定的 Ranges 原始字段；「隐藏固定字段」只隐藏这些，
+# 有例外取值的字段照常显示。
 FIXED_RANGES_FIELDS = frozenset((
     'parent_vec4_x', 'parent_vec4_y', 'parent_vec4_z', 'parent_vec4_w',   # 恒为 (0,0,0,1)
     'parent_tail_2', 'parent_tail_4', 'parent_tail_5',                     # +76/+78/+79 恒为 0

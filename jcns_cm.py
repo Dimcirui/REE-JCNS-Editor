@@ -10,8 +10,7 @@ output, both in the file's own units (degrees / centimetres).  Each source
 remembers its property name in `cm_channel`; the number comes from a counter that
 never goes back, so removing a source never re-points another one's curve.
 
-Equal x on neighbouring keys (a step, 30 of 78 shipped curves) cannot live in an
-F-Curve: FCurve.update() and Graph Editor transforms merge keys less than 0.01
+Equal x on neighbouring keys (a step) cannot live in an F-Curve: FCurve.update() and Graph Editor transforms merge keys less than 0.01
 frame apart.  So the later key goes in step_gap() further right and comes back
 onto the same x when read, and an edited step exports as a ramp 0.02 of a degree
 (or centimetre) wide.  The flip side: two keys a user places closer than 0.03
@@ -250,12 +249,11 @@ def records(sp):
     if not k:
         return []
     cached = _cache_records(sp)
-    # Slopes come back through float handles, hence the loose tolerance; any real
-    # edit is far bigger than it.
+    # Loose tolerance: slopes come back through float handles.
     if cached and jcns_complex.same_keys(k, jcns_complex.keys_from_records(cached), tol=1e-3):
         return cached
-    # Edited: re-derive, keeping each key's flag where a cached key sits on the
-    # same x.  The flag does not change the result in game, so a new key gets 0.
+    # Edited: re-derive, keeping the flag of a cached key on the same x.  The flag
+    # does not change the result in game, so a new key gets 0.
     pool = list(cached)
     flags = []
     for x, *_ in k:

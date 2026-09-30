@@ -3,11 +3,10 @@ jcns_preview.py
 ---------------
 Make an entry visible in the viewport.
 
-Ranges entries get a Blender driver on the target bone.  The other sections have
-nothing to drive, but most of them still say "this bone follows that one", which
-Blender expresses as a native pose-bone constraint.  Both are the same idea from
-the user's side (press Apply, see the rig move, press Clear), so both go through
-one interface and one pair of operators:
+Ranges entries get a Blender driver on the target bone (DriverBackend, wrapping
+jcns_operators); Skin / Aim / RotExpression get a native pose-bone constraint
+(ConstraintBackend, which creates what modules/jcns_preview_plan.py describes).
+Both go through one interface and one pair of operators:
 
     Kind.preview   ->  BACKENDS[...]   ->  units of entries  ->  apply / clear
 
@@ -16,14 +15,8 @@ is every constraint on one (bone, transform, axis) channel, because Blender allo
 one driver per channel and only the last constraint on it is live; for the other
 sections it is a single entry.
 
-Backends:
-  DriverBackend      'driver'      Ranges; wraps the driver code in jcns_operators
-  ConstraintBackend  'constraint'  Skin / Aim / RotExpression; the decisions are
-                                   in modules/jcns_preview_plan.py, this side only
-                                   creates what a plan describes
-
-A new section that can be previewed needs: a `preview` id in modules/jcns_kinds.py
-and either an existing backend or a new class registered in BACKENDS.
+A new previewable section needs a `preview` id in modules/jcns_kinds.py and a
+backend registered in BACKENDS.
 """
 
 import bpy
@@ -48,7 +41,6 @@ class PreviewBackend:
         raise NotImplementedError
 
     def unit_of(self, root, entry):
-        """The unit that `entry` belongs to."""
         raise NotImplementedError
 
     def apply(self, rp, unit):
@@ -56,7 +48,6 @@ class PreviewBackend:
         raise NotImplementedError
 
     def clear(self, rp, unit):
-        """Remove the preview for a unit."""
         raise NotImplementedError
 
     def refresh(self, obj, structural):
@@ -108,7 +99,6 @@ class DriverBackend(PreviewBackend):
 
 
 def _plan_for(kind_id, p):
-    """The ConstraintPlan (modules/jcns_preview_plan.py) for one entry's data."""
     plan = get_plan()
     if kind_id == 'Skin':
         return plan.plan_skin(p.target_bone, [(w.bone, w.weight) for w in p.skin_sources])
@@ -221,8 +211,7 @@ class ConstraintBackend(PreviewBackend):
             return False
         ok, _msg = self.apply(rp, [obj])
         if not ok:
-            # Edited into a state that has no preview (e.g. the aim axis is now
-            # diagonal): drop the stale constraint rather than leave it lying.
+            # Edited into a state with no preview: drop the stale constraint.
             self.clear(rp, [obj])
             return False
         rp.target_armature.update_tag()
@@ -233,7 +222,6 @@ BACKENDS = {b.id: b for b in (DriverBackend(), ConstraintBackend())}
 
 
 def backend_of(kind_id):
-    """The backend that previews a kind, or None."""
     return BACKENDS.get(get_kinds().kind_of(kind_id).preview)
 
 
