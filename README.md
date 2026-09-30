@@ -38,18 +38,22 @@ offset; export refuses structural edits and lists what changed.
 
 ## Supported Sections
 
-| ID | Section | Full rebuild (v102, v35) | In place |
-| --- | --- | --- | --- |
-| 0 | Range constraints and sources | ✅ Fully editable | ✏️ Values |
-| 0 | ComplexMapping (keyframed curves) | ✅ Edited as F-Curves in the Graph Editor, previewed | Kept |
-| 0 | ConeDrivers (v35) | ✅ Per-constraint cone inputs editable; cone table kept | Kept |
-| 0 | Dependencies | ✅ Regenerated | Kept |
-| 0 | ObjectSettings | Kept | Kept |
-| 1 | RotExpression | ✅ Structurally editable | Kept |
-| 2 | SkinConstraint | ✅ Structurally editable ¹ | Kept |
-| 3 | Aim | ✅ Structurally editable ¹ | Kept |
-| 4 | Material constraints | ✅ Editable (raw values) | ✏️ Values |
-| 5 | JointExportGraph | ✅ Path editable | Kept |
+| ID | Section | Full rebuild (v102, v35) | In place | Live preview |
+| --- | --- | --- | --- | --- |
+| 0 | Range constraints and sources | ✅ Fully editable | ✏️ Values | ✅ Drivers, measured in game |
+| 0 | ComplexMapping (keyframed curves) | ✅ Edited as F-Curves in the Graph Editor | Kept | ✅ Previewed |
+| 0 | ConeDrivers (v35) | ✅ Per-constraint cone inputs editable; cone table kept | Kept | — |
+| 0 | Dependencies | ✅ Regenerated | Kept | — |
+| 0 | ObjectSettings | Kept | Kept | — |
+| 1 | RotExpression | ✅ Structurally editable | Kept | ≈ Pose-bone constraint; exact for gain (1,1,1) |
+| 2 | SkinConstraint | ✅ Structurally editable ¹ | Kept | ≈ Armature constraint; position exact, rotation approximate |
+| 3 | Aim | ✅ Structurally editable ¹ | Kept | ≈ Damped Track; exact for RotationType 4 only |
+| 4 | Material constraints | ✅ Editable (raw values) | ✏️ Values | — |
+| 5 | JointExportGraph | ✅ Path editable | Kept | — |
+
+A file that has only Skin, Aim, RotExpression or Material entries (no Ranges) can
+be exported too. The section table is rewritten to list exactly the sections that
+have entries, since the engine runs no other.
 
 *Structurally editable*: entries can be added, deleted and re-pointed; counts,
 hash-list indices, derived tables and the section table (the engine runs only the
@@ -71,7 +75,7 @@ translation in a scaled parent) were measured in game on a test rig, and every
 panel line marks a measured rule with a check mark and an inferred one with a
 question mark. The Skin / Aim / RotExpression previews are approximations of the
 measured behaviour and say where they differ. Not supported in the preview:
-negative rest scales, Aim influence other than 1.
+negative rest scales, Aim influence other than 1, Aim rotation offset (Vec0).
 
 ## Installation
 
