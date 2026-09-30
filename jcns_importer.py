@@ -18,6 +18,7 @@ from bpy.types import Operator
 from bpy_extras.io_utils import ImportHelper
 
 from .modules_shim import get_schema
+from . import jcns_cm
 
 _SCHEMA = get_schema()
 
@@ -227,13 +228,8 @@ def do_import(filepath, context, armature_obj=None):
             sp.complex_mapping_info_count = s.get('ComplexMappingInfoCount', 0)
             sp.unknown_uint16   = s.get('UnknownUInt16', 0)
             sp.unknown_uint32_2 = s.get('UnknownUInt32_2', 0)
-            sp.cm_keys.clear()
-            for r in s.get('ComplexMapping', []):
-                k = sp.cm_keys.add()
-                k.from_x, k.to_x = r['FromX'], r['ToX']
-                k.from_y, k.to_y = r['FromY'], r['ToY']
-                k.from_z, k.to_z = r['FromZ'], r['ToZ']
-                k.flag = r['UnknownUInt32']
+            if s.get('ComplexMapping'):
+                jcns_cm.load(sp, s['ComplexMapping'])
 
         # ConstraintInfo raw fields — set cns_flags (update callback syncs the 8 bits)
         p.cns_flags = c.get('Flags', 0x30)

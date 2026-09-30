@@ -14,6 +14,12 @@ a flat RGBA float list, row 0 at the BOTTOM.
 """
 
 from jcns_mapping import eval_piecewise, describe
+import jcns_complex
+
+
+def _cm_of(s):
+    """ComplexMapping keys of a source passed as {'cm': keys}, else None."""
+    return s.get('cm') if isinstance(s, dict) else None
 
 
 # Colours chosen to read on Blender's dark panel background.
@@ -85,6 +91,12 @@ def _bounds(sources):
     """Input and output ranges covering every source, always including zero."""
     xs, ys = [0.0], [0.0]
     for s in sources:
+        cm = _cm_of(s)
+        if cm:
+            bx0, bx1, by0, by1 = jcns_complex.bounds(cm)
+            xs += [bx0, bx1]
+            ys += [by0, by1]
+            continue
         d = describe(s)
         xs.extend(d['from'])
         ys.extend([d['at_start'], d['at_kink'], d['at_end'], d['at_rest']])
@@ -129,6 +141,20 @@ def render(sources, width=180, height=110, samples=None):
     any_offset = False
     source_colours = []
     for i, s in enumerate(sources):
+        cm = _cm_of(s)
+        if cm:
+            colour = PALETTE[i % len(PALETTE)]
+            source_colours.append(colour)
+            prev = None
+            for j in range(samples):
+                xv = x0 + (x1 - x0) * j / float(samples - 1)
+                cur = (sx(xv), sy(jcns_complex.evaluate(cm, xv)))
+                if prev is not None:
+                    cv.line(prev[0], prev[1], cur[0], cur[1], colour)
+                prev = cur
+            for kx, ky, _a, _b in cm:
+                cv.disc(sx(kx), sy(ky), 1, KINK)
+            continue
         d = describe(s)
         offset = d['offset_at_rest']
         any_offset = any_offset or offset
@@ -171,6 +197,10 @@ def cache_key(sources, width, height):
     """
     parts = [width, height]
     for s in sources:
+        cm = _cm_of(s)
+        if cm:
+            parts.append(tuple(round(float(v), 4) for k in cm for v in k))
+            continue
         for name in ('from_start', 'from_kink', 'from_end',
                      'to_start', 'to_kink', 'to_end'):
             v = (s.get(name, 0.0) if isinstance(s, dict)

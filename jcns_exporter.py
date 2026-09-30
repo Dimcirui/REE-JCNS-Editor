@@ -433,10 +433,9 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
         base['UnknownUInt16']   = sp.unknown_uint16
         base['UnknownUInt32_2'] = sp.unknown_uint32_2
         if sections_cached:
-            # Keyframes live in Blender: they are the data, the count follows them.
-            base['ComplexMapping'] = [{
-                'FromX': k.from_x, 'ToX': k.to_x, 'FromY': k.from_y, 'ToY': k.to_y,
-                'FromZ': k.from_z, 'ToZ': k.to_z, 'UnknownUInt32': k.flag} for k in sp.cm_keys]
+            # The F-Curve is the data; the count follows it.
+            from . import jcns_cm
+            base['ComplexMapping'] = jcns_cm.records(sp)
             base['ComplexMappingInfoCount'] = len(base['ComplexMapping'])
         else:
             base['ComplexMappingInfoCount'] = sp.complex_mapping_info_count

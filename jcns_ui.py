@@ -161,7 +161,10 @@ class JCNS_UL_Sources(bpy.types.UIList):
         row.label(text=str(index), icon='DRIVER')
         row.prop(item, "source_bone", text="", emboss=False)
         row.label(text=item.source_axis)
-        if info['offset_at_rest']:
+        from . import jcns_cm
+        if jcns_cm.has_curve(item):
+            row.label(text="", icon='IPO_BEZIER')
+        elif info['offset_at_rest']:
             row.label(text="%s%s" % (_fmt(info['at_rest']),
                                      _target_unit(getattr(data, 'transform_type', ''))),
                       icon='ERROR')
@@ -176,16 +179,6 @@ class JCNS_UL_SkinSources(bpy.types.UIList):
         row.prop(item, "bone", text="", emboss=False, icon='BONE_DATA')
         row.prop(item, "weight", text="")
 
-
-class JCNS_UL_CMKeys(bpy.types.UIList):
-    """ComplexMapping 关键帧：输入 FromX → 输出 ToX。"""
-    bl_idname = "JCNS_UL_cm_keys"
-
-    def draw_item(self, context, layout, data, item, icon, active_data, active_prop, index):
-        row = layout.row(align=True)
-        row.label(text=str(index), icon='KEYFRAME')
-        row.prop(item, "from_x", text="入")
-        row.prop(item, "to_x", text="出")
 
 _CONE_NAME_CACHE = {}
 
@@ -611,7 +604,6 @@ class JCNS_PT_BrowserChannels(Panel):
 _classes = [
     JCNS_UL_Sources,
     JCNS_UL_SkinSources,
-    JCNS_UL_CMKeys,
     JCNS_UL_ConeInfos,
     JCNS_UL_Entries,
     JCNS_PT_Status,

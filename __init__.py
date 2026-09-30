@@ -271,12 +271,12 @@ def _search_target_bone(self, context, edit_text):
 # ---------------------------------------------------------------------------
 
 class JCNSCMKey(PropertyGroup):
-    """One ComplexMappingInfo record (28 bytes).
+    """One ComplexMappingInfo record (28 bytes), as read from the file.
 
-    In all 78 shipped v102 sources that have them, the source's own three-point
-    mapping is entirely zero and FromX is monotonic across the records, so they
-    read as keyframes (input FromX -> output ToX) that replace the mapping curve.
-    The Y / Z pairs and the flag are carried as-is; their meaning is unmeasured.
+    Not the data: the source's F-Curve is (jcns_cm.py).  These are kept so an
+    untouched curve exports its original bytes; see jcns_cm.records().
+    FromX/ToX are a key, (FromY, ToY) / (FromZ, ToZ) its incoming / outgoing
+    tangent as (dx, dy), and the flag does not change the result in game.
     """
     from_x: FloatProperty(name="From X", default=0.0)
     to_x:   FloatProperty(name="To X",   default=0.0)
@@ -420,10 +420,10 @@ class JCNSSourceProperties(PropertyGroup):
         name="未知 UInt32 (+28)", description="ConstraintSource_v2 偏移 +28",
         default=0, min=0,
     )
-    # ComplexMappingInfo keyframes (only filled by importers that cache sections;
-    # see JCNSRootProperties.sections_cached)
-    cm_keys: CollectionProperty(type=JCNSCMKey)
-    active_cm_index: IntProperty(default=0)
+    # ComplexMapping: the curve is an F-Curve on the constraint Empty, on the custom
+    # property named here (jcns_cm.py); cm_cache holds the file's own records.
+    cm_channel: StringProperty(default="")
+    cm_cache: CollectionProperty(type=JCNSCMKey)
 
 
 # ---------------------------------------------------------------------------
@@ -443,6 +443,8 @@ class JCNSConstraintProperties(PropertyGroup):
 
     sources: CollectionProperty(type=JCNSSourceProperties)
     active_source_index: IntProperty(default=0)
+    # Next ComplexMapping channel number (jcns_cm.fcurve); never reused.
+    cm_next_id: IntProperty(default=0)
 
     # --- Identity ---
     target_bone: StringProperty(
@@ -978,6 +980,7 @@ from . import jcns_ui
 from . import jcns_editors
 from . import jcns_drivers
 from . import jcns_preview
+from . import jcns_cm
 
 def _poll_jcns_collection(self, collection):
     """Restrict the active-collection picker to collections that hold a JCNS root."""
@@ -1015,9 +1018,11 @@ def register():
     jcns_ui.register()
     jcns_editors.register()
     jcns_drivers.register()
+    jcns_cm.register()
 
 
 def unregister():
+    jcns_cm.unregister()
     jcns_drivers.unregister()
     jcns_editors.unregister()
     jcns_ui.unregister()

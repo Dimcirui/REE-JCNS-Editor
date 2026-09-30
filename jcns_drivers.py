@@ -23,13 +23,37 @@ rotation), so the function does no unit conversion.
 
 import bpy
 
-from .modules_shim import get_mapping
+from .modules_shim import get_mapping, ensure_path
+
+ensure_path()
+import jcns_complex  # noqa: E402
 
 
-# key -> {'maps': [(fs, fk, fe, ts, tk, te), …]}
-# One entry per source of the single constraint that owns the channel; their
-# mapped outputs are summed.
+# key -> {'maps': [map, …]}, one map per source of the single constraint that
+# owns the channel; their outputs are summed.  A map is either the three-point
+# (fs, fk, fe, ts, tk, te, two_point) or ('CM', keys) for a ComplexMapping, both
+# already in the driver's units.
 _CHANNELS = {}
+
+
+def _unit_scale(quantity):
+    """File units -> driver units for one quantity (degrees -> radians, cm -> m)."""
+    return get_mapping()._to_driver_units((1.0,), quantity)[0]
+
+
+def source_map(s, target_q):
+    """The channel-table entry for one source dict (jcns_operators._sources_for_driver).
+
+    Input side in the source's units (its +25), output side in the target's.
+    """
+    m = get_mapping()
+    src_q = m.source_quantity(s.get('src_transform_id'))
+    if s.get('cm'):
+        return ('CM', tuple(jcns_complex.scaled(s['cm'], _unit_scale(src_q),
+                                                _unit_scale(target_q))))
+    vals = (s['from_start'], s['from_kink'], s['from_end'],
+            s['to_start'],   s['to_kink'],   s['to_end'])
+    return tuple(m.driver_anchors(vals, src_q, target_q)) + (m.is_two_point(s.get('update_timing')),)
 
 
 def channel_id(armature_name, bone, transform, axis):
@@ -68,7 +92,10 @@ def jcns_ch(key, *values):
         if i >= len(maps):
             break
         m = maps[i]
-        total += ev(*m[:6], v, two_point=(len(m) > 6 and m[6]))
+        if m[0] == 'CM':
+            total += jcns_complex.evaluate(m[1], v)
+        else:
+            total += ev(*m[:6], v, two_point=(len(m) > 6 and m[6]))
     return total
 
 
@@ -78,7 +105,8 @@ def rebuild_all():
     Runs after a .blend load so drivers saved in the file keep working without
     the user having to press Apply again.
     """
-    from . import (AXIS_TO_INT, group_constraints_by_channel)
+    from . import group_constraints_by_channel
+    from .jcns_operators import _sources_for_driver
 
     clear_channels()
     rebuilt = 0
@@ -90,17 +118,9 @@ def rebuild_all():
         for (bone, transform, axis), members in group_constraints_by_channel(obj).items():
             m = get_mapping()
             target_q = m.target_quantity(transform)
-            maps = []
             # Only the last constraint on a channel is live; see _apply_channel.
-            # Units as in jcns_operators._apply_driver: input side by the source's
-            # +25, output side by the target.
-            for sp in members[-1].jcns_cns_props.sources:
-                if not sp.source_bone:
-                    continue
-                vals = (sp.from_start, sp.from_kink, sp.from_end,
-                        sp.to_start, sp.to_kink, sp.to_end)
-                conv = m.driver_anchors(vals, m.source_quantity_of(sp), target_q)
-                maps.append(tuple(conv) + (m.is_two_point(sp.update_timing),))
+            maps = [source_map(s, target_q)
+                    for s in _sources_for_driver(members[-1].jcns_cns_props) if s['bone']]
             if maps:
                 register_channel(channel_id(arm.name, bone, transform, axis), maps)
                 rebuilt += 1

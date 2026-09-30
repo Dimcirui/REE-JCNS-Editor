@@ -196,8 +196,13 @@ def draw_plain(layout, p, sp, m):
 
 def draw_curve(layout, p, sp):
     """画出折线。多源约束会把同通道的曲线叠在一起画，每个驱动源一种颜色。"""
+    from . import jcns_cm
     sources = list(p.sources) if len(p.sources) > 1 else [sp]
-    icon = _curve_icon(sources)
+    plotted = []
+    for s in sources:
+        k = jcns_cm.keys(s)
+        plotted.append({'cm': k} if k else s)
+    icon = _curve_icon(plotted)
     if icon is None:
         return
     box = layout.box()
@@ -245,30 +250,34 @@ def draw_anchors(layout, m, sp):
     rw.prop(sp, "to_end",   text="")
 
 
-def _draw_complex_mapping(layout, sp, cm_ok, reason):
-    """ComplexMapping keyframes of one source (they replace its three-point mapping)."""
+def draw_keyframes(layout, m, sp, cm_ok, reason):
+    """ComplexMapping：这个驱动源用关键帧曲线代替三点映射。"""
+    from . import jcns_cm
+    keys = jcns_cm.keys(sp) or []
+    su = m.source_unit(sp)
     box = layout.box()
-    hdr = box.row(align=True)
-    hdr.label(text="关键帧（%d）" % len(sp.cm_keys), icon='IPO_BEZIER')
-    sub = hdr.row(align=True)
-    sub.enabled = cm_ok
-    sub.operator("jcns.cm_key_add", text="", icon='ADD')
-    sub.operator("jcns.cm_key_remove", text="", icon='REMOVE')
-    if not len(sp.cm_keys):
-        return
+    box.label(text="关键帧曲线（%d 帧，横轴：源的值%s　纵轴：输出）" % (len(keys), su),
+              icon='IPO_BEZIER')
     if not cm_ok:
         box.label(text=reason, icon='LOCKED')
-    box.label(text="有关键帧时三点映射在原版里恒为 0（78/78）", icon='INFO')
-    body = box.column()
-    body.enabled = cm_ok
-    body.template_list("JCNS_UL_cm_keys", "", sp, "cm_keys", sp, "active_cm_index",
-                       rows=min(max(len(sp.cm_keys), 2), 8))
-    k = sp.cm_keys[min(sp.active_cm_index, len(sp.cm_keys) - 1)]
-    col = body.column(align=True)
-    r = col.row(align=True); r.prop(k, "from_x"); r.prop(k, "to_x")
-    r = col.row(align=True); r.prop(k, "from_y"); r.prop(k, "to_y")
-    r = col.row(align=True); r.prop(k, "from_z"); r.prop(k, "to_z")
-    col.prop(k, "flag")
+    col = box.column(align=True)
+    for x, y, s_in, s_out in keys[:12]:
+        col.label(text="%s%s → %s　　斜率 入 %s / 出 %s"
+                       % (_fmt(x), su, _fmt(y), _fmt(s_in), _fmt(s_out)), icon='KEYFRAME')
+    if len(keys) > 12:
+        col.label(text="……共 %d 帧" % len(keys))
+    if any(abs(getattr(sp, n)) > 1e-9 for n in ('from_start', 'from_kink', 'from_end',
+                                                'to_start', 'to_kink', 'to_end')):
+        box.label(text="三点映射锚点不为 0：原版带关键帧的源锚点都是 0，两者并存时引擎怎么算没有测过",
+                  icon='ERROR')
+    row = box.row(align=True)
+    row.operator("jcns.cm_edit", icon='GRAPH')
+    sub = row.row(align=True)
+    sub.enabled = cm_ok
+    sub.operator("jcns.cm_normalize", icon='HANDLE_FREE')
+    sub.operator("jcns.cm_remove", icon='X')
+    box.label(text="手柄只有斜率写进文件，长度不影响游戏；「规范手柄」让曲线编辑器里的样子与游戏一致",
+              icon='INFO')
 
 
 class JCNS_PT_Ed_Ranges(_EditorMain, Panel):
@@ -378,32 +387,18 @@ class JCNS_PT_Ed_Ranges_Mapping(_Editor, Panel):
         if len(p.sources) > 1:
             c.body.label(text="驱动源 %d：%s %s" % (p.active_source_index, sp.source_bone or '?',
                                                     sp.source_axis), icon='BONE_DATA')
+        from . import file_state, jcns_cm
+        cm_ok, reason = _kinds().complex_mapping_editable(file_state(c.rp))
+        if jcns_cm.has_curve(sp):
+            draw_curve(c.body, p, sp)
+            draw_keyframes(c.body, m, sp, cm_ok, reason)
+            return
         draw_plain(c.body, p, sp, m)
         draw_curve(c.body, p, sp)
         draw_anchors(c.body, m, sp)
-
-
-class JCNS_PT_Ed_Ranges_ComplexMapping(_Editor, _Sub, Panel):
-    bl_label  = "ComplexMapping"
-    bl_idname = "JCNS_PT_ed_ranges_cm"
-    bl_parent_id = "JCNS_PT_ed_ranges"
-    KIND = 'Ranges'
-
-    @classmethod
-    def poll(cls, context):
-        from . import get_jcns_constraint
-        if not super().poll(context):
-            return False
-        return _active_source(get_jcns_constraint(context)[1]) is not None
-
-    def draw(self, context):
-        from . import file_state
-        c = _begin(self.layout, context, banner=False)
-        if c is None:
-            return
-        sp = _active_source(c.p)
-        ok, reason = _kinds().complex_mapping_editable(file_state(c.rp))
-        _draw_complex_mapping(self.layout, sp, ok, reason)
+        row = c.body.row()
+        row.enabled = cm_ok
+        row.operator("jcns.cm_create", icon='IPO_BEZIER')
 
 
 class JCNS_PT_Ed_Ranges_Cones(_Editor, Panel):
@@ -763,7 +758,6 @@ _classes = [
     JCNS_PT_Ed_Ranges,
     JCNS_PT_Ed_Ranges_Sources,
     JCNS_PT_Ed_Ranges_Mapping,
-    JCNS_PT_Ed_Ranges_ComplexMapping,
     JCNS_PT_Ed_Ranges_Cones,
     JCNS_PT_Ed_Ranges_Tools,
     JCNS_PT_Ed_Ranges_Advanced,

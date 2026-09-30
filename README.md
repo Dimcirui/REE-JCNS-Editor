@@ -39,7 +39,7 @@ offset; export refuses structural edits and lists what changed.
 | ID | Section | Full rebuild (v102, v35) | In place |
 | --- | --- | --- | --- |
 | 0 | Range constraints and sources | ✅ Fully editable | ✏️ Values |
-| 0 | ComplexMapping (keyframed curves) | ✅ Keyframes editable | Kept |
+| 0 | ComplexMapping (keyframed curves) | ✅ Edited as F-Curves in the Graph Editor, previewed | Kept |
 | 0 | ConeDrivers (v35) | ✅ Per-constraint cone inputs editable; cone table kept | Kept |
 | 0 | Dependencies | ✅ Regenerated | Kept |
 | 0 | ObjectSettings | Kept | Kept |

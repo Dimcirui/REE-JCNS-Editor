@@ -20,6 +20,8 @@ import bpy
 from bpy.types import Operator
 from bpy.props import StringProperty, BoolProperty, EnumProperty
 
+from . import jcns_cm
+
 
 # ---------------------------------------------------------------------------
 # Module path helper
@@ -170,6 +172,8 @@ def _sources_for_driver(cns_props):
             'update_timing': sp.update_timing,
             # +25 selects what is read off the source bone; see _SOURCE_VARS.
             'src_transform_id': sp.src_transform_id,
+            # ComplexMapping keys, which replace the anchors when present.
+            'cm': jcns_cm.keys(sp),
         })
     return out
 
@@ -209,17 +213,8 @@ def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
     if data_path == 'rotation_euler' and pose_bone.rotation_mode not in _EULER_MODES:
         pose_bone.rotation_mode = 'XYZ'
 
-    # Anchors in the driver's own units, so the namespace function converts nothing:
-    # the input side in the source's units, the output side in the target's.
-    # 7th element is the curve-mode flag (see modules.jcns_mapping.is_two_point).
-    m = get_mapping()
-    maps = []
-    for s in usable:
-        vals = (s['from_start'], s['from_kink'], s['from_end'],
-                s['to_start'],   s['to_kink'],   s['to_end'])
-        conv = m.driver_anchors(vals, m.source_quantity(s.get('src_transform_id')),
-                                target_q)
-        maps.append(tuple(conv) + (m.is_two_point(s.get('update_timing')),))
+    # In the driver's own units, so the namespace function converts nothing.
+    maps = [jcns_drivers.source_map(s, target_q) for s in usable]
 
     key = jcns_drivers.channel_id(armature_obj.name, target_bone_name,
                                   transform_type, _AXIS_NAME[target_axis_idx])
@@ -344,19 +339,8 @@ def refresh_channel_values(obj):
     target_q = entry[2]
 
     # Only the last constraint on the channel is live — see _apply_channel.
-    # Units as in _apply_driver: input side by the source's +25, output side by
-    # the target.
-    maps = []
-    from .modules_shim import get_mapping
-    m = get_mapping()
-    for s in _sources_for_driver(members[-1].jcns_cns_props):
-        if not s['bone']:
-            continue
-        vals = (s['from_start'], s['from_kink'], s['from_end'],
-                s['to_start'],   s['to_kink'],   s['to_end'])
-        conv = m.driver_anchors(vals, m.source_quantity(s.get('src_transform_id')),
-                                target_q)
-        maps.append(tuple(conv) + (m.is_two_point(s.get('update_timing')),))
+    maps = [jcns_drivers.source_map(s, target_q)
+            for s in _sources_for_driver(members[-1].jcns_cns_props) if s['bone']]
     if not maps:
         return False
 
@@ -794,6 +778,7 @@ class JCNS_OT_RemoveSource(Operator):
         from . import get_jcns_constraint, constraint_name_from_props
         cns_obj, p = get_jcns_constraint(context)
         i = min(p.active_source_index, len(p.sources) - 1)
+        jcns_cm.remove(p.sources[i])
         p.sources.remove(i)
         p.active_source_index = max(0, min(i, len(p.sources) - 1))
         idx = 0
@@ -994,7 +979,7 @@ class JCNS_OT_MirrorConstraints(Operator):
                     failed = "%s 的 %s 轴无法确定镜像符号" % (sp.source_bone,
                                                              sp.source_axis)
                     break
-                new_sources.append((mate, sp.source_axis, vals, sp))
+                new_sources.append((mate, sp.source_axis, vals, sp, i_s, o_s))
             if failed:
                 problems.append(failed)
                 continue
@@ -1025,8 +1010,10 @@ class JCNS_OT_MirrorConstraints(Operator):
             q.target_axis = p.target_axis
             q.transform_type = p.transform_type
             q.cns_flags = p.cns_flags
+            for old in q.sources:
+                jcns_cm.remove(old)
             q.sources.clear()
-            for bone, axis, vals, orig in new_sources:
+            for bone, axis, vals, orig, i_s, o_s in new_sources:
                 ns = q.sources.add()
                 ns.source_bone = bone
                 ns.source_axis = axis
@@ -1036,6 +1023,9 @@ class JCNS_OT_MirrorConstraints(Operator):
                              'rest_quat_w', 'update_timing', 'src_transform_id',
                              'unk_byte2', 'unknown_uint16', 'unknown_uint32_2'):
                     setattr(ns, attr, getattr(orig, attr))
+                if jcns_cm.has_curve(orig):
+                    jcns_cm.copy_keys(orig, ns, lambda k, i_s=i_s, o_s=o_s:
+                                      jcns_cm.jcns_complex.mirrored(k, i_s, o_s))
 
         for i, empty in enumerate(get_constraint_empties(root_obj)):
             empty.name = constraint_name_from_props(i, empty.jcns_cns_props)
@@ -1233,43 +1223,119 @@ def _active_source_props(context):
     return p.sources[min(p.active_source_index, len(p.sources) - 1)]
 
 
-class JCNS_OT_CMKeyAdd(Operator):
-    """Add a ComplexMapping keyframe to the active source"""
-    bl_idname = "jcns.cm_key_add"
-    bl_label  = "新增关键帧"
+def _cm_source(context):
+    """(constraint Empty, active source) when its ComplexMapping may be edited, else (None, None)."""
+    from . import get_jcns_constraint
+    sp = _active_source_props(context)
+    if sp is None or _rebuild_root(context)[0] is None:
+        return None, None
+    return get_jcns_constraint(context)[0], sp
+
+
+class JCNS_OT_CMCreate(Operator):
+    """Replace the active source's three-point mapping with a keyframe curve that
+    draws the same lines, editable in the Graph Editor"""
+    bl_idname = "jcns.cm_create"
+    bl_label  = "改用关键帧曲线"
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context):
-        return _active_source_props(context) is not None and _rebuild_root(context)[0] is not None
+        obj, sp = _cm_source(context)
+        return sp is not None and not jcns_cm.has_curve(sp)
 
     def execute(self, context):
-        sp = _active_source_props(context)
-        k = sp.cm_keys.add()
-        if len(sp.cm_keys) > 1:
-            prev = sp.cm_keys[len(sp.cm_keys) - 2]
-            k.from_x = prev.from_x + 10.0
-            k.from_y, k.to_y, k.from_z, k.to_z = prev.from_y, prev.to_y, prev.from_z, prev.to_z
-        sp.active_cm_index = len(sp.cm_keys) - 1
+        from .modules_shim import get_mapping
+        obj, sp = _cm_source(context)
+        m = get_mapping()
+        keys = jcns_cm.jcns_complex.from_three_point(
+            sp.from_start, sp.from_kink, sp.from_end, sp.to_start, sp.to_kink, sp.to_end,
+            two_point=m.is_two_point(sp.update_timing))
+        sp.cm_cache.clear()
+        jcns_cm.set_keys(sp, keys)
+        # Shipped keyframed sources carry all-zero anchors (78/78).
+        for name in ('from_start', 'from_kink', 'from_end', 'to_start', 'to_kink', 'to_end'):
+            setattr(sp, name, 0.0)
+        refresh_applied_driver(obj)
         return {'FINISHED'}
 
 
-class JCNS_OT_CMKeyRemove(Operator):
-    """Remove the active ComplexMapping keyframe from the active source"""
-    bl_idname = "jcns.cm_key_remove"
-    bl_label  = "删除关键帧"
+class JCNS_OT_CMRemove(Operator):
+    """Delete the active source's keyframe curve; it falls back to its three-point
+    mapping (all zero unless set)"""
+    bl_idname = "jcns.cm_remove"
+    bl_label  = "改回三点映射"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        obj, sp = _cm_source(context)
+        return sp is not None and jcns_cm.has_curve(sp)
+
+    def execute(self, context):
+        obj, sp = _cm_source(context)
+        jcns_cm.remove(sp)
+        refresh_applied_driver(obj)
+        return {'FINISHED'}
+
+
+class JCNS_OT_CMNormalize(Operator):
+    """Put every handle of the active source's curve back at a third of its
+    segment, keeping its slope — the length is not stored in the file"""
+    bl_idname = "jcns.cm_normalize"
+    bl_label  = "规范手柄"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        obj, sp = _cm_source(context)
+        return sp is not None and jcns_cm.has_curve(sp)
+
+    def execute(self, context):
+        obj, sp = _cm_source(context)
+        jcns_cm.normalize_handles(sp)
+        return {'FINISHED'}
+
+
+class JCNS_OT_CMEdit(Operator):
+    """Show the active source's keyframe curve in the Graph Editor"""
+    bl_idname = "jcns.cm_edit"
+    bl_label  = "在曲线编辑器中编辑"
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context):
         sp = _active_source_props(context)
-        return sp is not None and len(sp.cm_keys) > 0 and _rebuild_root(context)[0] is not None
+        return sp is not None and jcns_cm.has_curve(sp)
 
     def execute(self, context):
+        from . import get_jcns_constraint
+        obj = get_jcns_constraint(context)[0]
         sp = _active_source_props(context)
-        i = min(sp.active_cm_index, len(sp.cm_keys) - 1)
-        sp.cm_keys.remove(i)
-        sp.active_cm_index = max(0, i - 1)
+        target = jcns_cm.fcurve(sp)
+        for o in context.selected_objects:
+            o.select_set(False)
+        obj.select_set(True)
+        context.view_layer.objects.active = obj
+        fcs = jcns_cm._fcurves(obj, False) or []
+        for fc in fcs:
+            # RNA hands out a new wrapper per access, so compare paths, not identity
+            mine = fc.data_path == target.data_path
+            fc.select = mine
+            fc.hide = False
+            for kp in fc.keyframe_points:     # view_selected frames the selected keys
+                kp.select_control_point = mine
+        graphs = [a for a in context.screen.areas if a.type == 'GRAPH_EDITOR']
+        if not graphs:
+            self.report({'INFO'}, "已选中这条曲线；打开一个曲线编辑器（Graph Editor）即可编辑")
+            return {'FINISHED'}
+        for area in graphs:
+            region = next((r for r in area.regions if r.type == 'WINDOW'), None)
+            if region is None:
+                continue
+            area.spaces.active.dopesheet.show_only_selected = True
+            with context.temp_override(area=area, region=region):
+                bpy.ops.graph.view_selected()
         return {'FINISHED'}
 
 
@@ -1339,8 +1405,10 @@ _classes = [
     JCNS_OT_SkinSourceAdd,
     JCNS_OT_SkinSourceRemove,
     JCNS_OT_SkinNormalizeWeights,
-    JCNS_OT_CMKeyAdd,
-    JCNS_OT_CMKeyRemove,
+    JCNS_OT_CMCreate,
+    JCNS_OT_CMRemove,
+    JCNS_OT_CMNormalize,
+    JCNS_OT_CMEdit,
     JCNS_OT_ConeInfoAdd,
     JCNS_OT_ConeInfoRemove,
 ]
