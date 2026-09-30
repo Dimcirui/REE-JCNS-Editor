@@ -15,7 +15,6 @@ Operators:
 
 import os
 import sys
-import math
 import bpy
 from bpy.types import Operator
 from bpy.props import StringProperty, BoolProperty, EnumProperty
@@ -43,92 +42,6 @@ _ROT_TYPE   = ['ROT_X',   'ROT_Y',   'ROT_Z']
 _LOC_TYPE   = ['LOC_X',   'LOC_Y',   'LOC_Z']
 _SCALE_TYPE = ['SCALE_X', 'SCALE_Y', 'SCALE_Z']
 
-
-def _build_piecewise_expr(from_start, from_kink, from_end,
-                           to_start,   to_kink,   to_end,
-                           use_radians=True, var='var', two_point=False):
-    """
-    Build a Blender SCRIPTED driver expression implementing the three-point
-    piecewise linear mapping.
-
-    use_radians=True  → values are in degrees, converted to radians (Rotation).
-    use_radians=False → values are used as-is (Location / Scale).
-
-    `var` is the name of the Blender driver variable to read.  Multi-source
-    constraints build one expression per source, each with its own variable,
-    and combine the results.
-
-      Seg 1: source [from_start → from_kink]  →  output [to_start → to_kink]
-      Seg 2: source [from_kink  → from_end]   →  output [to_kink  → to_end]
-
-    The expression is clamped so output stays within the output range.
-    Degenerate cases (collapsed segments) are handled gracefully.
-    """
-    if use_radians:
-        fs = math.radians(from_start)
-        fk = math.radians(from_kink)
-        fe = math.radians(from_end)
-        ts = math.radians(to_start)
-        tk = math.radians(to_kink)
-        te = math.radians(to_end)
-    else:
-        fs, fk, fe = from_start, from_kink, from_end
-        ts, tk, te = to_start,   to_kink,   to_end
-
-    span1 = fk - fs
-    span2 = fe - fk
-    total = fe - fs
-
-    # two_point selects the +24 == 0 curve mode: the engine ignores the kink and
-    # runs the straight line A -> C.  Measured in-game 2026-08-21; keep in sync
-    # with modules.jcns_mapping.eval_piecewise, which documents the evidence.
-    if two_point:
-        if abs(total) < 1e-9:
-            return "0.000000"
-        k = (te - ts) / total
-        lo, hi = min(ts, te), max(ts, te)
-        return f"max({lo:.6f}, min({hi:.6f}, {ts:.6f} + ({var} - {fs:.6f}) * {k:.6f}))"
-
-    # Three-point mode.  A kink strictly outside the [start, end] span kills the
-    # source outright (measured); keep in sync with jcns_mapping.eval_piecewise.
-    _lo, _hi = (fs, fe) if fs <= fe else (fe, fs)
-    if fk < _lo - 1e-9 or fk > _hi + 1e-9:
-        return "0.000000"
-
-    # Degenerate handling below was measured in-game (Round 12); the
-    # fully-collapsed case steps between to_start and to_end and never yields
-    # to_kink.  Keep the ternary parenthesised — see the note below.
-    if abs(span1) < 1e-9 and abs(span2) < 1e-9:
-        return f"(({ts:.6f}) if {var} <= {fk:.6f} else ({te:.6f}))"
-    if abs(span2) < 1e-9:
-        k1 = (tk - ts) / span1
-        lo, hi = min(ts, tk), max(ts, tk)
-        return f"max({lo:.6f}, min({hi:.6f}, {ts:.6f} + ({var} - {fs:.6f}) * {k1:.6f}))"
-    if abs(span1) < 1e-9:
-        k2 = (te - tk) / span2
-        lo, hi = min(tk, te), max(tk, te)
-        return f"max({lo:.6f}, min({hi:.6f}, {tk:.6f} + ({var} - {fk:.6f}) * {k2:.6f}))"
-
-    k1 = (tk - ts) / span1
-    k2 = (te - tk) / span2
-    s1 = f"max({min(ts,tk):.6f}, min({max(ts,tk):.6f}, {ts:.6f} + ({var} - {fs:.6f}) * {k1:.6f}))"
-    s2 = f"max({min(tk,te):.6f}, min({max(tk,te):.6f}, {tk:.6f} + ({var} - {fk:.6f}) * {k2:.6f}))"
-
-    # Pick segment based on which side of fk the source is on.
-    # The whole conditional MUST stay parenthesised: `X if c else Y` binds looser
-    # than `+`, so an unwrapped ternary silently reassociates when several source
-    # expressions are summed together for a multi-source constraint.
-    cond = "<=" if fs <= fe else ">="
-    return f"(({s1}) if {var} {cond} {fk:.6f} else ({s2}))"
-
-
-_COMBINE_OPS = {
-    'SUM':     lambda parts: "(" + " + ".join(parts) + ")",
-    'MAX':     lambda parts: "max(" + ", ".join(parts) + ")",
-    'MIN':     lambda parts: "min(" + ", ".join(parts) + ")",
-    'AVERAGE': lambda parts: "((" + " + ".join(parts) + ") / %d)" % len(parts),
-    'FIRST':   lambda parts: parts[0],
-}
 
 # TransformationID -> (Blender data path, driver variables, quantity driven)
 # bt TransformationID names ID 0 "Translation"; Blender's data path is "location".

@@ -3,13 +3,11 @@ jcns_mapping.py
 ---------------
 The three-point piecewise transfer function, evaluated numerically.
 
-The same curve is expressed twice in this addon: once as a Python string that
-becomes a Blender SCRIPTED driver (jcns_operators._build_piecewise_expr), and
-once here as a plain function used by the UI for read-outs and the curve
-preview.  Those two MUST agree — a panel that reports a different number from
-what the driver actually produces is worse than no panel at all, so
-tests/mapping_test.py evaluates the generated expression and compares it against
-this module across a grid of inputs.
+This is the only implementation of the curve.  The Blender drivers call it
+directly: the driver-namespace function jcns_drivers.jcns_ch evaluates each
+source with eval_piecewise, and the UI read-outs and curve preview use the same
+function, so a panel can never report a different number from what the driver
+produces.
 
 Kept free of `bpy` so it can be tested standalone.
 
