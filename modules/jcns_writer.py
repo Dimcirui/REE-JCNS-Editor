@@ -431,6 +431,7 @@ class JCNSWriter:
 
         # ── Phase 8: build ConstraintInfo array ────────────────────────
         cns_info_blob = bytearray()
+        group_counts = tail_group_counts(p.constraints)
         for i, c in enumerate(p.constraints):
             tgt_name    = c.get('ObjectName', '')
             tgt_name_off = tgt_name_to_offset.get(tgt_name, 0)
@@ -457,7 +458,10 @@ class JCNSWriter:
                 'SourceCount_parent':   len(c.get('sources', [])),
                 axis_key:               c.get('TransformAxis_parent', 0),
             })
-            rec['ParentTailBytes'] = bytes(rec['ParentTailBytes'])
+            tail = bytearray(rec['ParentTailBytes'])
+            if len(tail) >= 4:
+                tail[3] = group_counts[i]
+            rec['ParentTailBytes'] = bytes(tail)
             cns_info_blob.extend(CONSTRAINT_INFO.pack(rec, version))
 
         # ── Phase 8b: build RotExpression section ───────────────────────
@@ -747,6 +751,50 @@ _SOURCE_DEFAULTS = {
 
 
 # ── Utilities ────────────────────────────────────────────────────────────
+
+def tail_group_counts(constraints):
+    """ParentTailBytes[3] for every constraint: how many of the entries right after it
+    the engine folds into its joint group.
+
+    The engine writes a whole group to the *first* entry's target, whatever the others
+    name, so a stale count makes neighbours land on the wrong bone (measured in game
+    2026-09-30: entries cloned with count 2 wrote every third test bone, last one
+    winning).  Shipped files set it to the length of the run of consecutive entries
+    sharing target, property, TransformType and Flags, minus one, and 0 on the rest
+    (22818/22839).  The other 21 are still well-formed groups, so counts that already
+    form valid groups are kept; if any does not, all are re-derived.
+    """
+    def ident(c):
+        return (c.get('ObjectName', ''), c.get('PropertyName', ''), c.get('TransformType'))
+
+    def given(c):
+        tb = c.get('ParentTailBytes') or b''
+        return tb[3] if len(tb) >= 4 else 0
+
+    n = len(constraints)
+    counts = [given(c) for c in constraints]
+    valid = True
+    i = 0
+    while i < n and valid:
+        k = counts[i]
+        members = constraints[i + 1:i + 1 + k]
+        valid = (len(members) == k
+                 and all(ident(m) == ident(constraints[i]) and given(m) == 0 for m in members))
+        i += k + 1
+    if valid:
+        return counts
+
+    counts = []
+    i = 0
+    while i < n:
+        key = ident(constraints[i]) + (constraints[i].get('Flags'),)
+        j = i
+        while j + 1 < n and ident(constraints[j + 1]) + (constraints[j + 1].get('Flags'),) == key:
+            j += 1
+        counts += [j - i] + [0] * (j - i)
+        i = j + 1
+    return counts
+
 
 def _align(value, boundary):
     """Round value UP to the next multiple of boundary."""
