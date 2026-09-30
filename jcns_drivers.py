@@ -31,6 +31,12 @@ rig rounds 6-7):
   * entries run in file order within one frame, so a source whose channel is only
     written by a LATER entry is still at its unconstrained pose when it is read.  Such
     a channel gets no variable and reads its rest value.
+
+A target entry with Flags bit0 = 0 replaces the channel instead of adding to the
+rest pose (round 8).  On a bone with an identity rest the two are the same, so only
+a bone that has both -- a replacing channel and a rest rotation -- needs more: its
+three rotation_euler drivers are built as one group, each evaluating the whole bone
+(jcns_source_read.override_basis) and returning its own axis of the basis.
 """
 
 import bpy
@@ -128,26 +134,33 @@ def channel_reads(key):
 
 def clear_channels():
     _CHANNELS.clear()
+    _GROUPS.clear()
 
 
-def jcns_ch(key, *values):
-    """Evaluate one driven channel. Called from every generated driver."""
-    ch = _CHANNELS.get(key)
-    if ch is None:
-        # Cache miss — the .blend was reloaded without the channels being rebuilt.
-        # Deliberately do NOT touch bpy.data here: this runs during depsgraph
-        # evaluation.  rebuild_all() is called from a load_post handler instead.
-        return 0.0
+# gid -> {'rest': (w, x, y, z), 'parts': [(axis, replaces, maps, reads), ...]}
+# for a bone whose rotation drivers are built together; see the module docstring.
+# The channels of such a bone are in _CHANNELS as {'group': gid, 'axis': a}.
+_GROUPS = {}
+
+
+def register_group(gid, rest, parts, keys):
+    """One bone's rotation group; `keys` are its three drivers' channel keys."""
+    _GROUPS[gid] = {'rest': tuple(rest), 'parts': list(parts)}
+    for a, key in enumerate(keys):
+        _CHANNELS[key] = {'group': gid, 'axis': a}
+
+
+def group_parts(gid):
+    g = _GROUPS.get(gid)
+    return g['parts'] if g else None
+
+
+def _total(maps, reads, values):
+    """Sum of one channel's sources -> (total, number of values consumed)."""
     ev = get_mapping().eval_piecewise
-    # Each source maps independently and the outputs add up — verified in-game
-    # against a two-source constraint swept over its whole input range.
-    #
-    # A map entry is (fs, fk, fe, ts, tk, te, two_point).  Entries registered by
-    # an older build are 6-long; treat those as three-point, which is what the
-    # shipped data uses in ~86% of sources.
     total = 0.0
     at = 0
-    for m, read in zip(ch['maps'], ch['reads']):
+    for m, read in zip(maps, reads):
         width = read_width(read)
         if at + width > len(values):
             break                  # the driver predates this layout; Apply rebuilds it
@@ -162,7 +175,39 @@ def jcns_ch(key, *values):
             total += jcns_complex.evaluate(m[1], v)
         else:
             total += ev(*m[:6], v, two_point=(len(m) > 6 and m[6]))
-    return total
+    return total, at
+
+
+def _group_value(ch, values):
+    g = _GROUPS.get(ch['group'])
+    if g is None:
+        return 0.0
+    replaced, added = {}, {}
+    at = 0
+    for axis, replaces, maps, reads in g['parts']:
+        total, used = _total(maps, reads, values[at:])
+        at += used
+        (replaced if replaces else added)[axis] = total
+    return jcns_source_read.override_basis(g['rest'], replaced, added)[ch['axis']]
+
+
+def jcns_ch(key, *values):
+    """Evaluate one driven channel. Called from every generated driver."""
+    ch = _CHANNELS.get(key)
+    if ch is None:
+        # Cache miss — the .blend was reloaded without the channels being rebuilt.
+        # Deliberately do NOT touch bpy.data here: this runs during depsgraph
+        # evaluation.  rebuild_all() is called from a load_post handler instead.
+        return 0.0
+    if 'group' in ch:
+        return _group_value(ch, values)
+    # Each source maps independently and the outputs add up — verified in-game
+    # against a two-source constraint swept over its whole input range.
+    #
+    # A map entry is (fs, fk, fe, ts, tk, te, two_point).  Entries registered by
+    # an older build are 6-long; treat those as three-point, which is what the
+    # shipped data uses in ~86% of sources.
+    return _total(ch['maps'], ch['reads'], values)[0]
 
 
 def rebuild_all():
@@ -172,7 +217,7 @@ def rebuild_all():
     the user having to press Apply again.
     """
     from . import group_constraints_by_channel
-    from .jcns_operators import channel_sources
+    from .jcns_operators import channel_sources, replacing_bones, register_bone_group
 
     clear_channels()
     rebuilt = 0
@@ -181,7 +226,13 @@ def rebuild_all():
         if not rp or not rp.source_filepath or rp.target_armature is None:
             continue
         arm = rp.target_armature
+        grouped = replacing_bones(arm, obj)
+        for bone, chans in grouped.items():
+            if register_bone_group(arm, obj, bone, chans):
+                rebuilt += 1
         for (bone, transform, axis), members in group_constraints_by_channel(obj).items():
+            if bone in grouped and transform_path(transform) == 'rotation_euler':
+                continue
             m = get_mapping()
             target_q = m.target_quantity(transform)
             # Only the last constraint on a channel is live; see _apply_channel.
@@ -202,6 +253,13 @@ def _on_load(_dummy):
             print("[JCNS] rebuilt %d driver channel(s) after file load" % n)
     except Exception as exc:                                  # never break loading
         print("[JCNS] channel rebuild failed: %r" % exc)
+
+
+def transform_path(transform):
+    """The pose-bone data path a TransformType drives, or None."""
+    from .jcns_operators import _DRIVABLE
+    entry = _DRIVABLE.get(transform)
+    return entry[0] if entry else None
 
 
 def register():

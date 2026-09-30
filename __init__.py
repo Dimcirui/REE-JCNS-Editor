@@ -156,6 +156,7 @@ TRANSFORM_TYPE_MAP = {
 def _update_flags_from_bits(self, context):
     """Called when any flag_bit_N changes — repack into cns_flags."""
     self['cns_flags'] = sum(int(getattr(self, f'flag_bit_{i}')) << i for i in range(8))
+    _refresh_flags_preview(self)
 
 
 def _update_bits_from_flags(self, context):
@@ -163,6 +164,17 @@ def _update_bits_from_flags(self, context):
     v = self.cns_flags & 0xFF
     for i in range(8):
         self[f'flag_bit_{i}'] = bool(v & (1 << i))
+    _refresh_flags_preview(self)
+
+
+def _refresh_flags_preview(self):
+    """bit0 decides whether a value replaces the rest pose, so an applied preview
+    has to follow it."""
+    try:
+        from . import jcns_preview
+        jcns_preview.refresh(self.id_data, structural=True)
+    except Exception as exc:
+        print("[JCNS] preview refresh after a flags edit skipped: %r" % exc)
 
 
 def _refresh_preview_values(self, context):
@@ -507,11 +519,11 @@ class JCNSConstraintProperties(PropertyGroup):
     # --- ConstraintInfo raw fields (editable, exported) ---
     # flags_cns: editable int + 8 bit checkboxes (bidirectional sync via update callbacks)
     cns_flags: IntProperty(
-        name="标志位", description="bt: flags_cns。位4（驱动骨骼）与位5（驱动量为旋转）在导出时会按变换类型自动重算；位0 保留你的设置",
+        name="标志位", description="bt: flags_cns。位0 = 叠加：1 把值叠在静止姿态上，0 替换静止姿态（2026-09-30 实测）。位4（驱动骨骼）与位5（驱动量为旋转）在导出时会按变换类型自动重算",
         default=0x31, min=0, max=255, update=_update_bits_from_flags,
     )
     flags_expanded: BoolProperty(name="展开标志位", default=False)
-    flag_bit_0: BoolProperty(name="Bit0 — isAdd?",  default=True,  update=_update_flags_from_bits)
+    flag_bit_0: BoolProperty(name="Bit0 — 叠加",    default=True,  update=_update_flags_from_bits)
     flag_bit_1: BoolProperty(name="Bit1",            default=False, update=_update_flags_from_bits)
     flag_bit_2: BoolProperty(name="Bit2",            default=False, update=_update_flags_from_bits)
     flag_bit_3: BoolProperty(name="Bit3",            default=False, update=_update_flags_from_bits)

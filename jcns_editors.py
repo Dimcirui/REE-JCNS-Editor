@@ -502,7 +502,7 @@ class JCNS_PT_Ed_Ranges_Advanced(_Editor, _Sub, Panel):
         if p.flags_expanded:
             bits = col.column(align=True)
             for attr, desc in (
-                ("flag_bit_0", "位0 —— isAdd？（可自由设置）"),
+                ("flag_bit_0", "位0 —— 叠加：1 叠在静止姿态上，0 替换静止姿态（实测）"),
                 ("flag_bit_1", "位1"),
                 ("flag_bit_2", "位2"),
                 ("flag_bit_3", "位3"),

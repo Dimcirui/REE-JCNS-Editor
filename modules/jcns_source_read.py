@@ -180,6 +180,30 @@ def rotation(mode, q, axis, order=0, frame=None):
     raise ValueError(mode)
 
 
+def override_basis(rest, replaced, added):
+    """Blender pose basis (XYZ Euler, radians) of a bone whose rotation channels are
+    written with Flags bit0 = 0 (replace) and / or 1 (add).
+
+    Measured 2026-09-30 (round 8): bit0 = 1 lays a value on the rest pose,
+    rest * R(v); bit0 = 0 replaces the channel -- a single-axis -2 deg rest turned
+    into the bare value.  Modelled here as: take the rest pose's XYZ Euler angles,
+    put each replaced channel's value in place of its angle, then lay the added
+    channels on top, R(e') * R(v_add).  Only the single-axis, replace-only case is
+    measured; the general rest and the mixed case follow the model, untested.
+
+    `replaced` / `added` map axis (0-2) -> value; returns the basis (x, y, z) such
+    that rest * basis is that rotation.
+    """
+    e = list(_euler(rest, 0))
+    for a, v in replaced.items():
+        e[a] = v
+    add = [0.0, 0.0, 0.0]
+    for a, v in added.items():
+        add[a] = v
+    q = qmul(from_euler_xyz(e), from_euler_xyz(add))
+    return tuple(_euler(_pos_w(qmul(_conj(rest), q)), 0))
+
+
 def rest_input(mode, axis, rest, offset_cm, order=0, frame=None):
     """What a source reads with its bone at rest, in the file's units (degrees,
     centimetres, or 1 for a scale).
