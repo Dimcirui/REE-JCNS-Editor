@@ -541,6 +541,8 @@ class JCNS_PT_BrowserChannels(Panel):
         total = sum(len(mm) for v in by_bone.values() for _, _, mm in v)
         layout.label(text="%d 根骨骼 · %d 个通道 · %d 条约束"
                           % (len(by_bone), len(groups), total))
+        from . import jcns_merge_ops
+        jcns_merge_ops.draw_merge_all(layout, context, groups, rp)
 
         for bone in sorted(by_bone):
             box = layout.box()
