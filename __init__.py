@@ -997,6 +997,7 @@ from . import jcns_ui
 from . import jcns_editors
 from . import jcns_drivers
 from . import jcns_preview
+from . import jcns_capture
 from . import jcns_cm
 
 def _poll_jcns_collection(self, collection):
@@ -1030,6 +1031,7 @@ def register():
 
     jcns_operators.register()
     jcns_preview.register()
+    jcns_capture.register()
     jcns_importer.register()
     jcns_exporter.register()
     jcns_ui.register()
@@ -1045,6 +1047,7 @@ def unregister():
     jcns_ui.unregister()
     jcns_exporter.unregister()
     jcns_importer.unregister()
+    jcns_capture.unregister()
     jcns_preview.unregister()
     jcns_operators.unregister()
 
