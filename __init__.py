@@ -383,6 +383,7 @@ class JCNSSourceProperties(PropertyGroup):
     # If you clear bit0 to make a constraint override, an early +24 is the
     # matching choice.
     update_timing: IntProperty(
+        update=_refresh_preview_values,
         name="曲线模式 (+24)",
         description=(
             "ConstraintSource_v2 byte +24 — 实测(2026-08-21)是曲线模式开关，不是更新时机。"
@@ -394,6 +395,7 @@ class JCNSSourceProperties(PropertyGroup):
         default=3, min=0, max=255,
     )
     src_transform_id: IntProperty(
+        update=_refresh_preview,
         name="源变换ID (+25)",
         description=(
             "ConstraintSource_v2 byte +25. Meaning UNCONFIRMED and disputed: bt 0.65.13 read "
