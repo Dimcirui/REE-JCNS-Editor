@@ -508,11 +508,7 @@ class JCNS_PT_BrowserPreview(Panel):
 
 
 class JCNS_PT_BrowserChannels(Panel):
-    """按驱动的骨骼通道分组列出约束。
-
-    一根骨头通常每个轴一条约束，而同一个轴也可能有好几条。平铺列表会把这两件事
-    都藏起来，很容易把别的约束造成的表现算到当前选中的这条头上。
-    """
+    """按驱动的骨骼通道分组列出约束，能看出同一个轴上有几条约束、哪一条生效"""
     bl_label    = "被驱动的骨骼"
     bl_idname   = "JCNS_PT_browser_channels"
     bl_space_type  = 'VIEW_3D'

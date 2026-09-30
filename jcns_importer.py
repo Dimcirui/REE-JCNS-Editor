@@ -378,7 +378,7 @@ def do_import(filepath, context, armature_obj=None):
 # ---------------------------------------------------------------------------
 
 class JCNS_OT_ImportFile(Operator, ImportHelper):
-    """Import a RE Engine JCNS joint constraint file and build an annotated collection"""
+    """导入 RE Engine 的 JCNS 关节约束文件，每条约束生成一个空物体"""
     bl_idname = "jcns.import_file"
     bl_label  = "RE Engine JCNS (.jcns.*)"
     bl_options = {'REGISTER', 'UNDO'}

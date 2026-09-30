@@ -447,7 +447,7 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
 # ---------------------------------------------------------------------------
 
 class JCNS_OT_ExportFile(Operator, ExportHelper):
-    """Export the selected JCNS collection back to a .jcns.102 binary file"""
+    """把选中的 JCNS 集合导出为 .jcns 文件，版本与导入时相同"""
     bl_idname = "jcns.export_file"
     bl_label  = "RE Engine JCNS (.jcns.*)"
     bl_options = {'REGISTER', 'UNDO'}

@@ -844,7 +844,7 @@ def _on_depsgraph_update_fix_duplicates(scene, depsgraph):
 # ---------------------------------------------------------------------------
 
 class JCNS_OT_AddConstraint(Operator):
-    """Add a new blank constraint Empty to the active JCNS collection"""
+    """在当前 JCNS 集合里新增一条空白约束"""
     bl_idname = "jcns.add_constraint"
     bl_label  = "新增约束"
     bl_options = {'REGISTER', 'UNDO'}
@@ -898,7 +898,7 @@ class JCNS_OT_AddConstraint(Operator):
 # ---------------------------------------------------------------------------
 
 class JCNS_OT_DeleteConstraint(Operator):
-    """Remove the selected constraint Empty and reindex remaining Empties"""
+    """删除选中的约束，其余约束重新编号"""
     bl_idname = "jcns.delete_constraint"
     bl_label  = "删除约束"
     bl_options = {'REGISTER', 'UNDO'}
@@ -961,12 +961,7 @@ def _renumber_sections(root_obj, kind):
 
 
 class JCNS_OT_MoveConstraint(Operator):
-    """Move the selected constraint one slot earlier or later in the file
-
-    Order is not cosmetic: constraints are written out in '[N]' order, and where
-    several of them drive the same bone axis the engine keeps the last one, so
-    moving a constraint down past its siblings is what makes it the winner.
-    """
+    """把选中的约束在文件里前移或后移一位。同一骨骼同一轴上有多条约束时只有最后一条生效"""
     bl_idname = "jcns.move_constraint"
     bl_label  = "移动约束"
     bl_options = {'REGISTER', 'UNDO'}
@@ -1020,7 +1015,7 @@ class JCNS_OT_MoveConstraint(Operator):
 
 
 class JCNS_OT_AddSource(Operator):
-    """Add another driving source to the selected constraint"""
+    """给选中的约束再加一个驱动源。多个源的输出相加"""
     bl_idname = "jcns.add_source"
     bl_label  = "新增驱动源"
     bl_options = {'REGISTER', 'UNDO'}
@@ -1055,7 +1050,7 @@ class JCNS_OT_AddSource(Operator):
 
 
 class JCNS_OT_RemoveSource(Operator):
-    """Remove the selected driving source from this constraint"""
+    """删除当前约束里选中的驱动源"""
     bl_idname = "jcns.remove_source"
     bl_label  = "删除驱动源"
     bl_options = {'REGISTER', 'UNDO'}
@@ -1086,12 +1081,7 @@ class JCNS_OT_RemoveSource(Operator):
 
 
 class JCNS_OT_SwapMapToEnds(Operator):
-    """Exchange MapTo start and end on the active source
-
-    Fixes the usual authoring slip: when MapFrom runs downwards the rest pose
-    lands on anchor C, so a deflection written into to_end is what the bone
-    holds while idle instead of what it reaches when the driver bone moves.
-    """
+    """交换当前源的「To 起点」和「To 终点」。映射方向朝下时，静止姿态落在终点，交换后骨骼静止时不再偏转"""
     bl_idname = "jcns.swap_mapto_ends"
     bl_label  = "对调输出首尾"
     bl_options = {'REGISTER', 'UNDO'}
@@ -1118,16 +1108,7 @@ class JCNS_OT_SwapMapToEnds(Operator):
 
 
 class JCNS_OT_MirrorConstraints(Operator):
-    """把选中的约束镜像到骨架的另一侧
-
-    符号由骨骼的局部坐标系决定，并区分驱动量的类型：旋转是赝矢量、位移是普通
-    矢量，两者镜像方式相反；缩放与形变权重不带符号，永不取反。
-
-    目标和来源是否翻转到对侧是两个独立的开关：一条约束里目标骨骼和驱动来源
-    未必都是"有侧"的——比如一根中线骨骼分别被 L_Thigh 和 R_Thigh 各驱动一条
-    约束，这时只该镜像来源，目标保持原样。关闭对应开关的那一侧不要求存在对
-    侧骨骼，也不会被当作"无法确定符号"报错。
-    """
+    """把选中的约束镜像到骨架的另一侧。各轴符号按骨骼的局部坐标系决定，缩放和形变权重不取反。目标和驱动源是否换到对侧由两个开关分别控制，中线骨骼只需镜像另一方"""
     bl_idname = "jcns.mirror_constraints"
     bl_label  = "镜像到另一侧"
     bl_options = {'REGISTER', 'UNDO'}
@@ -1339,12 +1320,7 @@ class JCNS_OT_MirrorConstraints(Operator):
 
 
 class JCNS_OT_SortAnchors(Operator):
-    """把三个锚点按源角度重新排序
-
-    锚点折返时（例如 [-120, 0, -30]），映射按「输入在折点哪一侧」选择线段，
-    于是有一个锚点永远取不到 —— 改它不会有任何效果。排序会把每个输出和它自己
-    的输入一起搬动，曲线形状因此保持不变，只是所有锚点重新可用。
-    """
+    """把三个锚点按输入重新排序，曲线形状不变。锚点折返时有一个锚点取不到，排序后三个都能生效"""
     bl_idname = "jcns.sort_anchors"
     bl_label  = "按源角度排序锚点"
     bl_options = {'REGISTER', 'UNDO'}
@@ -1397,7 +1373,7 @@ def _rebuild_root(context):
 
 
 class JCNS_OT_AddSectionEntry(Operator):
-    """Add a SkinConstraint / Aim / RotExpression entry to the active JCNS file"""
+    """在当前 JCNS 文件里新增一条 Skin / Aim / RotExpr 条目"""
     bl_idname = "jcns.add_section_entry"
     bl_label  = "新增条目"
     bl_options = {'REGISTER', 'UNDO'}
@@ -1451,7 +1427,7 @@ def _active_section(context, kind):
 
 
 class JCNS_OT_SkinSourceAdd(Operator):
-    """Add a source bone to the selected SkinConstraint entry"""
+    """给选中的 Skin 条目加一根源骨骼"""
     bl_idname = "jcns.skin_source_add"
     bl_label  = "新增源骨骼"
     bl_options = {'REGISTER', 'UNDO'}
@@ -1469,7 +1445,7 @@ class JCNS_OT_SkinSourceAdd(Operator):
 
 
 class JCNS_OT_SkinSourceRemove(Operator):
-    """Remove the active source bone from the selected SkinConstraint entry"""
+    """删除选中 Skin 条目里当前的源骨骼"""
     bl_idname = "jcns.skin_source_remove"
     bl_label  = "删除源骨骼"
     bl_options = {'REGISTER', 'UNDO'}
@@ -1488,7 +1464,7 @@ class JCNS_OT_SkinSourceRemove(Operator):
 
 
 class JCNS_OT_SkinNormalizeWeights(Operator):
-    """Scale the selected entry's weights so they sum to 1"""
+    """按比例缩放选中条目的权重，使总和为 1"""
     bl_idname = "jcns.skin_normalize_weights"
     bl_label  = "权重归一化"
     bl_options = {'REGISTER', 'UNDO'}
@@ -1524,8 +1500,7 @@ def _cm_source(context):
 
 
 class JCNS_OT_CMCreate(Operator):
-    """Replace the active source's three-point mapping with a keyframe curve that
-    draws the same lines, editable in the Graph Editor"""
+    """把当前源的三点映射换成画出同样折线的关键帧曲线，可在曲线编辑器里编辑"""
     bl_idname = "jcns.cm_create"
     bl_label  = "改用关键帧曲线"
     bl_options = {'REGISTER', 'UNDO'}
@@ -1552,8 +1527,7 @@ class JCNS_OT_CMCreate(Operator):
 
 
 class JCNS_OT_CMRemove(Operator):
-    """Delete the active source's keyframe curve; it falls back to its three-point
-    mapping (all zero unless set)"""
+    """删除当前源的关键帧曲线，改回三点映射（未设置的锚点为 0）"""
     bl_idname = "jcns.cm_remove"
     bl_label  = "改回三点映射"
     bl_options = {'REGISTER', 'UNDO'}
@@ -1571,8 +1545,7 @@ class JCNS_OT_CMRemove(Operator):
 
 
 class JCNS_OT_CMNormalize(Operator):
-    """Put every handle of the active source's curve back at a third of its
-    segment, keeping its slope — the length is not stored in the file"""
+    """把当前曲线的每个手柄放回所在段长度的三分之一处，斜率不变。手柄长度不写入文件，不影响游戏"""
     bl_idname = "jcns.cm_normalize"
     bl_label  = "规范手柄"
     bl_options = {'REGISTER', 'UNDO'}
@@ -1589,7 +1562,7 @@ class JCNS_OT_CMNormalize(Operator):
 
 
 class JCNS_OT_CMEdit(Operator):
-    """Show the active source's keyframe curve in the Graph Editor"""
+    """在曲线编辑器里打开当前源的关键帧曲线"""
     bl_idname = "jcns.cm_edit"
     bl_label  = "在曲线编辑器中编辑"
     bl_options = {'REGISTER', 'UNDO'}
@@ -1640,7 +1613,7 @@ def _active_cone_constraint(context):
 
 
 class JCNS_OT_ConeInfoAdd(Operator):
-    """Add a ConeDriverInfo (a cone this constraint reads) to the active constraint"""
+    """给当前约束加一个它读取的锥形（ConeDriverInfo）"""
     bl_idname = "jcns.cone_info_add"
     bl_label  = "新增 ConeDriver 输入"
     bl_options = {'REGISTER', 'UNDO'}
@@ -1661,7 +1634,7 @@ class JCNS_OT_ConeInfoAdd(Operator):
 
 
 class JCNS_OT_ConeInfoRemove(Operator):
-    """Remove the active ConeDriverInfo from the active constraint"""
+    """删除当前约束里选中的锥形（ConeDriverInfo）"""
     bl_idname = "jcns.cone_info_remove"
     bl_label  = "删除 ConeDriver 输入"
     bl_options = {'REGISTER', 'UNDO'}
