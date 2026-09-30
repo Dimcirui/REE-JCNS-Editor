@@ -84,14 +84,35 @@ def source_quantity_of(source):
     return source_quantity(v)
 
 
-def source_rest_input(source):
-    """The source value with the bone at rest, assuming an identity rest transform:
-    1 for a scale, 0 otherwise.
+# Set by the Blender side, which knows the skeleton: source -> rest input or None.
+_rest_resolver = None
 
-    The engine reads the whole parent-relative transform, rest included (see
-    jcns_source_read), so a bone with a rest rotation or offset really reads that
-    instead; this module has no skeleton to know it.
+
+def set_rest_resolver(fn):
+    """Install (or, with None, remove) the lookup behind source_rest_input."""
+    global _rest_resolver
+    _rest_resolver = fn
+
+
+def source_rest_input(source):
+    """What the source reads with its bone at rest, in the file's units.
+
+    The engine reads the bone's whole parent-relative transform, rest pose and
+    offset included (measured 2026-09-30, see jcns_source_read), so a bone with a
+    rest rotation or offset does not read 0 at rest.  This module has no skeleton:
+    a dict may carry the value as 'rest_input', otherwise the resolver the Blender
+    side installed is asked, and failing both an identity rest is assumed -- 1 for
+    a scale, 0 otherwise.
     """
+    if isinstance(source, dict) and source.get('rest_input') is not None:
+        return float(source['rest_input'])
+    if _rest_resolver is not None:
+        try:
+            v = _rest_resolver(source)
+        except Exception:                 # a UI read-out must never raise
+            v = None
+        if v is not None:
+            return float(v)
     return 1.0 if source_quantity_of(source) == 'Scale' else 0.0
 
 
@@ -278,6 +299,7 @@ def describe(source):
     at_rest = eval_piecewise(fs, fk, fe, ts, tk, te, r, two_point=tp)
     return {
         'at_rest':    at_rest,
+        'rest_input': r,
         'at_start':   eval_piecewise(fs, fk, fe, ts, tk, te, fs, two_point=tp),
         'at_kink':    eval_piecewise(fs, fk, fe, ts, tk, te, fk, two_point=tp),
         'at_end':     eval_piecewise(fs, fk, fe, ts, tk, te, fe, two_point=tp),
@@ -361,7 +383,7 @@ def plain_description(source, unit="°"):
     fs, fk, fe = g('from_start'), g('from_kink'), g('from_end')
     ts, tk, te = g('to_start'), g('to_kink'), g('to_end')
     tp = source_two_point(source)
-    # The source's value at rest: 0 for a rotation or translation, 1 for a scale.
+    # The source's value at rest; see source_rest_input.
     r = source_rest_input(source)
 
     at_rest = eval_piecewise(fs, fk, fe, ts, tk, te, r, two_point=tp)

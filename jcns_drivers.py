@@ -204,7 +204,9 @@ def _on_load(_dummy):
 
 
 def register():
+    from .jcns_operators import source_rest_input_of
     bpy.app.driver_namespace['jcns_ch'] = jcns_ch
+    get_mapping().set_rest_resolver(source_rest_input_of)
     if _on_load not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(_on_load)
 
@@ -213,4 +215,5 @@ def unregister():
     if _on_load in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_on_load)
     bpy.app.driver_namespace.pop('jcns_ch', None)
+    get_mapping().set_rest_resolver(None)
     clear_channels()

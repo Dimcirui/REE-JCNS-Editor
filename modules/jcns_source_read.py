@@ -138,6 +138,22 @@ def rotation(mode, q, axis):
     raise ValueError(mode)
 
 
+def rest_input(mode, axis, rest, offset_cm):
+    """What a source reads with its bone at rest, in the file's units (degrees,
+    centimetres, or 1 for a scale).
+
+    `mode` is a ReadMode value or identifier, `rest` the bone's parent-relative rest
+    rotation (w, x, y, z), `offset_cm` its rest offset from the parent.
+    """
+    value = read_mode_value(mode)
+    q = read_quantity(value)
+    if q == 'Scale':
+        return 1.0
+    if q == 'Translation':
+        return float(offset_cm[axis])
+    return math.degrees(rotation(ROTATION_MODES.get(value, 'swing_twist'), rest, axis))
+
+
 def position(rest, offset, loc, axis):
     """Component `axis` of the whole parent-relative position: offset + rest * loc."""
     p = qmul(qmul(rest, (0.0, loc[0], loc[1], loc[2])), _conj(rest))

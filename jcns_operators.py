@@ -131,6 +131,32 @@ def _rest_transform(armature_obj, bone_name):
     return (q.w, q.x, q.y, q.z), tuple(m.translation)
 
 
+def source_rest_input_of(sp):
+    """jcns_mapping's rest resolver: what a JCNSSourceProperties reads with its bone
+    at rest, in the file's units, from the target armature's rest pose.
+
+    None when that cannot be known (no armature, bone missing, W axis), so the
+    mapping module falls back to an identity rest.
+    """
+    from . import AXIS_TO_INT, get_jcns_root_from_constraint
+    from . import jcns_drivers
+    from .modules_shim import get_mapping
+    obj = getattr(sp, 'id_data', None)
+    if obj is None or getattr(obj, 'jcns_cns_props', None) is None or not sp.source_bone:
+        return None
+    _, rp = get_jcns_root_from_constraint(obj)
+    arm = rp.target_armature if rp is not None else None
+    if arm is None or arm.type != 'ARMATURE' or sp.source_bone not in arm.data.bones:
+        return None
+    axis = AXIS_TO_INT.get(sp.source_axis, 0)
+    if axis > 2:
+        return None
+    rest, off = _rest_transform(arm, sp.source_bone)
+    per_cm = get_mapping()._to_driver_units((1.0,), 'Translation')[0]   # metres per cm
+    return jcns_drivers.jcns_source_read.rest_input(
+        sp.read_mode, axis, rest, tuple(v / per_cm for v in off))
+
+
 def channel_sources(armature_obj, root_obj, owner):
     """The source dicts of constraint Empty `owner`, each with the 'read' that tells
     the driver how to feed it (see jcns_drivers._CHANNELS).

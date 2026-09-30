@@ -13,7 +13,7 @@ Pixel order matches what Blender expects from ImagePreview.image_pixels_float:
 a flat RGBA float list, row 0 at the BOTTOM.
 """
 
-from jcns_mapping import eval_piecewise, describe
+from jcns_mapping import eval_piecewise, describe, source_rest_input
 import jcns_complex
 
 
@@ -99,6 +99,7 @@ def _bounds(sources):
             continue
         d = describe(s)
         xs.extend(d['from'])
+        xs.append(d['rest_input'])
         ys.extend([d['at_start'], d['at_kink'], d['at_end'], d['at_rest']])
         ys.extend(d['to'])
     x0, x1 = min(xs), max(xs)
@@ -166,7 +167,7 @@ def render(sources, width=180, height=110, samples=None):
         prev = None
         for i in range(samples):
             xv = x0 + (x1 - x0) * i / float(samples - 1)
-            yv = eval_piecewise(fs, fk, fe, ts, tk, te, xv)
+            yv = eval_piecewise(fs, fk, fe, ts, tk, te, xv, two_point=d['two_point'])
             cur = (sx(xv), sy(yv))
             if prev is not None:
                 cv.line(prev[0], prev[1], cur[0], cur[1], colour)
@@ -176,9 +177,11 @@ def render(sources, width=180, height=110, samples=None):
         if x0 <= fk <= x1:
             cv.disc(sx(fk), sy(d['at_kink']), 1, KINK)
 
-        # and the rest pose, which is what the read-out warns about
-        if x0 <= 0.0 <= x1:
-            cv.disc(sx(0.0), sy(d['at_rest']), 2,
+        # and the rest pose, which is what the read-out warns about.  The source
+        # reads its rest transform there, which is 0 only for an identity rest.
+        r = d['rest_input']
+        if x0 <= r <= x1:
+            cv.disc(sx(r), sy(d['at_rest']), 2,
                     REST_BAD if offset else REST_OK)
 
     return cv.flat(), {
@@ -206,6 +209,10 @@ def cache_key(sources, width, height):
             v = (s.get(name, 0.0) if isinstance(s, dict)
                  else getattr(s, name, 0.0))
             parts.append(round(float(v), 4))
+        parts.append(round(source_rest_input(s), 4))
+        tp = (s.get('CurveMode', s.get('update_timing')) if isinstance(s, dict)
+              else getattr(s, 'update_timing', None))
+        parts.append(tp in (0, 1))
     return tuple(parts)
 
 
