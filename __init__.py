@@ -327,6 +327,11 @@ class JCNSConeInfo(PropertyGroup):
     unk_byte3: IntProperty(name="+23", default=0, min=0, max=255)
 
 
+class JCNSIntItem(PropertyGroup):
+    """One integer of a stored list."""
+    value: IntProperty(name="值", default=0)
+
+
 class JCNSHashItem(PropertyGroup):
     """A uint32 hash, held as a signed int, with the name it resolved to."""
     hash: IntProperty(name="哈希", description="按有符号整数显示", default=0)
@@ -791,16 +796,13 @@ class JCNSRootProperties(PropertyGroup):
         description="JSON list of bone names present in this file's hash_list (set at import, used for source_bone autocomplete)",
         default="[]",
     )
-    cached_file_header: StringProperty(
-        name="Cached File Header",
-        description="Base64 of the source file's Tags block + DataInfo header — allows export without the source file present",
-        default="",
-    )
-    cached_section_table: StringProperty(
-        name="Cached Section Table",
-        description="Base64 of section table data from source file",
-        default="",
-    )
+    # Kept so a file can be exported without its source: the section ids in file order
+    # (the order the engine runs them in) and the hash list with its redundant entries.
+    section_order: CollectionProperty(type=JCNSIntItem)
+    header_unknown_bytes: IntVectorProperty(
+        name="文件头未知字节", size=2, default=(0, 0), min=0, max=255,
+        description="文件头里 SectionCount 之后的两个标志字节，取值 0 或 1，具体作用未知")
+    hash_list: CollectionProperty(type=JCNSHashItem)
     # Combining is fixed engine behaviour, so there is no setting for it: sources
     # in one constraint are summed; of several constraints on one channel the
     # last in file order wins.
@@ -1041,6 +1043,7 @@ def _poll_jcns_collection(self, collection):
 
 _classes = [
     JCNSCMKey,                  # groups must register before the groups that reference them
+    JCNSIntItem,
     JCNSHashItem,
     JCNSConeInfo,
     JCNSWeightedSource,

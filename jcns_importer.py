@@ -139,18 +139,13 @@ def do_import(filepath, context, armature_obj=None):
     # Drives the export extension and the writer mode.
     root.jcns_root_props.source_version = parser.version
 
-    # Header and section table, cached for export when the source file is missing.
-    import base64
-    raw = parser.original_bytes
-    root.jcns_root_props.cached_file_header = base64.b64encode(
-        raw[:parser.header['HeaderEnd']]).decode('ascii')
-    orig_sec_off = parser.header.get('SectionTableEntry', 0)
-    sec_count = parser.header.get('SectionTableItemCount', 0)
-    if orig_sec_off > 0 and orig_sec_off + sec_count * 4 <= len(raw):
-        sec_data = raw[orig_sec_off : orig_sec_off + sec_count * 4]
-    else:
-        sec_data = b'\x00\x00\x00\x00'
-    root.jcns_root_props.cached_section_table = base64.b64encode(sec_data).decode('ascii')
+    # What an export without the source file needs besides the entries.
+    root.jcns_root_props.header_unknown_bytes = (parser.header.get('HeaderUnknownByte1', 0),
+                                                 parser.header.get('HeaderUnknownByte2', 0))
+    for section in parser.section_order:
+        root.jcns_root_props.section_order.add().value = section
+    for h in parser.hash_list:
+        root.jcns_root_props.hash_list.add().hash = jcns_targets.to_signed32(h)
 
     root["jcns_source"] = filepath
 

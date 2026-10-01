@@ -3,10 +3,10 @@ jcns_exporter.py
 ----------------
 Export operator for RE Engine JCNS files (v102 and v35 rebuilt, other versions in place).
 
-The source file is re-parsed (or a stub is built from the import cache when it is
-missing), each parsed record is patched with the Blender values, and
-JCNSWriter.build_lossless() writes the result.  Constraint Empties map to parsed
-constraints by position.
+The source file is re-parsed (or a stub is built from what the import stored in the
+root when it is missing), and JCNSWriter.build_lossless() writes the result.  Rebuilt
+versions make every constraint from its Empty; in-place versions patch the record at
+the Empty's position.
 """
 
 import os
@@ -43,64 +43,31 @@ def _get_active_root(context):
     return get_export_root(context)
 
 
-def _build_stub_parser(root_props, empties):
+def _build_stub_parser(root_props):
     """
-    A minimal parser-like object from cached data when the source file is
-    unavailable.  All constraints are treated as new (n_orig = 0).
+    A parser-like object for a file whose source is gone: the generated file header, and
+    the section order and hash list the import stored.  Everything else comes from the
+    Empties, so all constraints are new.
     """
-    import base64, struct
-
-    _ensure_modules_path()
-    hashing_dir = os.path.join(os.path.dirname(__file__), "modules", "hashing")
-    if hashing_dir not in sys.path:
-        sys.path.insert(0, hashing_dir)
-    from mmh3.pymmh3 import hashUTF16
-
-    hash_list = []
-    def _add_name(name):
-        if not name:
-            return
-        h = hashUTF16(name) & 0xFFFFFFFF
-        if h not in hash_list:
-            hash_list.append(h)
-
-    for empty in empties:
-        p = empty.jcns_cns_props
-        _add_name(p.target_bone)
-        for s in p.sources:
-            _add_name(s.source_bone)
-
-    # original_bytes stub: cached header + section table at its offset.  The header
-    # includes the whole DataInfo table, so check_exportable() still sees the
-    # section counts without the source file.
     from jcns_parser import read_header, write_mode
-    tags = base64.b64decode(root_props.cached_file_header)
-    sec_data = base64.b64decode(root_props.cached_section_table)
-    try:
-        header = read_header(tags)
-    except (ValueError, struct.error):
-        header = {}   # cached by an older add-on: counts unknown
-    orig_sec_off = header.get('SectionTableEntry', 0)
-    head_len = max(len(tags), header.get('HeaderEnd', 0))
-    stub_size = max(head_len, orig_sec_off + len(sec_data)) if orig_sec_off > 0 else head_len
-    stub = bytearray(stub_size)
-    stub[:len(tags)] = tags
-    if orig_sec_off > 0:
-        stub[orig_sec_off : orig_sec_off + len(sec_data)] = sec_data
+    from jcns_schema import file_header
+
+    version = _root_version(root_props)
+    orig = file_header(version, tuple(root_props.header_unknown_bytes))
 
     class _StubParser:
         pass
 
     parser = _StubParser()
     parser.constraints = []
-    parser.hash_list = hash_list
-    parser.original_bytes = bytes(stub)
+    parser.hash_list = [h.hash & 0xFFFFFFFF for h in root_props.hash_list]
+    parser.section_order = [s.value for s in root_props.section_order]
+    parser.original_bytes = orig
     parser.filepath = root_props.source_filepath
-    parser.header = header
-    parser.version = header.get('Version', 102)
-    parser.write_mode = write_mode(parser.version)
+    parser.header = read_header(orig, check_layout=False)
+    parser.version = version
+    parser.write_mode = write_mode(version)
     parser.is_stub = True
-    # Filled by _sync_sections_to_parser / _sync_non_range_to_parser when cached.
     parser.aim_constraints    = []
     parser.object_settings    = []
     parser.skin_constraints   = []
@@ -191,12 +158,11 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
         if bad:
             return [f"约束「{o.name}」引用了第 {bad[0]} 个 ConeDriver，但文件里只有 {n} 个。"]
 
-    # ObjectSettings are not editable; the stub gets them back from the cache
+    # ObjectSettings are not editable; the stub gets them back from the root
     if getattr(parser, 'is_stub', False) and root_props.object_settings_json:
         parser.object_settings = [
             {'UnkBytes': bytes.fromhex(o['UnkBytes']), 'UnknownDWORD': o['UnknownDWORD'],
              'ObjectNameHash': o['ObjectNameHash']} for o in json.loads(root_props.object_settings_json)]
-    parser.sections_from_blender = True
     return []
 
 
@@ -528,15 +494,11 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
                 self.report({'ERROR'}, f"重新解析源文件失败：{exc}")
                 return {'CANCELLED'}
         else:
-            if not root_props.cached_file_header:
-                self.report(
-                    {'ERROR'},
-                    f"源文件不存在，也没有缓存的文件头：{source_path}\n"
-                    "请重新导入该文件以重建缓存。"
-                )
+            if not root_props.source_version:
+                self.report({'ERROR'}, f"源文件不存在：{source_path}\n这个根节点是旧版插件导入的，请重新导入该文件。")
                 return {'CANCELLED'}
-            self.report({'WARNING'}, "源文件缺失，将使用导入时缓存的文件头导出。")
-            parser = _build_stub_parser(root_props, empties)
+            self.report({'WARNING'}, "源文件缺失，按 Blender 里的数据重建文件头导出。")
+            parser = _build_stub_parser(root_props)
 
         if parser.write_mode == 'rebuild' and not root_props.sections_cached:
             self.report({'ERROR'}, "这个文件是旧版插件导入的，Blender 里没有重建所需的数据；请重新导入后再导出。")
@@ -610,7 +572,7 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
 
         basename = os.path.basename(out_path)
         if md5_before is None:
-            self.report({'INFO'}, f"已导出「{basename}」（基于缓存文件头，无法比对 MD5）。")
+            self.report({'INFO'}, f"已导出「{basename}」（源文件缺失，无法比对 MD5）。")
         elif md5_before == md5_after:
             self.report({'INFO'}, f"已导出「{basename}」—— 内容无变化（MD5 相同）。")
         else:
