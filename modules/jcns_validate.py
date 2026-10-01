@@ -74,30 +74,6 @@ def check_exportable(parser):
             "（只认 v35 起的布局，或源文件缺失而 Blender 里没有缓存），重建会丢掉它们。"
         )
 
-    # When the source file is missing, the stub parser has RotExpression / Aim /
-    # SkinConstraint / ObjectSettings only if Blender cached them
-    # (parser.sections_from_blender); otherwise a non-zero header count means the
-    # section would be dropped.  ComplexMappingInfo is checked by the writer.
-    if getattr(parser, 'is_stub', False):
-        from_blender = getattr(parser, 'sections_from_blender', False)
-        for field, label, attr in (
-            ('RotExpressionInfoCount', "RotExpression 表", 'rot_expressions'),
-            ('AimConstraintCount',     "Aim 约束表", 'aim_constraints'),
-            ('SkinConstraintCount',    "SkinConstraint 表", 'skin_constraints'),
-            ('ObjectSettingCount',     "ObjectSettings 表", 'object_settings'),
-        ):
-            count = _header_count(parser, field)
-            if field == 'ObjectSettingCount' and len(getattr(parser, attr, [])) == count:
-                continue
-            if from_blender and field != 'ObjectSettingCount':
-                continue
-            if count:
-                problems.append(
-                    f"源文件缺失，只能用缓存的文件头导出；但原文件含有 {count} 条 "
-                    f"{label} 记录（{field}），Blender 里没有缓存它们的内容，导出会"
-                    "整段丢失且不会报错。请找回源文件后再导出。"
-                )
-
     return problems
 
 
@@ -126,6 +102,9 @@ def check_in_place_edits(parser):
         if c.get('ObjectName', '') != c.get('_orig_object_name', ''):
             problems.append(f"{head}：约束 {label} 的目标骨骼被改成了 "
                             f"「{c.get('ObjectName', '')}」（不能改名）。")
+        if c.get('PropertyName', '') != c.get('_orig_property_name', ''):
+            problems.append(f"{head}：约束 {label} 的目标属性被改成了 "
+                            f"「{c.get('PropertyName', '')}」（不能改名）。")
         srcs = c.get('sources', [])
         if len(srcs) != c['_rec']['SourceCount_parent'] or any('_rec' not in s for s in srcs):
             problems.append(f"{head}：约束 {label} 的驱动源数量变了（不能增删驱动源）。")

@@ -1298,6 +1298,7 @@ class JCNS_OT_MirrorConstraints(Operator):
             q.target_axis = p.target_axis
             q.transform_type = p.transform_type
             q.additive, q.flags_other = p.additive, p.flags_other
+            q.target_property, q.property_hash = p.target_property, p.property_hash
             for old in q.sources:
                 jcns_cm.remove(old)
             q.sources.clear()
@@ -1428,6 +1429,11 @@ class JCNS_OT_AddSectionEntry(Operator):
         if self.kind == 'Skin':
             w = p.skin_sources.add()
             w.weight = 1.0
+            from .modules_shim import ensure_path
+            ensure_path()
+            import jcns_sections
+            p.skin_tail = tuple(jcns_sections.skin_default_tail(
+                [{'tail': tuple(o.jcns_cns_props.skin_tail)} for o in section_empties(root, 'Skin') if o is not obj]))
         obj.name = section_empty_name(self.kind, idx, p)
         for o in context.selected_objects:
             o.select_set(False)

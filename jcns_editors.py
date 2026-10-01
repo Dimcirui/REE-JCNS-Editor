@@ -18,6 +18,7 @@ import bpy
 from bpy.types import Panel
 
 from . import jcns_capture
+from .modules_shim import get_targets as _targets
 from .jcns_ui import (_mapping, _fmt, _field_row, _draw_raw_group, _active_source,
                       _skin_table_locked, _target_unit, _curve_icon, _swatch_icon,
                       _cone_names, _wrap_label, _kinds)
@@ -325,9 +326,11 @@ class JCNS_PT_Ed_Ranges(_EditorMain, Panel):
         _field_row(col, "骨骼：", p, "target_bone")
         _field_row(col, "局部轴向：", p, "target_axis")
         _field_row(col, "变换：", p, "transform_type")
+        from .jcns_exporter import _transform_int
+        if p.target_property or _targets().has_property_name(_transform_int(p.transform_type)):
+            _field_row(col, "属性：", p, "target_property")
         _field_row(col, "叠加：", p, "additive")
         from .jcns_drivers import jcns_source_read as sr
-        from .jcns_exporter import _transform_int
         _draw_rules(box, sr.target_rule(_transform_int(p.transform_type), p.additive))
 
         # 导出按 [N] 前缀排列；同一通道上后写的那条覆盖前面的。
@@ -530,8 +533,9 @@ class JCNS_PT_Ed_Ranges_Advanced(_Editor, _Sub, Panel):
         box.label(text="其余标志位：位4、位5 导出时按变换类型重算；位2、位3 只出现在形变和材质目标上", icon='INFO')
         info = box.column(align=True)
         info.label(text="关节组计数 +77：%d（导出时自动校验，不用手动维护）" % p.group_count)
-        if p.property_hash:
-            info.label(text="属性哈希：0x%08X" % (p.property_hash & 0xFFFFFFFF))
+        _draw_raw_group(layout, "哈希覆盖（0 表示按名字计算）", 'PREFERENCES', [
+            (p, [("property_hash", "属性"), ("object_hash", "目标")]),
+        ])
 
 
 class JCNS_PT_Ed_Ranges_Reserved(_Editor, _Sub, Panel):
@@ -602,7 +606,7 @@ class JCNS_PT_Ed_Skin_Reserved(_Editor, _Sub, Panel):
         c = _begin(self.layout, context, banner=False)
         if c is None:
             return
-        _draw_raw_group(c.body, "v102 恒为 0000", 'PREFERENCES', [(c.p, [("skin_tail_hex", "尾部 2 字节")])])
+        _draw_raw_group(c.body, "v102 固定为 0", 'PREFERENCES', [(c.p, [("skin_tail", "尾部 2 字节")])])
 
 
 class JCNS_PT_Ed_Skin_Preview(_PreviewSub, Panel):
@@ -664,7 +668,7 @@ class JCNS_PT_Ed_Aim_Preview(_PreviewSub, Panel):
 
 
 class JCNS_PT_Ed_Aim_Raw(_Editor, _Sub, Panel):
-    bl_label  = "未知与保留字段"
+    bl_label  = "未知字段"
     bl_idname = "JCNS_PT_ed_aim_raw"
     bl_parent_id = "JCNS_PT_ed_aim"
     KIND = 'Aim'
@@ -676,9 +680,6 @@ class JCNS_PT_Ed_Aim_Raw(_Editor, _Sub, Panel):
         p = c.p
         _draw_raw_group(c.body, "未知字段", 'PREFERENCES', [
             (p, [("aim_bytes", "")]),
-        ])
-        _draw_raw_group(c.body, "保留字段（恒为 0）", 'PREFERENCES', [
-            (p, [("aim_tail_hex", "尾部")]), (p, [("aim_target_tail_hex", "目标块尾部")]),
         ])
 
 

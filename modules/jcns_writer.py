@@ -399,9 +399,10 @@ class JCNSWriter:
             SEC_TABLE_START += (4 - rem)
 
         # The table must list every section that has records and none that is empty.
-        sec_count       = hdr['SectionTableItemCount']
-        orig_sec_off    = hdr['SectionTableEntry']
-        orig_table      = list(struct.unpack_from('<%dI' % sec_count, orig, orig_sec_off))
+        orig_table      = getattr(p, 'section_order', None)
+        if orig_table is None:
+            orig_table = struct.unpack_from('<%dI' % hdr['SectionTableItemCount'], orig, hdr['SectionTableEntry'])
+        orig_table      = list(orig_table)
         present = {sid for sid, has in (
             (0, bool(p.constraints)), (1, bool(getattr(p, 'rot_expressions', []))),
             (2, bool(getattr(p, 'skin_constraints', []))), (3, bool(getattr(p, 'aim_constraints', []))),

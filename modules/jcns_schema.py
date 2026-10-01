@@ -201,9 +201,27 @@ HEADER = Struct('Header', [
     F('MaterialConstraintInfoCount',         'H', since(22)),
     F('HeaderUnknownUInt16',                 'H', between(35, 102)),
     F('SectionCount',                        'B', since(29)),
+    # Two flag bytes after SectionCount (0 or 1; not tied to any section) with a zero between.
+    F('HeaderUnknownByte1',                  'B', since(29)),
+    F('HeaderReserved',                      'B', since(29)),
+    F('HeaderUnknownByte2',                  'B', since(29)),
 ], align=16)
 
 HEADER_POINTERS = [f.name for f in HEADER.fields if f.fmt == 'Q']
+
+# Every file's bytes [4:0x50] after the version: the magic, then the Tags block, whose
+# last real entry points at the DataInfo table at 0x50.
+_TAGS = struct.pack('<4s9Q', b'jcns', 0, 0x30, 0, 0x40, 1, 15, 0, 0x50, 0)
+
+
+def file_header(version, unknown_bytes=(0, 0)):
+    """The Tags block and a DataInfo table that is zero but for the two unknown flag bytes: the
+    file header before the writer fills in pointers and counts."""
+    head = bytearray(struct.pack('<I', version) + _TAGS + bytes(HEADER.size(version)))
+    if HEADER.has('HeaderUnknownByte1', version):
+        HEADER.pack_into(head, 0x50, {'HeaderUnknownByte1': unknown_bytes[0],
+                                      'HeaderUnknownByte2': unknown_bytes[1]}, version)
+    return bytes(head)
 
 
 def check_header_layout(header, version, data_entry):

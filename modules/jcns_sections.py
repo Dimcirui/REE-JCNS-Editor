@@ -12,8 +12,8 @@ Derived data:
       with no repeated hash
     * the record's first tail byte and the source-info u32 are one per-file
       constant, usually 5
-    * the other two tail bytes vary per record from v35 on, so they are carried
-      per record
+    * the other two tail bytes vary per record from v35 on, so each record has
+      its own; a new record starts from the file's most common pair
     * ReadJointTable lists the joints whose world matrices the Skin and Aim
       sections read: every skin source, and the parent of every joint they
       write (a result computed in world space is brought back into its parent's
@@ -38,7 +38,7 @@ Derived data:
       (rotated 180 deg between 0.25 and 2.0), types 1 and 4 match no blend model.  Every shipped
       record has 1.0.
     * no derived data besides the target block; an unused up-joint is -1; the
-      12 tail bytes and the target block's 8 tail bytes are carried, not assumed
+      record's 12 tail bytes and the target block's 8 tail bytes are always zero
   RotExpression
     * byte[1] = 0 replaces the rest pose, 48 gives rest * value.  Coefficients (1,1,1) copy
       the source rotation exactly; other coefficients scale each axis for small angles and
@@ -46,7 +46,7 @@ Derived data:
       unexplained)
     * the two hash-index arrays point at the record's inline JointHash /
       SourceJointHash
-    * the map holds one value per file; new entries repeat it
+    * the map holds one value per entry, the same for all of them
 """
 
 import struct
@@ -60,7 +60,7 @@ def skin_editable(parser):
     """(records, meta) from a parsed file.
 
     records: [{'object': hash, 'tail': 2 bytes, 'sources': [{'hash': h, 'weight': w}, ...]}, ...]
-    meta:    {'constant': int, 'tail': the most common 'tail', 'read_joint_table': [hash, ...]}
+    meta:    {'constant': int, 'read_joint_table': [hash, ...]}
     """
     infos = parser.skin_source_infos
     records = []
@@ -73,13 +73,12 @@ def skin_editable(parser):
             srcs.append({'hash': h, 'weight': s['Weight']})
         records.append({'object': sk['ObjectHash'], 'tail': bytes(sk['Tail'][1:3]), 'sources': srcs})
     constant = parser.skin_constraints[0]['Tail'][0] if parser.skin_constraints else 5
-    return records, {'constant': constant, 'tail': skin_default_tail(records),
-                     'read_joint_table': list(parser.read_joint_table)}
+    return records, {'constant': constant, 'read_joint_table': list(parser.read_joint_table)}
 
 
 def skin_default_tail(records):
     """Tail bytes for a new record: the file's most common, else zero."""
-    tails = [r['tail'] for r in records if r.get('tail') is not None]
+    tails = [bytes(r['tail']) for r in records]
     return max(set(tails), key=tails.count) if tails else bytes(2)
 
 
@@ -99,7 +98,7 @@ def skin_parser_form(records, meta):
     const = meta.get('constant', 5) & 0xFF
     skins = [{
         'ObjectHash': r['object'], 'ObjectHashIndex': 0,
-        'Tail': bytes([const]) + bytes(r.get('tail') or meta.get('tail') or bytes(2))[:2].ljust(2, bytes(1)),
+        'Tail': bytes([const]) + bytes(r['tail']),
         'SourceCount': len(r['sources']),
         'sources': [{'SourceRef': index[s['hash']], 'Weight': float(s['weight'])} for s in r['sources']],
     } for r in records]
@@ -201,8 +200,6 @@ def aim_editable(parser):
             'vectors': vecs,
             'rotation_type': body[56],
             'bytes': tuple(body[57:60]),
-            'tail': bytes(body[60:72]),
-            'target_tail': bytes(a['target_body'][4:12]),
         })
     return out
 
@@ -215,14 +212,13 @@ def aim_parser_form(records):
             struct.pack_into('<3f', body, 8 + 12 * k, *v)
         body[56] = r['rotation_type'] & 0xFF
         body[57:60] = bytes(b & 0xFF for b in r['bytes'])
-        body[60:72] = r.get('tail', bytes(12))
         up = r.get('up')
         out.append({
             'JointHashIndex': 0, 'JointHash': r['joint'],
             'UnkJointHashIndex': 0 if up is not None else -1, 'UnkJointHash': up or 0,
             'TargetHashIndex': 0, 'TargetHash': r['target'],
             'inline_body': bytes(body),
-            'target_body': struct.pack('<f', r['influence']) + r.get('target_tail', bytes(8)),
+            'target_body': struct.pack('<f', r['influence']) + bytes(8),
         })
     return out
 
@@ -239,19 +235,12 @@ def rot_editable(parser):
             'rotation': rec['Rotation'], 'scale': rec['Scale'],
             'bytes': tuple(tail[:4]), 'floats': struct.unpack_from('<3f', tail, 4),
         })
-    return out, {'map': list(parser.rot_expression_map)}
+    values = list(parser.rot_expression_map)
+    return out, {'map_value': values[0] if values else 0, 'map_uniform': len(set(values)) <= 1}
 
 
 def rot_parser_form(records, meta, version=102):
-    old_map = meta.get('map', [])
-    n = len(records)
-    if len(old_map) == n:
-        new_map = old_map
-    elif len(set(old_map)) <= 1:
-        new_map = [old_map[0] if old_map else 0] * n
-    else:
-        raise ValueError("RotExpressionMap 在这个文件里不是单一常量，无法为增删的条目推导，"
-                         "RotExpression 的条目数不能改。")
+    new_map = [meta['map_value'] & 0xFF] * len(records)
     out = []
     for r in records:
         tail = bytes(b & 0xFF for b in r['bytes']) + struct.pack('<3f', *r['floats'])

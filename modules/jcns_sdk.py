@@ -293,11 +293,11 @@ def describe(plan, driver_bone, driven_bone):
 def can_append(existing, constraint):
     """(ok, reason): may `constraint`'s source join the existing entry on its channel?
 
-    `existing` is a dict with `additive`, `cone_infos`, `n_sources`, `property_hash`.  A source
+    `existing` is a dict with `additive`, `cone_infos`, `n_sources`, `target_property`.  A source
     only adds to the entry's sum, so the entry must mean the same thing: the same Flags
     bit0 (scale ignores it), no ConeDriver inputs, room for one more source.
     """
-    if existing.get('property_hash'):
+    if existing.get('target_property') or existing.get('property_hash'):
         return False, "目标是材质或形变属性"
     if existing.get('cone_infos'):
         return False, "已有约束带 ConeDriver 输入，多源表达不了"

@@ -18,6 +18,7 @@ from .modules_shim import get_schema, ensure_path
 
 ensure_path()
 import jcns_source_read  # noqa: E402
+import jcns_targets  # noqa: E402
 from . import jcns_cm
 
 _SCHEMA = get_schema()
@@ -138,18 +139,13 @@ def do_import(filepath, context, armature_obj=None):
     # Drives the export extension and the writer mode.
     root.jcns_root_props.source_version = parser.version
 
-    # Header and section table, cached for export when the source file is missing.
-    import base64
-    raw = parser.original_bytes
-    root.jcns_root_props.cached_file_header = base64.b64encode(
-        raw[:parser.header['HeaderEnd']]).decode('ascii')
-    orig_sec_off = parser.header.get('SectionTableEntry', 0)
-    sec_count = parser.header.get('SectionTableItemCount', 0)
-    if orig_sec_off > 0 and orig_sec_off + sec_count * 4 <= len(raw):
-        sec_data = raw[orig_sec_off : orig_sec_off + sec_count * 4]
-    else:
-        sec_data = b'\x00\x00\x00\x00'
-    root.jcns_root_props.cached_section_table = base64.b64encode(sec_data).decode('ascii')
+    # What an export without the source file needs besides the entries.
+    root.jcns_root_props.header_unknown_bytes = (parser.header.get('HeaderUnknownByte1', 0),
+                                                 parser.header.get('HeaderUnknownByte2', 0))
+    for section in parser.section_order:
+        root.jcns_root_props.section_order.add().value = section
+    for h in parser.hash_list:
+        root.jcns_root_props.hash_list.add().hash = jcns_targets.to_signed32(h)
 
     root["jcns_source"] = filepath
 
@@ -239,8 +235,12 @@ def do_import(filepath, context, armature_obj=None):
         f2                      = c.get('UnknownFloat2', (0.0, 0.0))
         p.unknown_float2_x, p.unknown_float2_y = f2
         p.unknown_byte_72       = c.get('UnknownByte72', 0)
-        ph                      = c.get('PropertyHash', 0) & 0xFFFFFFFF
-        p.property_hash         = ph - (1 << 32) if ph >= (1 << 31) else ph
+        p.target_property       = c.get('PropertyName', '')
+        p.property_hash         = jcns_targets.property_hash_override(
+            c.get('PropertyHash', 0) & 0xFFFFFFFF, p.target_property)
+        if jcns_targets.is_direct_target(transform_int):
+            p.object_hash       = jcns_targets.object_hash_override(
+                c.get('ObjectHash', 0) & 0xFFFFFFFF, target_bone)
         for ci in c.get('ConeDriverInfo') or []:
             k = p.cone_infos.add()
             k.cone_index, k.value = ci['ConeDriverIndex'], ci['Value']
@@ -288,13 +288,16 @@ def do_import(filepath, context, armature_obj=None):
         obj, p2 = _section_empty('Skin', idx, 'SINGLE_ARROW', 0.03)
         p2.constraint_type = 'Skin'
         p2.target_bone = _nm(r['object'])
-        p2.skin_tail_hex = r['tail'].hex()
+        p2.skin_tail = tuple(r['tail'])
         for src in r['sources']:
             w = p2.skin_sources.add()
             w.bone, w.weight = _nm(src['hash']), src['weight']
         obj.name = section_empty_name('Skin', idx, p2)
     rp.file_constant = sk_meta['constant']
-    rp.read_joint_table_hex = b''.join(h.to_bytes(4, 'little') for h in sk_meta['read_joint_table']).hex()
+    rp.read_joint_table.clear()
+    for h in sk_meta['read_joint_table']:
+        item = rp.read_joint_table.add()
+        item.hash, item.name = jcns_targets.to_signed32(h), _nm(h)
     aim_recs = aim_editable(parser)
     rp.read_joint_signature_json = (json.dumps(read_joint_signature(sk_recs, [a['joint'] for a in aim_recs]))
                               if sk_meta['read_joint_table'] else '')
@@ -313,8 +316,6 @@ def do_import(filepath, context, armature_obj=None):
             aim_type = 'WORLD_UP'
         p2.aim_type = aim_type
         p2.aim_bytes = a['bytes']
-        p2.aim_tail_hex = a['tail'].hex()
-        p2.aim_target_tail_hex = a['target_tail'].hex()
         obj.name = section_empty_name('Aim', idx, p2)
 
     rot_recs, rot_meta = rot_editable(parser)
@@ -332,7 +333,9 @@ def do_import(filepath, context, armature_obj=None):
         p2.rot_unknown_bytes = (r['bytes'][0], r['bytes'][2], r['bytes'][3])
         p2.rot_gains = r['floats']
         obj.name = section_empty_name('RotExpression', idx, p2)
-    rp.rot_map_hex = bytes(rot_meta['map']).hex()
+    rp.rot_map_value = rot_meta['map_value']
+    if not rot_meta['map_uniform']:
+        print("[JCNS] RotExpressionMap holds different values, using the first (%d)" % rot_meta['map_value'])
 
     rp.cone_drivers_json = json.dumps([{
         'Name': cd['Name'], 'Direction': list(cd['Direction']), 'Matrix': list(cd['Matrix']),

@@ -327,6 +327,17 @@ class JCNSConeInfo(PropertyGroup):
     unk_byte3: IntProperty(name="+23", default=0, min=0, max=255)
 
 
+class JCNSIntItem(PropertyGroup):
+    """One integer of a stored list."""
+    value: IntProperty(name="值", default=0)
+
+
+class JCNSHashItem(PropertyGroup):
+    """A uint32 hash, held as a signed int, with the name it resolved to."""
+    hash: IntProperty(name="哈希", description="按有符号整数显示", default=0)
+    name: StringProperty(name="名称", default="")
+
+
 class JCNSWeightedSource(PropertyGroup):
     """One source bone of a SkinConstraint record."""
     bone: StringProperty(name="骨骼", default="", update=_refresh_preview,
@@ -523,10 +534,23 @@ class JCNSConstraintProperties(PropertyGroup):
         name="未知字节 (+72)", description="具体作用未知。通常为 0（约 99%）",
         default=0, min=0, max=255,
     )
-    # A uint32 hash in a signed IntProperty: values >= 2**31 are stored as their
-    # two's-complement negative (importer), and masked back on export.
+    # Material / RSZ property targets (TransformType 7-11) name a property on the target.
+    target_property: StringProperty(
+        name="目标属性",
+        description="被驱动的属性名，如材质参数名。只有材质、标量类变换用到，骨骼目标留空",
+        default="",
+    )
+    # The two hashes below are overrides in a signed IntProperty (a uint32 above 2**31
+    # is stored as its two's-complement negative); 0 derives the hash from the name.
     property_hash: IntProperty(
-        name="PropertyHash", description="目标属性名的哈希。目标是骨骼时为 0；按有符号整数显示",
+        name="属性哈希覆盖",
+        description="按有符号整数显示。0 表示用目标属性名的哈希；只有属性名对不上哈希时才需要填",
+        default=0,
+    )
+    object_hash: IntProperty(
+        name="目标哈希覆盖",
+        description="只用于形变、材质、标量和命名输出这类按哈希指定的目标。按有符号整数显示。"
+                    "0 表示用目标名的哈希；只有目标名对不上哈希时才需要填",
         default=0,
     )
     # ConeDriverInfo[]: the cones this constraint reads (RE9 uses them heavily)
@@ -578,10 +602,10 @@ class JCNSConstraintProperties(PropertyGroup):
     # --- SkinConstraint (target_bone is the skinned object) ---
     skin_sources: CollectionProperty(type=JCNSWeightedSource)
     active_skin_source_index: IntProperty(default=0)
-    skin_tail_hex: StringProperty(
-        name="尾部 2 字节", default="",
-        description="记录尾部第 2、3 字节（第 1 字节是每文件常量）。v102 恒为 0000，RE9 v35 逐条不同；"
-                    "留空则用本文件最常见的值")
+    skin_tail: IntVectorProperty(
+        name="尾部 2 字节", size=2, default=(0, 0), min=0, max=255,
+        description="记录尾部第 2、3 字节（第 1 字节是每文件常量）。v102 固定为 0，RE9（v35）逐条不同；"
+                    "新建条目取本文件最常见的值")
 
     # --- Aim (target_bone is the aimed joint) ---
     aim_target_bone: StringProperty(name="瞄准目标", default="", update=_refresh_preview,
@@ -603,8 +627,6 @@ class JCNSConstraintProperties(PropertyGroup):
     aim_type: EnumProperty(name="类型", items=AIM_TYPE_ITEMS, default='WORLD_UP',
                            update=_refresh_preview)
     aim_bytes: IntVectorProperty(name="字节 +57..59", size=3, default=(1, 0, 5), min=0, max=255)
-    aim_tail_hex: StringProperty(name="尾部 12 字节", default="00" * 12)
-    aim_target_tail_hex: StringProperty(name="目标块尾部 8 字节", default="00" * 8)
 
     # --- RotExpression (target_bone is the driven joint) ---
     rot_source_bone: StringProperty(name="源骨骼", default="", update=_refresh_preview,
@@ -703,17 +725,12 @@ def file_state(rp):
     from jcns_parser import write_mode
     from .jcns_exporter import _root_version
     v = _root_version(rp)
-    try:
-        rot_map = bytes.fromhex(rp.rot_map_hex or '')
-    except ValueError:
-        rot_map = b''
     return get_kinds().FileState(
         version=v,
         rebuild=write_mode(v) == 'rebuild',
         sections_cached=bool(rp.sections_cached),
         has_armature=rp.target_armature is not None,
         has_read_table=bool(rp.read_joint_signature_json),
-        rot_map_uniform=len(set(rot_map)) <= 1,
     )
 
 
@@ -779,16 +796,13 @@ class JCNSRootProperties(PropertyGroup):
         description="JSON list of bone names present in this file's hash_list (set at import, used for source_bone autocomplete)",
         default="[]",
     )
-    cached_file_header: StringProperty(
-        name="Cached File Header",
-        description="Base64 of the source file's Tags block + DataInfo header — allows export without the source file present",
-        default="",
-    )
-    cached_section_table: StringProperty(
-        name="Cached Section Table",
-        description="Base64 of section table data from source file",
-        default="",
-    )
+    # Kept so a file can be exported without its source: the section ids in file order
+    # (the order the engine runs them in) and the hash list with its redundant entries.
+    section_order: CollectionProperty(type=JCNSIntItem)
+    header_unknown_bytes: IntVectorProperty(
+        name="文件头未知字节", size=2, default=(0, 0), min=0, max=255,
+        description="文件头里 SectionCount 之后的两个标志字节，取值 0 或 1，具体作用未知")
+    hash_list: CollectionProperty(type=JCNSHashItem)
     # Combining is fixed engine behaviour, so there is no setting for it: sources
     # in one constraint are summed; of several constraints on one channel the
     # last in file order wins.
@@ -811,9 +825,14 @@ class JCNSRootProperties(PropertyGroup):
         get=_entry_index_get, set=_entry_index_set,
     )
     file_constant: IntProperty(default=5)
-    read_joint_table_hex: StringProperty(default="")
+    # ReadJointTable: the joints Skin and Aim read, in file order (see jcns_sections).
+    read_joint_table: CollectionProperty(type=JCNSHashItem)
+    read_joint_index: IntProperty(default=0)
     read_joint_signature_json: StringProperty(default="")
-    rot_map_hex: StringProperty(default="")
+    # The RotExpressionMap value shared by every RotExpression entry.
+    rot_map_value: IntProperty(
+        name="RotExpr 映射值", default=0, min=0, max=255,
+        description="每条 RotExpr 条目共用的映射常量；新增条目沿用它。具体作用未知")
     object_settings_json: StringProperty(default="")
     # ConeDriver table (v35+), cached so a rebuild can re-emit it
     cone_drivers_json: StringProperty(default="")
@@ -1024,6 +1043,8 @@ def _poll_jcns_collection(self, collection):
 
 _classes = [
     JCNSCMKey,                  # groups must register before the groups that reference them
+    JCNSIntItem,
+    JCNSHashItem,
     JCNSConeInfo,
     JCNSWeightedSource,
     JCNSSourceProperties,
