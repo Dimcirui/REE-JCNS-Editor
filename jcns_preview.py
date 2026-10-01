@@ -32,9 +32,7 @@ from .modules_shim import get_kinds, get_plan
 
 class PreviewBackend:
     id = ''
-    noun = ''                # what gets created: shown in reports and buttons
-    experimental = False     # the section's semantics are inferred, not measured
-    note = ''                # one line for the panel
+    experimental = False     # the section's semantics are inferred, not measured: the panel marks it
 
     def units(self, root, kind_id):
         """Every unit of this kind under `root`: a list of lists of entries."""
@@ -60,7 +58,7 @@ class PreviewBackend:
 
     def problems(self, entry):
         """Reasons this entry cannot be previewed or will be previewed only in part:
-        [(is_blocking, text), ...].  Shown above the Apply button."""
+        [(is_blocking, text), ...].  Shown in the preview panel under the selected-entry row."""
         return []
 
     @staticmethod
@@ -70,8 +68,6 @@ class PreviewBackend:
 
 class DriverBackend(PreviewBackend):
     id = 'driver'
-    noun = "驱动器"
-    note = "在目标骨骼的通道上生成驱动器；同一通道只有文件里最后一条生效"
 
     def units(self, root, kind_id):
         from . import group_constraints_by_channel
@@ -113,9 +109,7 @@ def _plan_for(kind_id, p):
 
 class ConstraintBackend(PreviewBackend):
     id = 'constraint'
-    noun = "骨骼约束"
     experimental = True
-    note = "用原生骨骼约束预览。效果可能与游戏里不同，只适合用来对照"
 
     def units(self, root, kind_id):
         from . import entries_of
@@ -251,9 +245,9 @@ def previewable_kinds():
 # ---------------------------------------------------------------------------
 
 _SCOPES = [
-    ('ENTRY', "当前条目", "只处理当前选中的条目（Ranges 会连同同一通道上的其它条目）"),
+    ('ENTRY', "选中的条目", "只处理选中的条目（Ranges 连同同一通道上的其它条目）"),
     ('KIND', "本分区", "处理当前分区里的全部条目"),
-    ('FILE', "全部分区", "处理文件里所有能预览的分区"),
+    ('FILE', "整个文件", "处理文件里所有能预览的条目"),
 ]
 
 
@@ -339,21 +333,26 @@ class _PreviewOperator(Operator):
         rp.target_armature.update_tag()
 
         if action == 'apply':
-            msg = "已应用 %d 个预览，覆盖 %d 条条目" % (done, entries)
+            msg = "已应用 %d 个预览（%d 条）" % (done, entries)
             if skipped:
                 msg += "；跳过 %d 个，详见系统控制台" % skipped
                 if skipped == 1:
                     msg += "（%s）" % messages[0]
             self.report({'WARNING' if skipped and not done else 'INFO'}, msg)
         else:
-            self.report({'INFO'}, "已清除 %d 个预览，覆盖 %d 条条目" % (done, entries))
+            self.report({'INFO'}, "已清除 %d 个预览（%d 条）" % (done, entries))
         return {'FINISHED'}
 
 
 class JCNS_OT_PreviewApply(_PreviewOperator):
-    """在骨架上生成预览（Ranges 是驱动器，其余是原生骨骼约束）"""
+    """在骨架上应用预览"""
     bl_idname = "jcns.preview_apply"
     bl_label  = "应用预览"
+
+    @classmethod
+    def description(cls, context, properties):
+        return {'ENTRY': "只应用选中的条目", 'KIND': "应用当前分区的全部条目",
+                'FILE': "应用文件里全部能预览的条目"}.get(properties.scope, cls.__doc__)
 
     def execute(self, context):
         return self._run(context, 'apply')
@@ -363,6 +362,11 @@ class JCNS_OT_PreviewClear(_PreviewOperator):
     """清除预览"""
     bl_idname = "jcns.preview_clear"
     bl_label  = "清除预览"
+
+    @classmethod
+    def description(cls, context, properties):
+        return {'ENTRY': "只清除选中的条目", 'KIND': "清除当前分区的全部条目",
+                'FILE': "清除文件里的全部预览"}.get(properties.scope, cls.__doc__)
 
     def execute(self, context):
         return self._run(context, 'clear')

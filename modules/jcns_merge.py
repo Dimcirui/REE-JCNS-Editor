@@ -130,9 +130,9 @@ def plan_merge(entries, indices, complex_ok=True):
         plan.conflicts.append(Conflict('cone_infos', "带 ConeDriver 输入，多源约束表达不了"))
 
     if any(not m.get('sources') for m in members):
-        plan.conflicts.append(Conflict('sources', "有条目没有驱动源"))
+        plan.conflicts.append(Conflict('sources', "有条目没有驱动"))
     elif sum(len(m['sources']) for m in members) > MAX_SOURCES:
-        plan.conflicts.append(Conflict('sources', "合并后驱动源超过 %d 个" % MAX_SOURCES))
+        plan.conflicts.append(Conflict('sources', "合并后驱动超过 %d 个" % MAX_SOURCES))
 
     if not complex_ok and any(s.get('complex_mapping') for m in members for s in m.get('sources', ())):
         plan.conflicts.append(Conflict('complex_mapping', "含复杂映射曲线，这个文件不支持把它并入别的条目"))

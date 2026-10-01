@@ -50,13 +50,13 @@ def plan_skin(object_bone, sources):
     targets = []
     for bone, w in sources:
         if not bone:
-            warnings.append("有一条源骨骼没填，已忽略")
+            warnings.append("有一条驱动没填，已忽略")
         elif bone == object_bone:
-            warnings.append("源骨骼包含对象骨骼自己，已忽略")
+            warnings.append("驱动里含被驱动自己，已忽略")
         else:
             targets.append((bone, float(w)))
     if not targets:
-        return _no("没有可用的源骨骼")
+        return _no("没有可用的驱动")
     # The engine divides by the weight sum (measured, round 12), Blender's Armature
     # constraint does not.
     total = sum(w for _, w in targets)
@@ -130,9 +130,9 @@ def plan_rot(bone, source, coeffs):
     if not bone:
         return _no("没有被驱动的骨骼")
     if not source:
-        return _no("没有源骨骼")
+        return _no("没有驱动")
     if bone == source:
-        return _no("被驱动的骨骼和源骨骼是同一根")
+        return _no("被驱动和驱动是同一根")
     props = {
         'map_from': 'ROTATION', 'map_to': 'ROTATION',
         'from_rotation_mode': 'AUTO', 'to_euler_order': 'AUTO',

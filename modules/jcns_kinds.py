@@ -35,7 +35,7 @@ class Kind:
 KINDS = (
     Kind('Ranges', "范围约束", 'DRIVER', tab=True, ordered=True, addable=True,
          preview='driver', confidence="实机验证",  # ui-copy: internal
-         summary="源骨骼姿态经三点折线映射，驱动目标骨骼的一个通道"),
+         summary="驱动的读数经折线映射，写到被驱动的一个通道"),
     Kind('Skin', "Skin 蒙皮", 'MOD_VERTEX_WEIGHT', tab=True, ordered=False, addable=True,
          preview='constraint', confidence="高（统计推断）",  # ui-copy: internal
          summary="按蒙皮权重把附件骨钉在变形后的皮肤上"),
@@ -45,7 +45,7 @@ KINDS = (
     Kind('RotExpression', "RotExpr 旋转表达式", 'DRIVER_ROTATIONAL_DIFFERENCE',
          tab=True, ordered=False, addable=True,
          preview='constraint', confidence="中高（统计推断）",  # ui-copy: internal
-         summary="按轴乘系数把源骨骼的旋转拷贝给目标骨骼"),
+         summary="按轴乘系数把驱动的旋转拷贝给被驱动"),
     Kind('Material', "Material 材质", 'MATERIAL', tab=True, ordered=False, addable=False,
          preview='', confidence="低",  # ui-copy: internal
          summary="骨骼驱动材质属性（如 Water_* 骨驱动 Liquid* 材质）"),
@@ -108,9 +108,9 @@ def complex_mapping_editable(st):
     """(editable, reason) for ComplexMapping keyframes: they belong to a Ranges
     source but are rebuilt and cached like the non-Ranges sections."""
     if not st.rebuild:
-        return False, f"v{st.version} 只能就地回写，这部分导出时原样保留"
+        return False, f"v{st.version} 只能就地回写，曲线已锁定"
     if not st.sections_cached:
-        return False, "这个文件是旧版插件导入的，Blender 里没有这部分数据；重新导入后可编辑"
+        return False, "旧版插件导入，重新导入后才能编辑曲线"
     return True, ''
 
 
@@ -126,26 +126,25 @@ def capabilities(kind_id, st):
 
     if k.id == 'Ranges':
         if not st.rebuild:
-            msg = f"v{v} 只能就地修改数值：不能增删约束/驱动源、换顺序或改骨骼名"
+            msg = f"v{v} 只能改数值，不能增删、换序或改骨骼名"
             return _caps(True, False, False, False, msg,
                          add=msg, remove=msg, move=msg)
         return _caps(True, True, True, True)
 
     if k.id in ('Skin', 'Aim', 'RotExpression'):
         if not st.rebuild:
-            msg = f"v{v} 只能就地回写，这部分导出时原样保留"
+            msg = f"v{v} 只能就地回写，已锁定"
             return _caps(False, False, False, False, msg,
                          edit=msg, add=msg, remove=msg, move=msg)
         if not st.sections_cached:
-            msg = "这个文件是旧版插件导入的，Blender 里没有这部分数据；重新导入后可编辑"
+            msg = "旧版插件导入，重新导入后可编辑"
             return _caps(False, False, False, False, msg,
                          edit=msg, add=msg, remove=msg, move=msg)
         # Count changes need derived data re-computed on export.
         block = ''
         if k.id in ('Skin', 'Aim') and st.has_read_table and not st.has_armature:
-            block = ("文件带读取骨表（ReadJointTable），增删条目后要按骨架重算它："
-                     "请先设置目标骨架")
-        move_why = "顺序在游戏里的含义未证实，不提供换序"
+            block = "先设置目标骨架，才能增删条目"
+        move_why = "这一类不提供换序"
         why = {'move': move_why}
         if block:
             why.update(add=block, remove=block)
@@ -153,20 +152,20 @@ def capabilities(kind_id, st):
 
     if k.id == 'Material':
         if not st.rebuild:
-            msg = f"v{v} 就地回写：只能改哈希和变换 ID，不能改骨骼或增删"
+            msg = f"v{v} 只能改哈希和变换 ID"
             return _caps(True, False, False, False, msg,
                          add=msg, remove=msg, move=msg)
         return _caps(True, False, True, False, '',
-                     add="暂不支持新建 Material 条目",
-                     move="顺序在游戏里的含义未证实，不提供换序")
+                     add="暂不支持新建",
+                     move="这一类不提供换序")
 
     if k.id == 'JointExportGraph':
         if not st.rebuild:
-            msg = f"v{v} 就地回写不改 JXG 路径，导出时原样保留"
+            msg = f"v{v} 就地回写，路径已锁定"
             return _caps(False, False, False, False, msg,
                          edit=msg, add=msg, remove=msg, move=msg)
         return _caps(True, False, True, False, '',
-                     add="暂不支持新建 JXG 条目",
+                     add="暂不支持新建",
                      move="JXG 每个文件只有一条")
 
     raise AssertionError(k.id)      # KINDS and this function must stay in step

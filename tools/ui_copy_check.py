@@ -9,6 +9,12 @@ message, docstrings excluded except those of registered JCNS_* classes (Blender
 shows them as tooltips).  A line carrying `# ui-copy: internal` is skipped:
 its strings are never shown.  Prints file:line and the text for each hit; a hit
 still needs a human decision.  Exits 1 when anything was flagged.
+
+A second rule covers the panels' default view (docs/UI_COPY_GUIDE.md, principle 3):
+text drawn by jcns_ui / jcns_editors / jcns_sdk_ops / jcns_merge_ops / jcns_capture
+must not use internal vocabulary.  Classes whose name says Advanced / Raw / Reserved
+are the 高级 panels and exempt; so is a line carrying `# ui-copy: advanced`.
+Tooltips (description=, docstrings) are not checked by this rule.
 """
 import ast
 import glob
@@ -24,6 +30,14 @@ RISKY = re.compile('|'.join((
     '社区', '官方', r'\bfallback\b', r'\braw\b', r'\bcorpus\b', r'\bformerly\b', r'\bunk\w*',
     'Traceback', r'[A-Za-z]:[\\/]',
 )), re.IGNORECASE)
+# Internal vocabulary: allowed in 高级 panels and tooltips, not in what a panel draws by default.
+INTERNAL = re.compile('|'.join((
+    '三点映射', '两点映射', 'ComplexMapping', '关键帧（', r'\+\d\d\b', r'\bbit\d', r'\bFlags\b', '字节',
+    '驱动源', '源骨骼', '驱动骨',
+)))
+DEFAULT_VIEW_FILES = {'jcns_ui.py', 'jcns_editors.py', 'jcns_sdk_ops.py', 'jcns_merge_ops.py',
+                      'jcns_capture.py'}
+ADVANCED_CLASS = re.compile(r'Advanced|_Raw|Reserved')
 CJK = re.compile('[一-鿿]')
 UI_KEYWORDS = {'name', 'description', 'text', 'bl_label', 'bl_description'}
 
@@ -72,6 +86,30 @@ def _ui_strings(tree):
     return out
 
 
+def _drawn_strings(tree):
+    """(node, text) for each constant drawn as a panel's text: label(...) arguments and any
+    text= keyword, outside the 高级 panels."""
+    out = []
+
+    def visit(node, advanced):
+        if isinstance(node, ast.ClassDef) and ADVANCED_CLASS.search(node.name):
+            advanced = True
+        if isinstance(node, ast.Call) and not advanced:
+            args = []
+            if isinstance(node.func, ast.Attribute) and node.func.attr == 'label':
+                args += node.args[:1]
+            args += [kw.value for kw in node.keywords if kw.arg == 'text']
+            for a in args:
+                for c in ast.walk(a):
+                    if isinstance(c, ast.Constant) and isinstance(c.value, str):
+                        out.append(c)
+        for child in ast.iter_child_nodes(node):
+            visit(child, advanced)
+
+    visit(tree, False)
+    return out
+
+
 def check(path):
     src = open(path, encoding='utf-8').read()
     tree = ast.parse(src, path)
@@ -89,6 +127,14 @@ def check(path):
         for m in RISKY.finditer(s):
             hits.append((node.lineno, m.group(0), s.strip().replace('\n', ' ')[:120]))
             break
+    if os.path.basename(path) in DEFAULT_VIEW_FILES:
+        advanced = {i + 1 for i, l in enumerate(src.split('\n')) if 'ui-copy: advanced' in l}
+        for node in _drawn_strings(tree):
+            if node.lineno in internal or node.lineno in advanced:
+                continue
+            m = INTERNAL.search(node.value)
+            if m:
+                hits.append((node.lineno, m.group(0), 'default view: ' + node.value.strip()[:100]))
     return hits
 
 

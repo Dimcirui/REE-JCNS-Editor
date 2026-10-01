@@ -52,9 +52,9 @@ def check_exportable(parser):
         names = [c.get('ObjectName') or '?' for c in parser.constraints
                  if len(c.get('sources', [])) != c.get('SourceCount_parent', 0)]
         problems.append(
-            f"{n} 条约束声明的驱动源数量超过文件实际内容："
+            f"{n} 条约束声明的驱动数量超过文件实际内容："
             f"{'、'.join(names)}。该文件本身已损坏（SourceCount 超出可用数据），"
-            "导出会静默丢失缺失的驱动源。"
+            "导出会丢失缺失的驱动。"
         )
 
     if in_place:
@@ -100,18 +100,18 @@ def check_in_place_edits(parser):
     for i, c in enumerate(cns):
         label = c.get('_orig_object_name') or f'#{i}'
         if c.get('ObjectName', '') != c.get('_orig_object_name', ''):
-            problems.append(f"{head}：约束 {label} 的目标骨骼被改成了 "
+            problems.append(f"{head}：约束 {label} 的被驱动骨骼被改成了 "
                             f"「{c.get('ObjectName', '')}」（不能改名）。")
         if c.get('PropertyName', '') != c.get('_orig_property_name', ''):
             problems.append(f"{head}：约束 {label} 的目标属性被改成了 "
                             f"「{c.get('PropertyName', '')}」（不能改名）。")
         srcs = c.get('sources', [])
         if len(srcs) != c['_rec']['SourceCount_parent'] or any('_rec' not in s for s in srcs):
-            problems.append(f"{head}：约束 {label} 的驱动源数量变了（不能增删驱动源）。")
+            problems.append(f"{head}：约束 {label} 的驱动数量变了（不能增删驱动）。")
             continue
         for s in srcs:
             if s.get('SourceName', '') != s.get('_orig_name', ''):
-                problems.append(f"{head}：约束 {label} 的驱动源「{s.get('_orig_name', '')}」"
+                problems.append(f"{head}：约束 {label} 的驱动「{s.get('_orig_name', '')}」"
                                 f"被改成了「{s.get('SourceName', '')}」（不能改名）。")
             if s.get('ComplexMappingInfoCount', 0) != s['_rec'].get('ComplexMappingInfoCount', 0):
                 problems.append(f"{head}：约束 {label} 的 ComplexMappingInfoCount 变了。")

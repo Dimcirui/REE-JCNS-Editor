@@ -254,7 +254,7 @@ def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
 
     pose_bone = armature_obj.pose.bones.get(target_bone_name)
     if pose_bone is None:
-        return False, "找不到目标骨骼「%s」" % target_bone_name
+        return False, "找不到被驱动骨骼「%s」" % target_bone_name
 
     entry = _DRIVABLE.get(transform_type)
     if entry is None:
@@ -263,7 +263,7 @@ def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
 
     usable = [s for s in sources if s.get('bone')]
     if not usable:
-        return False, "未设置驱动骨骼"
+        return False, "未设置驱动"
 
     # The engine composes q = rest * Rz * Ry * Rx whatever order the file writes the
     # axes in, which is Blender's XYZ Euler mode.
@@ -383,16 +383,16 @@ def register_translation_group(armature_obj, root_obj, bone, chans):
 
 def _apply_translation_bone(armature_obj, root_obj, bone, chans):
     if armature_obj.pose.bones.get(bone) is None:
-        return False, "找不到目标骨骼「%s」" % bone
+        return False, "找不到被驱动骨骼「%s」" % bone
     made = register_translation_group(armature_obj, root_obj, bone, chans)
     if made is None:
-        return False, "没有驱动源或 W 轴暂不支持"
+        return False, "没有驱动，或 W 轴暂不支持"
     keys, sources, reads = made
     for a, key in enumerate(keys):
         expr = _install_driver(armature_obj, bone, 'location', a, key, sources, reads)
         if len(expr) > 255:
             _drop_group_drivers(armature_obj, bone, 'location', _LOCATION_GROUP_TAG)
-            return False, "这根骨的源太多，驱动器表达式超过 255 字符"
+            return False, "这根骨的驱动太多，驱动器表达式超过 255 字符"
     for members in chans.values():
         for e in members:
             e.jcns_cns_props.preview_on = True
@@ -484,7 +484,7 @@ def _apply_bone(armature_obj, root_obj, bone, chans):
     jcns_drivers.  -> (ok, error)"""
     pose_bone = armature_obj.pose.bones.get(bone)
     if pose_bone is None:
-        return False, "找不到目标骨骼「%s」" % bone
+        return False, "找不到被驱动骨骼「%s」" % bone
     made = register_bone_group(armature_obj, root_obj, bone, chans)
     if made is None:
         return False, "W 轴暂不支持"
@@ -494,7 +494,7 @@ def _apply_bone(armature_obj, root_obj, bone, chans):
         expr = _install_driver(armature_obj, bone, 'rotation_euler', a, key, sources, reads)
         if len(expr) > 255:
             _drop_group_drivers(armature_obj, bone)
-            return False, "这根骨的源太多，驱动器表达式超过 255 字符（%d）" % len(expr)
+            return False, "这根骨的驱动太多，驱动器表达式超过 255 字符（%d）" % len(expr)
     for members in chans.values():
         for e in members:
             e.jcns_cns_props.preview_on = True
@@ -720,11 +720,11 @@ def _apply_channel(armature_obj, root_props, members):
         label += "，同通道 %d 条中最后一条生效" % len(members)
 
     if not sources:
-        return False, "没有驱动源", label
+        return False, "没有驱动", label
     if axis == 'W' or any(s['axis_name'] == 'W' for s in sources):
         return False, "W 轴暂不支持", label
     if not bone:
-        return False, "目标骨骼未解析", label
+        return False, "被驱动骨骼未解析", label
 
     ok, err = _apply_driver(
         armature_obj, bone, AXIS_TO_INT.get(axis, 0), sources,
@@ -968,7 +968,7 @@ def _renumber_sections(root_obj, kind):
 
 
 class JCNS_OT_MoveConstraint(Operator):
-    """把选中的约束在文件里前移或后移一位。同一骨骼同一轴上有多条约束时只有最后一条生效"""
+    """把选中的约束在文件里前移或后移一位，同一通道上最后一条生效"""
     bl_idname = "jcns.move_constraint"
     bl_label  = "移动约束"
     bl_options = {'REGISTER', 'UNDO'}
@@ -1022,9 +1022,9 @@ class JCNS_OT_MoveConstraint(Operator):
 
 
 class JCNS_OT_AddSource(Operator):
-    """给选中的约束再加一个驱动源。多个源的输出相加"""
+    """给选中的约束再加一个驱动，各驱动的输出相加"""
     bl_idname = "jcns.add_source"
-    bl_label  = "新增驱动源"
+    bl_label  = "新增驱动"
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -1052,14 +1052,14 @@ class JCNS_OT_AddSource(Operator):
             except (ValueError, IndexError):
                 pass
         cns_obj.name = constraint_name_from_props(idx, p)
-        self.report({'INFO'}, "已新增第 %d 个驱动源。" % len(p.sources))
+        self.report({'INFO'}, "已新增第 %d 个驱动。" % len(p.sources))
         return {'FINISHED'}
 
 
 class JCNS_OT_RemoveSource(Operator):
-    """删除当前约束里选中的驱动源"""
+    """删除当前约束里选中的驱动"""
     bl_idname = "jcns.remove_source"
-    bl_label  = "删除驱动源"
+    bl_label  = "删除驱动"
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -1082,13 +1082,13 @@ class JCNS_OT_RemoveSource(Operator):
             except (ValueError, IndexError):
                 pass
         cns_obj.name = constraint_name_from_props(idx, p)
-        self.report({'INFO'}, "已删除驱动源，剩余 %d 个。" % len(p.sources))
+        self.report({'INFO'}, "已删除驱动，剩余 %d 个。" % len(p.sources))
         return {'FINISHED'}
 
 
 
 class JCNS_OT_SwapMapToEnds(Operator):
-    """交换当前源的「To 起点」和「To 终点」。映射方向朝下时，静止姿态落在终点，交换后骨骼静止时不再偏转"""
+    """交换当前驱动的「To 起点」和「To 终点」，让骨骼静止时不再偏转"""
     bl_idname = "jcns.swap_mapto_ends"
     bl_label  = "对调输出首尾"
     bl_options = {'REGISTER', 'UNDO'}
@@ -1109,34 +1109,29 @@ class JCNS_OT_SwapMapToEnds(Operator):
         sp.to_start, sp.to_end = sp.to_end, sp.to_start
         after = get_mapping().describe(sp)['at_rest']
         self.report({'INFO'},
-                    "输出首尾已对调 —— 静止输出 %+.2f° → %+.2f°" % (before, after))
+                    "输出首尾已对调：静止输出 %+.2f° → %+.2f°" % (before, after))
         return {'FINISHED'}
 
 
 
 class JCNS_OT_MirrorConstraints(Operator):
-    """把选中的约束镜像到骨架的另一侧。各轴符号按骨骼的局部坐标系决定，缩放和形变权重不取反。目标和驱动源是否换到对侧由两个开关分别控制，中线骨骼只需镜像另一方"""
+    """把选中的约束镜像到骨架的另一侧，被驱动和驱动可以分别决定是否换到对侧"""
     bl_idname = "jcns.mirror_constraints"
     bl_label  = "镜像到另一侧"
     bl_options = {'REGISTER', 'UNDO'}
 
     mirror_target: BoolProperty(
-        name="镜像目标骨骼", default=True,
-        description="把目标骨骼也翻转到对侧。关闭后目标骨骼保持不变——用于"
-                    "目标是中线/共享骨骼（没有 L/R 配对），只有驱动来源需要"
-                    "换到对侧的情况")
+        name="镜像被驱动", default=True,
+        description="把被驱动的骨骼换到对侧；被驱动是中线骨骼时关闭")
     mirror_source: BoolProperty(
-        name="镜像驱动来源", default=True,
-        description="把每个驱动来源骨骼也翻转到对侧。关闭后驱动来源保持不变"
-                    "——用于来源是中线/共享骨骼，只有目标需要换到对侧的情况")
+        name="镜像驱动", default=True,
+        description="把每个驱动的骨骼换到对侧；驱动是中线骨骼时关闭")
     overwrite: BoolProperty(
         name="覆盖已有数值", default=False,
-        description="对侧已有同名约束时，用镜像结果覆盖它的数值。"
-                    "约一成的左右配对本来就不对称，所以默认不覆盖")
+        description="对侧已有同名约束时覆盖它的数值，默认不覆盖")
     use_frames: BoolProperty(
         name="从骨架读取符号", default=True,
-        description="按每对骨骼的局部坐标系决定各轴的符号。"
-                    "关闭则使用默认符号（X:+1, Y:-1, Z:-1）")
+        description="按每对骨骼的局部坐标系决定各轴符号；关闭时用默认符号（X:+1, Y:-1, Z:-1）")
 
     @classmethod
     def poll(cls, context):
@@ -1151,11 +1146,8 @@ class JCNS_OT_MirrorConstraints(Operator):
         row.prop(self, "mirror_source")
         layout.prop(self, "use_frames")
         layout.prop(self, "overwrite")
-        col = layout.column(align=True)
-        col.label(text="符号由骨骼坐标系与驱动量类型决定", icon='INFO')
-        col.label(text="旋转与位移镜像方式相反，缩放不变号；来源按 +25 区分")
         if not (self.mirror_target or self.mirror_source):
-            col.label(text="目标与来源至少要镜像一项", icon='ERROR')
+            layout.label(text="被驱动和驱动至少镜像一项", icon='ERROR')
 
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self)
@@ -1166,7 +1158,7 @@ class JCNS_OT_MirrorConstraints(Operator):
         from .modules_shim import get_mirror
 
         if not self.mirror_target and not self.mirror_source:
-            self.report({'ERROR'}, "目标与来源至少要镜像一项。")
+            self.report({'ERROR'}, "被驱动和驱动至少镜像一项。")
             return {'CANCELLED'}
 
         active, _ = get_jcns_constraint(context)
@@ -1340,9 +1332,9 @@ class JCNS_OT_MirrorConstraints(Operator):
 
 
 class JCNS_OT_SortAnchors(Operator):
-    """把三个锚点按输入重新排序，曲线形状不变。锚点折返时有一个锚点取不到，排序后三个都能生效"""
+    """把三个锚点按输入重新排序，曲线形状不变"""
     bl_idname = "jcns.sort_anchors"
-    bl_label  = "按源角度排序锚点"
+    bl_label  = "排序锚点"
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -1452,9 +1444,9 @@ def _active_section(context, kind):
 
 
 class JCNS_OT_SkinSourceAdd(Operator):
-    """给选中的 Skin 条目加一根源骨骼"""
+    """给选中的 Skin 条目加一个驱动"""
     bl_idname = "jcns.skin_source_add"
-    bl_label  = "新增源骨骼"
+    bl_label  = "新增驱动"
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -1470,9 +1462,9 @@ class JCNS_OT_SkinSourceAdd(Operator):
 
 
 class JCNS_OT_SkinSourceRemove(Operator):
-    """删除选中 Skin 条目里当前的源骨骼"""
+    """删除选中 Skin 条目里当前的驱动"""
     bl_idname = "jcns.skin_source_remove"
-    bl_label  = "删除源骨骼"
+    bl_label  = "删除驱动"
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -1525,9 +1517,9 @@ def _cm_source(context):
 
 
 class JCNS_OT_CMCreate(Operator):
-    """把当前源的三点映射换成画出同样折线的关键帧曲线，可在曲线编辑器里编辑"""
+    """把当前驱动的折线映射换成画出同样折线的曲线，可在曲线编辑器里编辑"""
     bl_idname = "jcns.cm_create"
-    bl_label  = "改用关键帧曲线"
+    bl_label  = "改用曲线"
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -1552,9 +1544,9 @@ class JCNS_OT_CMCreate(Operator):
 
 
 class JCNS_OT_CMRemove(Operator):
-    """删除当前源的关键帧曲线，改回三点映射（未设置的锚点为 0）"""
+    """删除当前驱动的曲线，改回折线映射（未设置的锚点为 0）"""
     bl_idname = "jcns.cm_remove"
-    bl_label  = "改回三点映射"
+    bl_label  = "改回折线"
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -1570,7 +1562,7 @@ class JCNS_OT_CMRemove(Operator):
 
 
 class JCNS_OT_CMNormalize(Operator):
-    """把当前曲线的每个手柄放回所在段长度的三分之一处，斜率不变。手柄长度不写入文件，不影响游戏"""
+    """把每个手柄放回所在段长度的三分之一处，斜率不变，不影响游戏里的结果"""
     bl_idname = "jcns.cm_normalize"
     bl_label  = "规范手柄"
     bl_options = {'REGISTER', 'UNDO'}
@@ -1587,7 +1579,7 @@ class JCNS_OT_CMNormalize(Operator):
 
 
 class JCNS_OT_CMEdit(Operator):
-    """在曲线编辑器里打开当前源的关键帧曲线"""
+    """在曲线编辑器里打开当前驱动的曲线"""
     bl_idname = "jcns.cm_edit"
     bl_label  = "在曲线编辑器中编辑"
     bl_options = {'REGISTER', 'UNDO'}
@@ -1616,7 +1608,7 @@ class JCNS_OT_CMEdit(Operator):
                 kp.select_control_point = mine
         graphs = [a for a in context.screen.areas if a.type == 'GRAPH_EDITOR']
         if not graphs:
-            self.report({'INFO'}, "已选中这条曲线；打开一个曲线编辑器（Graph Editor）即可编辑")
+            self.report({'INFO'}, "已选中这条曲线，在曲线编辑器里编辑")
             return {'FINISHED'}
         for area in graphs:
             region = next((r for r in area.regions if r.type == 'WINDOW'), None)
@@ -1638,7 +1630,7 @@ def _active_cone_constraint(context):
 
 
 class JCNS_OT_ConeInfoAdd(Operator):
-    """给当前约束加一个它读取的锥形（ConeDriverInfo）"""
+    """给当前约束加一个它读取的锥形"""
     bl_idname = "jcns.cone_info_add"
     bl_label  = "新增 ConeDriver 输入"
     bl_options = {'REGISTER', 'UNDO'}
@@ -1659,7 +1651,7 @@ class JCNS_OT_ConeInfoAdd(Operator):
 
 
 class JCNS_OT_ConeInfoRemove(Operator):
-    """删除当前约束里选中的锥形（ConeDriverInfo）"""
+    """删除当前约束里选中的锥形"""
     bl_idname = "jcns.cone_info_remove"
     bl_label  = "删除 ConeDriver 输入"
     bl_options = {'REGISTER', 'UNDO'}

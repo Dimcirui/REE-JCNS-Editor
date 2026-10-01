@@ -161,12 +161,11 @@ def resolve_read_joint_table(records, aim_joints, meta, locked, parent=None, nam
     if not orig or locked == read_joint_signature(records, aim_joints):
         return orig, []
     if parent is None:
-        return orig, ["这个文件带读取骨表（ReadJointTable），它由 Skin/Aim 的骨骼按骨架层级推出；"
-                      "改动了 Skin 对象、源骨骼或 Aim 骨骼，需要先在根节点设置目标骨架才能重算。"]
+        return orig, ["改动了 Skin 或 Aim 的骨骼，要先设置目标骨架，才能重算读取骨表。"]
     table, missing = derive_read_joint_table(records, aim_joints, parent)
     if missing:
         label = lambda h: (names or {}).get(h, f"0x{h:08X}")
-        return orig, ["重算读取骨表时目标骨架里找不到这些骨骼：%s"
+        return orig, ["目标骨架里找不到这些骨骼，无法重算读取骨表：%s"
                       % "、".join(label(h) for h in missing[:8])]
     return table, []
 

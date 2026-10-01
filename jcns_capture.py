@@ -22,12 +22,12 @@ import jcns_capture as core  # noqa: E402  (modules/jcns_capture.py)
 # (property, name, description); the source side reads the driving bone, the target side
 # takes the driven bone's pose.
 _FIELD_ITEMS = [
-    ('from_start', "From 起点", "读取驱动骨骼当前的值，填入起点 A 的输入"),
-    ('from_kink',  "From 折点", "读取驱动骨骼当前的值，填入折点 B 的输入"),
-    ('from_end',   "From 终点", "读取驱动骨骼当前的值，填入终点 C 的输入"),
-    ('to_start',   "To 起点",   "按目标骨骼当前姿态算出要写入的值，填入起点 A 的输出"),
-    ('to_kink',    "To 折点",   "按目标骨骼当前姿态算出要写入的值，填入折点 B 的输出"),
-    ('to_end',     "To 终点",   "按目标骨骼当前姿态算出要写入的值，填入终点 C 的输出"),
+    ('from_start', "From 起点", "读取驱动当前的值，填入起点 A 的输入"),
+    ('from_kink',  "From 折点", "读取驱动当前的值，填入折点 B 的输入"),
+    ('from_end',   "From 终点", "读取驱动当前的值，填入终点 C 的输入"),
+    ('to_start',   "To 起点",   "按被驱动当前姿态算出要写入的值，填入起点 A 的输出"),
+    ('to_kink',    "To 折点",   "按被驱动当前姿态算出要写入的值，填入折点 B 的输出"),
+    ('to_end',     "To 终点",   "按被驱动当前姿态算出要写入的值，填入终点 C 的输出"),
 ]
 _FIELD_NAME = {ident: name for ident, name, _desc in _FIELD_ITEMS}
 
@@ -125,13 +125,13 @@ class JCNS_OT_CaptureAnchor(Operator):
         from .jcns_ui import _target_unit
         st = _entry(context)
         if st is None or st.arm is None:
-            self.report({'ERROR'}, "先在「骨架」里设置目标骨架。")
+            self.report({'ERROR'}, "先设置目标骨架。")
             return {'CANCELLED'}
         source_side = self.field.startswith('from_')
         if source_side:
-            role, bone, axis = "驱动骨骼", st.sp.source_bone, st.sp.source_axis
+            role, bone, axis = "驱动", st.sp.source_bone, st.sp.source_axis
         else:
-            role, bone, axis = "目标骨骼", st.p.target_bone, st.p.target_axis
+            role, bone, axis = "被驱动", st.p.target_bone, st.p.target_axis
         if not bone:
             self.report({'ERROR'}, "还没有设置%s。" % role)
             return {'CANCELLED'}
@@ -163,7 +163,7 @@ class JCNS_OT_CaptureAnchor(Operator):
                 warning = ("姿态不是纯绕 %s 轴的旋转，只取了绕该轴的转角，另有 %.1f° 这条约束表达不了。"
                            % (axis, error))
             elif st.p.preview_on:
-                warning = "本条的预览正在驱动目标骨骼，读到的是预览姿态。先清除预览，再摆姿态取值。"
+                warning = "预览正在驱动被驱动骨骼，读到的是预览姿态；先清除预览再取值"
 
         # Assigning runs the property's update, which refreshes an applied preview.
         setattr(st.sp, self.field, round(value, 5) + 0.0)
@@ -234,7 +234,7 @@ def _draw_readout(layout, c, sp):
                            jcns_cm.keys(sp))
     text = "当前读到 %.2f%s → 输出 %.2f%s" % (x, m.source_unit(sp), y, _target_unit(c.p.transform_type))
     if len(c.p.sources) > 1:
-        text += "（仅本源，各源输出相加）"
+        text += "（仅本驱动，各驱动输出相加）"
     layout.label(text=text, icon='EYEDROPPER')
 
 

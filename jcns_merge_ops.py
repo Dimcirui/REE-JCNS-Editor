@@ -4,7 +4,7 @@ Merging Ranges entries on one channel into a single multi-source entry.
 modules/jcns_merge.py decides whether a merge is expressible and what comes out;
 this file carries it out on the Empties (sources, deleted entries, '[N]' names,
 group counts, preview) and draws the two entry points: the Ranges editor's
-sibling block and the channel list.
+shared-channel block and the by-bone view.
 
 Entries are identified by their position in get_constraint_empties(), the same
 order the plans are made in.
@@ -185,9 +185,9 @@ def _active_ranges_entry(context):
 
 
 class JCNS_OT_MergeChannel(Operator):
-    """把当前条目所在通道上的多条约束合并成一条多源约束。合并前只有最后一条生效，合并后各源输出相加，结果可能不同"""
+    """把这个通道上的多条约束合并成一条，各驱动的输出相加"""
     bl_idname = "jcns.merge_channel"
-    bl_label  = "合并为多源约束"
+    bl_label  = "合并本通道"
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -220,12 +220,12 @@ class JCNS_OT_MergeChannel(Operator):
         label = _channel_text(entries[plan.keep])
         keepers = _carry_out(context, root, rp, ordered, entries, [plan])
         _activate(context, keepers[0])
-        self.report({'INFO'}, "%s：%d 条约束合并成 1 条，共 %d 个驱动源。" % (label, n, n_src))
+        self.report({'INFO'}, "%s：%d 条合并成 1 条，共 %d 个驱动。" % (label, n, n_src))
         return {'FINISHED'}
 
 
 class JCNS_OT_MergeAllChannels(Operator):
-    """把文件里每个有多条约束的通道都合并成一条多源约束。合并前每个通道只有最后一条生效，合并后各源输出相加，结果可能不同；不能合并的通道保持原样"""
+    """把文件里每个有多条约束的通道都合并成一条，各驱动的输出相加；不能合并的通道保持原样"""
     bl_idname = "jcns.merge_all_channels"
     bl_label  = "合并所有同通道约束"
     bl_options = {'REGISTER', 'UNDO'}
@@ -241,9 +241,8 @@ class JCNS_OT_MergeAllChannels(Operator):
 
     def draw(self, context):
         col = self.layout.column(align=True)
-        col.label(text="每个通道合并成一条约束，各源输出相加。")
-        col.label(text="合并前只有靠后的一条生效，结果可能与现在不同。")
-        col.label(text="不能合并的通道保持原样。")
+        col.label(text="每个共用通道合并成一条，各驱动输出相加。")
+        col.label(text="结果可能与现在不同；不能合并的保持原样。")
 
     def execute(self, context):
         from . import get_export_root
@@ -288,40 +287,40 @@ class JCNS_OT_MergeAllChannels(Operator):
 # Panel pieces
 # ---------------------------------------------------------------------------
 
-def draw_channel_merge(layout, context, members, rp):
-    """The merge button for the Ranges editor's sibling block.
+def draw_channel_merge(layout, context, members, rp, active):
+    """The Ranges editor's shared-channel block: who else is on the channel and the merge button.
 
     `members` are the Empties on the active entry's channel, in file order.
     """
-    from .jcns_ui import _wrap_label
-    entries = [_describe(e) for e in members]
-    complex_ok = _complex_ok(rp)
-    plan = plan_mod.plan_merge(entries, range(len(entries)), complex_ok)
-    layout.separator()
+    others = [e for e in members if e is not active]
+    last = members[-1] is active
+    row = layout.row()
+    row.alert = not last
+    row.label(text="与 %s 共用通道，只有最后一条生效" % "、".join(_label(e) for e in others),
+              icon='INFO' if last else 'ERROR')
     why = _caps_reason(rp)
     if why:
-        _wrap_label(layout, context, why, icon='LOCKED')
+        layout.label(text=why, icon='LOCKED')
         return
-    _wrap_label(layout, context, "合并后各源输出相加，不再是靠后一条覆盖，结果可能与现在不同。", icon='INFO')
+    entries = [_describe(e) for e in members]
+    plan = plan_mod.plan_merge(entries, range(len(entries)), _complex_ok(rp))
     if not plan.ok:
-        _wrap_label(layout, context, "不能合并：" + plan.reason(), icon='ERROR', alert=True)
-    row = layout.row()
-    row.enabled = plan.ok
-    row.operator("jcns.merge_channel", icon='AUTOMERGE_ON')
+        layout.label(text="不能合并：" + plan.reason(), icon='ERROR')
+        return
+    layout.operator("jcns.merge_channel", text="合并", icon='AUTOMERGE_ON')
 
 
 def draw_merge_all(layout, context, groups, rp):
-    """File-level entry point, for the channel list.  `groups` is
+    """File-level entry point, for the by-bone view.  `groups` is
     group_constraints_by_channel(root)."""
-    from .jcns_ui import _wrap_label
     n = sum(1 for members in groups.values() if len(members) > 1)
     if not n:
         return
     box = layout.box()
-    _wrap_label(box, context, "%d 个通道有多条约束，游戏里每个通道只有最后一条生效。" % n, icon='INFO')
+    box.label(text="%d 个通道有多条约束，只有最后一条生效" % n, icon='INFO')
     why = _caps_reason(rp)
     if why:
-        _wrap_label(box, context, why, icon='LOCKED')
+        box.label(text=why, icon='LOCKED')
         return
     box.operator("jcns.merge_all_channels", icon='AUTOMERGE_ON')
 
@@ -340,8 +339,8 @@ def shared_channel_warning(empties, rp):
                      for g in shared[:3])
     if len(shared) > 3:
         shown += "等"
-    text = "有 %d 个通道被多条约束共用，游戏里每个通道只有最后一条生效：%s。" % (len(shared), shown)
-    return text if _caps_reason(rp) else text + "需要各条叠加时，先合并为多源约束。"
+    text = "有 %d 个通道被多条约束共用，只有最后一条生效：%s。" % (len(shared), shown)
+    return text if _caps_reason(rp) else text + "要叠加请先合并。"
 
 
 # ---------------------------------------------------------------------------

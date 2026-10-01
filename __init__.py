@@ -37,7 +37,7 @@ AXIS_ITEMS = [
     ('X', "X", "骨骼局部 X 轴（或四元数 X 分量）"),
     ('Y', "Y", "骨骼局部 Y 轴（或四元数 Y 分量）"),
     ('Z', "Z", "骨骼局部 Z 轴（或四元数 Z 分量）"),
-    ('W', "W", "四元数 W 分量（暂不支持生成驱动器）"),
+    ('W', "W", "四元数 W 分量（暂不支持预览）"),
 ]
 
 # ConstraintSource_v2 bytes +24 / +25 (the .bt calls them UpdateTimingID and
@@ -90,7 +90,7 @@ INT_TO_INTERPOLATION = {i: ident for ident, i in INTERPOLATION_TO_INT.items()}
 AIM_TYPE_ITEMS = [
     ('WORLD_UP', "0 世界上方向", "上方向取世界 +Y，上方向向量无效"),
     ('UP_JOINT_POSITION', "1 辅助骨位置", "上方向取自己指向辅助骨的方向"),
-    ('UP_JOINT_AXIS', "2 辅助骨轴", "上方向取辅助骨自己的一根局部轴，由「上方向」向量选（(0,1,0) 是 Y 轴，(0,0,1) 是 Z 轴）"),
+    ('UP_JOINT_AXIS', "2 辅助骨轴", "上方向取辅助骨的一根局部轴，由「上方向」向量选（(0,1,0) 是 Y，(0,0,1) 是 Z）"),
     ('UP_DIRECTION', "3 指定上方向", "上方向取「上方向」向量给出的世界方向"),
     ('SHORTEST_ARC', "4 最短弧", "从静止姿态朝目标转最短弧，不约束翻滚"),
     ('SHORTEST_ARC_PARENT', "5 父骨最短弧", "从父骨朝向起朝目标转最短弧，丢掉静止姿态"),
@@ -120,7 +120,7 @@ TRANSFORM_ITEMS = [
     ('Material_2D',    "Material_2D",    "10：可能驱动材质二维参数"),
     ('Scalar',         "Scalar",         "11：可能驱动标量参数"),
     ('Unknown_12',     "Unknown_12",     "12：具体作用未知"),
-    ('AxisRotation',   "AxisRotation",   "13：单轴旋转，绕所写的轴。每根骨只保留一个：骨上最后一条 13/14 条目生效，与它写哪个轴无关。常用于辅助骨、布料偏移骨（约 20% 的条目）"),
+    ('AxisRotation',   "AxisRotation",   "13：单轴旋转，绕所写的轴；每根骨只有骨上最后一条 13/14 条目生效，常用于辅助骨、布料偏移骨"),
     ('AxisRotation_14', "AxisRotation_14", "14：与 13 行为相同，两者的区别未知。常用于围裙、触手"),
     ('UnkRotation_15', "UnkRotation_15", "15：具体作用未知"),
     ('UnkRotation_16', "UnkRotation_16", "16：具体作用未知"),
@@ -350,16 +350,16 @@ class JCNSSourceProperties(PropertyGroup):
 
     source_bone: StringProperty(
         update=_refresh_preview,
-        name="驱动骨骼",
-        description="读取旋转的骨骼。可输入以搜索本文件哈希表中的骨骼名",
+        name="驱动",
+        description="被读取的驱动骨骼，可输入以搜索本文件哈希表里的骨骼名",
         default="",
         search=_search_source_bone,
         search_options={'SUGGESTION'},
     )
     source_axis: EnumProperty(
         update=_refresh_preview,
-        name="源局部轴向",
-        description="读取驱动骨骼的哪个局部轴。JCNS 的映射定义在骨骼自身的局部坐标系上，不是全局坐标系",
+        name="驱动局部轴向",
+        description="读取驱动的哪个局部轴，在骨骼自身的局部坐标系里，不是全局坐标系",
         items=AXIS_ITEMS,
         default='X',
     )
@@ -367,12 +367,12 @@ class JCNSSourceProperties(PropertyGroup):
     # --- Three-point piecewise mapping ---
     from_start: FloatProperty(
         update=_refresh_preview_values,
-        name="From 起点", description="起点 A 的输入，即源骨读数。单位随读取方式：度、厘米或倍数",
+        name="From 起点", description="起点 A 的输入，即驱动的读数，单位随读取方式：度、厘米或倍数",
         default=0.0, precision=2, step=10,
     )
     from_kink: FloatProperty(
         update=_refresh_preview_values,
-        name="From 折点", description="折点 B 的输入，两段斜率在这里分界。两点模式下忽略；落在起点与终点之外时整条源失效",
+        name="From 折点", description="折点 B 的输入，两段在这里分界；不启用折点时忽略，落在起点与终点之外时整个驱动失效",
         default=0.0, precision=2, step=10,
     )
     from_end: FloatProperty(
@@ -382,12 +382,12 @@ class JCNSSourceProperties(PropertyGroup):
     )
     to_start: FloatProperty(
         update=_refresh_preview_values,
-        name="To 起点", description="起点 A 的输出。单位随变换类型：度、厘米或倍数",
+        name="To 起点", description="起点 A 的输出，单位随变换类型：度、厘米或倍数",
         default=0.0, precision=2, step=10,
     )
     to_kink: FloatProperty(
         update=_refresh_preview_values,
-        name="To 折点", description="折点 B 的输出。两点模式下忽略",
+        name="To 折点", description="折点 B 的输出，不启用折点时忽略",
         default=0.0, precision=2, step=10,
     )
     to_end: FloatProperty(
@@ -412,40 +412,31 @@ class JCNSSourceProperties(PropertyGroup):
     # +24 and +25 default to 3, the most common value.
     three_point: BoolProperty(
         update=_refresh_preview_values,
-        name="三点映射",
-        description=(
-            "映射曲线的形状（曲线模式的位1）。关：两点直线，忽略折点；开：三点折线，折点生效。"
-            "三点模式下折点落在起点与终点之外时，整条源失效，输出恒为 0"
-        ),
+        name="启用折点",
+        description="关：起点到终点一条直线；开：经过折点的两段折线（曲线模式位1），折点落在起点与终点之外时输出恒为 0",
         default=True,
     )
     curve_mode_extra: IntProperty(
         name="曲线模式其余位",
-        description="曲线模式去掉位1 的其余位：位0 不起作用（多与 Flags 位0 一致），位2 及以上只出现在材质目标上，含义未知",
+        description="曲线模式去掉位1 的其余位：位0 不起作用，位2 及以上只出现在材质目标上，含义未知",
         default=1, min=0, max=253,
     )
     read_mode: EnumProperty(
         update=_refresh_preview,
         name="读取方式 (+25)",
-        description=(
-            "从源骨读什么。读的是相对父骨的完整变换，静止姿态和静止偏移都算在内；"
-            "这里决定取位置、缩放，还是旋转的哪一种分解"
-        ),
+        description="从驱动读什么：相对父骨的完整变换（含静止姿态和静止偏移），决定取位置、缩放，还是旋转的哪一种分解",
         items=_READ_MODE_ITEMS,
         default=_READ_MODE_DEFAULT,
     )
     euler_order: EnumProperty(
         update=_refresh_preview,
         name="欧拉顺序 (+27)",
-        description=(
-            "读取方式为「欧拉角」时的分解顺序，其他读取方式忽略它。"
-            "通常跟着源骨走：大腿、手多为 YZX，手指为 ZXY，翅膀为 ZYX，其余为 XYZ"
-        ),
+        description="读取方式为「欧拉角」时的分解顺序，通常跟着驱动骨走：大腿、手多为 YZX，手指为 ZXY，翅膀为 ZYX，其余为 XYZ",
         items=_EULER_ORDER_ITEMS,
         default='XYZ',
     )
     complex_mapping_info_count: IntProperty(
-        name="复杂映射数", description="复杂映射曲线的关键帧数，导出时按曲线重算",
+        name="曲线关键点数", description="曲线的关键点数，导出时按曲线重算",
         default=0, min=0, max=65535,
     )
     unknown_uint16_22: IntProperty(
@@ -454,13 +445,12 @@ class JCNSSourceProperties(PropertyGroup):
     )
     interpolation: EnumProperty(
         update=_refresh_preview_values,
-        name="插值 (+28)",
-        description="每段映射怎么过渡。线性：直线；缓入缓出：每段按三次平滑阶跃。"
-                    "1 和 2 极少见，含义未知",
+        name="插值",
+        description="每段映射的过渡方式（+28）：0 线性，3 缓入缓出，1 和 2 极少见",
         items=INTERPOLATION_ITEMS, default='LINEAR',
     )
     complex_mapping_flag: IntProperty(
-        name="复杂映射标记 (+29)", description="有复杂映射时为 1，导出时自动设置；没有复杂映射时也可能是 2（只见于材质目标）",
+        name="曲线标记 (+29)", description="有曲线时为 1，导出时自动设置；材质目标上可能为 2",
         default=0, min=0, max=255,
     )
     # ComplexMapping: the curve is an F-Curve on the constraint Empty, on the custom
@@ -487,8 +477,8 @@ class JCNSConstraintProperties(PropertyGroup):
     # --- Identity ---
     target_bone: StringProperty(
         update=_refresh_preview,
-        name="目标骨骼",
-        description="被驱动的骨骼。可输入以搜索本文件哈希表中的骨骼名",
+        name="被驱动",
+        description="被驱动的骨骼，可输入以搜索本文件哈希表里的骨骼名",
         default="",
         search=_search_target_bone,
         search_options={'SUGGESTION'},
@@ -504,8 +494,8 @@ class JCNSConstraintProperties(PropertyGroup):
     # --- Axis (editable — exported back to file) ---
     target_axis: EnumProperty(
         update=_refresh_preview,
-        name="目标局部轴向",
-        description="驱动目标骨骼的哪个局部轴。JCNS 的映射定义在骨骼自身的局部坐标系上，不是全局坐标系",
+        name="被驱动局部轴向",
+        description="驱动被驱动的哪个局部轴，在骨骼自身的局部坐标系里，不是全局坐标系",
         items=AXIS_ITEMS,
         default='X',
     )
@@ -518,7 +508,7 @@ class JCNSConstraintProperties(PropertyGroup):
     )
     flags_other: IntProperty(
         name="其余标志位",
-        description="Flags 去掉位0 的其余位：位4 驱动骨骼、位5 驱动量为旋转（v36/v102 导出时按变换类型重算），"
+        description="Flags 去掉位0 的其余位：位4 目标是骨骼、位5 目标是旋转（v36/v102 导出时按变换类型重算），"
                     "位2、位3 只出现在形变和材质目标上，含义未知",
         default=0x30, min=0, max=254,
     )
@@ -544,13 +534,13 @@ class JCNSConstraintProperties(PropertyGroup):
     # is stored as its two's-complement negative); 0 derives the hash from the name.
     property_hash: IntProperty(
         name="属性哈希覆盖",
-        description="按有符号整数显示。0 表示用目标属性名的哈希；只有属性名对不上哈希时才需要填",
+        description="按有符号整数显示，0 表示用目标属性名的哈希，只有属性名对不上哈希时才需要填",
         default=0,
     )
     object_hash: IntProperty(
         name="目标哈希覆盖",
-        description="只用于形变、材质、标量和命名输出这类按哈希指定的目标。按有符号整数显示。"
-                    "0 表示用目标名的哈希；只有目标名对不上哈希时才需要填",
+        description="只用于按哈希指定的目标（形变、材质、标量、命名输出），按有符号整数显示，"
+                    "0 表示用目标名的哈希，只有名字对不上哈希时才需要填",
         default=0,
     )
     # ConeDriverInfo[]: the cones this constraint reads (RE9 uses them heavily)
@@ -559,15 +549,12 @@ class JCNSConstraintProperties(PropertyGroup):
     # +77 is the joint-group count (jcns_writer.tail_group_counts derives it); +74 and +75
     # are unknown, and +75 defaults to its most common value.
     unknown_byte_74: IntProperty(name="+74", default=0, min=0, max=255,
-                                 description="具体作用未知。通常为 0（约 99%），跟着目标骨走")
+                                 description="具体作用未知。通常为 0（约 99%），跟着被驱动骨走")
     unknown_byte_75: IntProperty(name="+75", default=2, min=0, max=255,
                                  description="具体作用未知。通常为 2（约 69%），同一文件里同一变换类型一般只用一个值")
     group_count: IntProperty(
         name="关节组计数",
-        description=(
-            "紧跟在这条后面、与它同目标同变换同 Flags 的连续条目数（组首填 N，组员填 0）。"
-            "引擎把整组输出都写到组首条目的目标骨上。导出时自动校验：整份文件分组合法就照写，否则全部重算"
-        ),
+        description="紧跟在这条后面、与它同目标同变换同 Flags 的连续条目数（组首填 N，组员填 0），导出时自动校验",
         default=0, min=0, max=255)
     reserved_tail: IntVectorProperty(name="保留字节 +76 / +78 / +79", size=3, default=(0, 0, 0), min=0, max=255,
                                      description="固定为 0")
@@ -604,24 +591,22 @@ class JCNSConstraintProperties(PropertyGroup):
     active_skin_source_index: IntProperty(default=0)
     skin_tail: IntVectorProperty(
         name="尾部 2 字节", size=2, default=(0, 0), min=0, max=255,
-        description="记录尾部第 2、3 字节（第 1 字节是每文件常量）。v102 固定为 0，RE9（v35）逐条不同；"
-                    "新建条目取本文件最常见的值")
+        description="记录尾部第 2、3 字节：v102 固定为 0，RE9（v35）逐条不同，新建条目取本文件最常见的值")
 
     # --- Aim (target_bone is the aimed joint) ---
     aim_target_bone: StringProperty(name="瞄准目标", default="", update=_refresh_preview,
                                     search=_search_target_bone)
-    aim_up_bone: StringProperty(name="辅助骨骼", description="AimVectorPointJoint；留空表示不使用",
+    aim_up_bone: StringProperty(name="辅助骨骼", description="辅助骨骼（AimVectorPointJoint），留空表示不使用",
                                 default="", update=_refresh_preview, search=_search_target_bone)
     aim_influence: FloatProperty(name="影响", default=1.0, update=_refresh_preview_values)
     aim_offset: FloatVectorProperty(name="旋转偏移", size=3, default=(0.0, 0.0, 0.0), subtype='EULER',
-                                    description="XYZ 欧拉角（弧度，Rz·Ry·Rx）。瞄准结果再右乘这个旋转，"
-                                                "等于让本地瞄准轴偏离目标；只有类型 2 用到",
+                                    description="XYZ 欧拉角（弧度），右乘在瞄准结果后面，让本地瞄准轴偏离目标；只有类型 2 用到",
                                     update=_refresh_preview)
     aim_axis: FloatVectorProperty(name="瞄准轴", size=3, default=(1.0, 0.0, 0.0),
-                                  description="目标骨自己的局部轴，指向瞄准目标",
+                                  description="被驱动自己的局部轴，指向瞄准目标",
                                   update=_refresh_preview_values)
     aim_up_axis: FloatVectorProperty(name="上方向轴", size=3, default=(0.0, 1.0, 0.0),
-                                     description="目标骨自己的局部轴，与「上」对齐")
+                                     description="被驱动自己的局部轴，与上方向对齐")
     aim_up_dir: FloatVectorProperty(name="上方向", size=3, default=(0.0, 1.0, 0.0),
                                     description="类型 3 下是世界里的上方向；类型 2 下选辅助骨的哪根局部轴；类型 0 无效")
     aim_type: EnumProperty(name="类型", items=AIM_TYPE_ITEMS, default='WORLD_UP',
@@ -629,7 +614,7 @@ class JCNSConstraintProperties(PropertyGroup):
     aim_bytes: IntVectorProperty(name="字节 +57..59", size=3, default=(1, 0, 5), min=0, max=255)
 
     # --- RotExpression (target_bone is the driven joint) ---
-    rot_source_bone: StringProperty(name="源骨骼", default="", update=_refresh_preview,
+    rot_source_bone: StringProperty(name="驱动", default="", update=_refresh_preview,
                                     search=_search_target_bone)
     rot_rotation: FloatVectorProperty(name="Rotation", size=4, default=(0.0, 0.0, 0.0, 1.0))
     rot_scale: FloatVectorProperty(name="Scale", size=4, default=(0.0, 0.0, 0.0, 1.0))
@@ -649,7 +634,7 @@ class JCNSConstraintProperties(PropertyGroup):
     # --- Driver state (runtime, not exported) ---
     preview_on: BoolProperty(
         name="已应用预览",
-        description="此条目当前是否在骨架上生成了预览（Ranges 是驱动器，其余是原生骨骼约束）",
+        description="此条目是否已在骨架上应用预览",
         default=False,
     )
     # The pose bone currently carrying this entry's preview constraint, so a
@@ -768,9 +753,9 @@ def _browser_kind_items():
 
 class JCNSRootProperties(PropertyGroup):
     """On the root Empty of a JCNS collection (one root plus N entry Empties)."""
-    # Pose-driven constraint creation (jcns_sdk_ops.py)
+    # Constraint baking (jcns_sdk_ops.py)
     sdk_driver_bone: StringProperty(
-        name="驱动骨", description="摆姿势建约束里被读取的骨骼",
+        name="驱动", description="烘焙约束里被读取的骨骼",
         default="", search=search_bones, search_options={'SUGGESTION'},
     )
     sdk_driven_bones: CollectionProperty(type=JCNSSDKBone)
@@ -818,6 +803,12 @@ class JCNSRootProperties(PropertyGroup):
         name="分区", description="在列表里显示哪一类条目",
         items=_browser_kind_items(), default='Ranges',
     )
+    browser_view: EnumProperty(
+        name="视图", description="Ranges 条目按条目排列，或按被驱动的骨骼分组",
+        items=[('ENTRY', "按条目", "按文件顺序列出条目"),
+               ('BONE', "按骨骼", "按被驱动的骨骼分组，列出每个通道和上面的条目")],
+        default='ENTRY',
+    )
     entry_index: IntProperty(
         name="条目", description="列表里当前条目的序号；读写的是当前活动物体",
         get=_entry_index_get, set=_entry_index_set,
@@ -830,7 +821,7 @@ class JCNSRootProperties(PropertyGroup):
     # The RotExpressionMap value shared by every RotExpression entry.
     rot_map_value: IntProperty(
         name="RotExpr 映射值", default=0, min=0, max=255,
-        description="每条 RotExpr 条目共用的映射常量；新增条目沿用它。具体作用未知")
+        description="每条 RotExpr 条目共用的映射常量，新增条目沿用；具体作用未知")
     object_settings_json: StringProperty(default="")
     # ConeDriver table (v35+), cached so a rebuild can re-emit it
     cone_drivers_json: StringProperty(default="")
