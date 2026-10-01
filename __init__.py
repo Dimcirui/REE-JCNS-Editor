@@ -639,6 +639,9 @@ class JCNSConstraintProperties(PropertyGroup):
 # Property Group: attached to the root Empty of each JCNS collection
 # ---------------------------------------------------------------------------
 
+from .jcns_sdk_ops import JCNSSDKKey, search_bones
+
+
 def _armature_poll(self, obj):
     return obj.type == 'ARMATURE'
 
@@ -748,6 +751,17 @@ def _browser_kind_items():
 
 class JCNSRootProperties(PropertyGroup):
     """On the root Empty of a JCNS collection (one root plus N entry Empties)."""
+    # Pose-driven constraint creation (jcns_sdk_ops.py)
+    sdk_driver_bone: StringProperty(
+        name="驱动骨", description="摆姿势建约束里被读取的骨骼",
+        default="", search=search_bones, search_options={'SUGGESTION'},
+    )
+    sdk_driven_bone: StringProperty(
+        name="被驱动骨", description="摆姿势建约束里被驱动的骨骼",
+        default="", search=search_bones, search_options={'SUGGESTION'},
+    )
+    sdk_keys: CollectionProperty(type=JCNSSDKKey)
+    sdk_key_index: IntProperty(default=0)
     source_filepath: StringProperty(
         name="源文件",
         description="原始 .jcns 文件的绝对路径",
@@ -1000,6 +1014,7 @@ from . import jcns_preview
 from . import jcns_capture
 from . import jcns_cm
 from . import jcns_merge_ops
+from . import jcns_sdk_ops
 
 def _poll_jcns_collection(self, collection):
     """Restrict the active-collection picker to collections that hold a JCNS root."""
@@ -1013,6 +1028,7 @@ _classes = [
     JCNSWeightedSource,
     JCNSSourceProperties,
     JCNSConstraintProperties,
+    JCNSSDKKey,
     JCNSRootProperties,
 ]
 
@@ -1040,9 +1056,11 @@ def register():
     jcns_drivers.register()
     jcns_cm.register()
     jcns_merge_ops.register()
+    jcns_sdk_ops.register()
 
 
 def unregister():
+    jcns_sdk_ops.unregister()
     jcns_merge_ops.unregister()
     jcns_cm.unregister()
     jcns_drivers.unregister()
