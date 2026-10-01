@@ -3,15 +3,19 @@ Pose-driven constraint creation (the Set Driven Key workflow) on the Blender sid
 the key list stored on the root, the panel, and the operators that record poses and
 turn them into Ranges entries.
 
-modules/jcns_sdk.py decides what a set of keys means; this file collects the poses and
-rest transforms from the target armature the way jcns_capture does and lands the plan
-on the file's entries.  A key keeps both bones' raw pose basis, so how it is read is
-only decided when constraints are generated.
+modules/jcns_sdk.py decides what a set of keys means and owns every rule about the key list;
+this file collects the poses and rest transforms from the target armature the way
+jcns_capture does and lands the plan on the file's entries.  Every list edit loads the
+stored keys into core.Key objects, applies the pure function and stores the result back, so
+the operators cannot drift from the rules the offline tests check.  A key keeps the raw pose
+basis of each bone recorded in it, so how it is read is only decided when constraints are
+generated.
 """
 
 import bpy
 from bpy.types import Operator, Panel, PropertyGroup, UIList
-from bpy.props import BoolProperty, EnumProperty, FloatVectorProperty
+from bpy.props import (BoolProperty, CollectionProperty, EnumProperty, FloatVectorProperty,
+                       StringProperty)
 
 from .modules_shim import ensure_path
 
@@ -20,18 +24,26 @@ import jcns_sdk as core  # noqa: E402  (modules/jcns_sdk.py)
 import jcns_source_read as sr  # noqa: E402
 
 
+class JCNSSDKSnapshot(PropertyGroup):
+    """The pose basis of one bone at one recorded key."""
+    bone: StringProperty()
+    loc: FloatVectorProperty(size=3, default=(0.0, 0.0, 0.0))
+    rot: FloatVectorProperty(size=4, default=(1.0, 0.0, 0.0, 0.0))
+    scale: FloatVectorProperty(size=3, default=(1.0, 1.0, 1.0))
+
+
 class JCNSSDKKey(PropertyGroup):
-    """The pose basis of both bones at one recorded key."""
-    driver_loc: FloatVectorProperty(size=3, default=(0.0, 0.0, 0.0))
-    driver_rot: FloatVectorProperty(size=4, default=(1.0, 0.0, 0.0, 0.0))
-    driver_scale: FloatVectorProperty(size=3, default=(1.0, 1.0, 1.0))
-    driven_loc: FloatVectorProperty(size=3, default=(0.0, 0.0, 0.0))
-    driven_rot: FloatVectorProperty(size=4, default=(1.0, 0.0, 0.0, 0.0))
-    driven_scale: FloatVectorProperty(size=3, default=(1.0, 1.0, 1.0))
+    """One recording.  Its name comes from its place in the list, so none is stored."""
+    snapshots: CollectionProperty(type=JCNSSDKSnapshot)
+
+
+class JCNSSDKBone(PropertyGroup):
+    """A driven bone; `name` is the bone's name."""
+    name: StringProperty()
 
 
 def search_bones(self, context, edit_text):
-    """Bone names of the target armature for the two bone fields; `self` is the root's properties."""
+    """Bone names of the target armature for the driver field; `self` is the root's properties."""
     arm = self.target_armature
     if arm is None or arm.type != 'ARMATURE':
         return []
@@ -40,7 +52,7 @@ def search_bones(self, context, edit_text):
 
 
 # ---------------------------------------------------------------------------
-# Reading and writing poses
+# Reading and writing poses and keys
 # ---------------------------------------------------------------------------
 
 def snapshot(pose_bone):
@@ -54,16 +66,40 @@ def apply_pose(pose_bone, loc, rot, scale):
     pose_bone.matrix_basis = Matrix.LocRotScale(Vector(loc), Quaternion(rot), Vector(scale))
 
 
-def _store(key, side, pose_bone):
-    loc, rot, scale = snapshot(pose_bone)
-    setattr(key, side + '_loc', loc)
-    setattr(key, side + '_rot', rot)
-    setattr(key, side + '_scale', scale)
+def pose_of(snap):
+    return core.Pose(tuple(snap.loc), tuple(snap.rot), tuple(snap.scale))
 
 
-def _pose_of(key, side):
-    return core.Pose(tuple(getattr(key, side + '_loc')), tuple(getattr(key, side + '_rot')),
-                     tuple(getattr(key, side + '_scale')))
+def load_keys(rp):
+    return [core.Key({s.bone: pose_of(s) for s in k.snapshots}) for k in rp.sdk_keys]
+
+
+def store_keys(rp, keys, index=None):
+    """Replace the stored keys with `keys`; `index` becomes the selected key (clamped)."""
+    if index is None:
+        index = rp.sdk_key_index
+    rp.sdk_keys.clear()
+    for key in keys:
+        item = rp.sdk_keys.add()
+        for bone, pose in key.poses.items():
+            s = item.snapshots.add()
+            s.bone, s.loc, s.rot, s.scale = bone, pose.loc, pose.quat, pose.scale
+    rp.sdk_key_index = max(0, min(index, len(keys) - 1))
+
+
+def ensure_keys(rp):
+    """The list always holds the start and the end key."""
+    keys = load_keys(rp)
+    if core.ensure_ends(keys):
+        store_keys(rp, keys)
+
+
+def key_index(rp):
+    return max(0, min(rp.sdk_key_index, len(rp.sdk_keys) - 1))
+
+
+def driven_names(rp):
+    return [b.name for b in rp.sdk_driven_bones]
 
 
 def _rest_of(arm, name):
@@ -74,44 +110,69 @@ def _rest_of(arm, name):
     return core.BoneRest(rest, offset, mesh_rest_scale(bone), parent_scale)
 
 
+def _remove_driven(rp, name):
+    """Take a bone off the driven list; its snapshots go too unless it is the driver."""
+    for i, b in enumerate(rp.sdk_driven_bones):
+        if b.name == name:
+            rp.sdk_driven_bones.remove(i)
+            break
+    rp.sdk_driven_index = max(0, min(rp.sdk_driven_index, len(rp.sdk_driven_bones) - 1))
+    if name != rp.sdk_driver_bone:
+        keys = load_keys(rp)
+        core.forget_bone(keys, name)
+        store_keys(rp, keys)
+
+
 # ---------------------------------------------------------------------------
 # State shared by the panel and the operators
 # ---------------------------------------------------------------------------
 
 class _State:
-    def __init__(self, root, rp, arm, driver, driven):
+    def __init__(self, root, rp, arm, driver, driven, cm_ok, cm_reason):
         self.root, self.rp, self.arm, self.driver, self.driven = root, rp, arm, driver, driven
+        self.cm_ok, self.cm_reason = cm_ok, cm_reason
 
     def keys(self):
-        return [core.Key(_pose_of(k, 'driver'), _pose_of(k, 'driven')) for k in self.rp.sdk_keys]
+        return load_keys(self.rp)
 
-    def bones(self):
-        return self.arm.pose.bones[self.driver], self.arm.pose.bones[self.driven]
+    def names(self):
+        """The driver, then the driven bones."""
+        return [self.driver] + self.driven
+
+    def rests(self):
+        return {n: _rest_of(self.arm, n) for n in self.names()}
 
 
 def _state(context):
     """(_State, '') when keys can be recorded and read, else (None, why not)."""
-    from . import get_export_root
+    from . import file_state, get_export_root
+    from .modules_shim import get_kinds
     root, rp = get_export_root(context)
     if rp is None:
         return None, ""
     arm = rp.target_armature
     if arm is None or arm.type != 'ARMATURE':
         return None, "先在上面的「骨架」里设置目标骨架。"
-    for role, name in (("驱动骨", rp.sdk_driver_bone), ("被驱动骨", rp.sdk_driven_bone)):
-        if not name:
-            return None, "先设置%s。" % role
+    driver, driven = rp.sdk_driver_bone, driven_names(rp)
+    if not driver:
+        return None, "先设置驱动骨。"
+    if driver not in arm.pose.bones:
+        return None, "目标骨架「%s」里没有驱动骨「%s」。" % (arm.name, driver)
+    if not driven:
+        return None, "先添加被驱动骨。"
+    for name in driven:
         if name not in arm.pose.bones:
-            return None, "目标骨架「%s」里没有%s「%s」。" % (arm.name, role, name)
-    if rp.sdk_driver_bone == rp.sdk_driven_bone:
-        return None, "驱动骨和被驱动骨不能是同一根骨骼。"
-    return _State(root, rp, arm, rp.sdk_driver_bone, rp.sdk_driven_bone), ""
+            return None, "目标骨架「%s」里没有被驱动骨「%s」。" % (arm.name, name)
+    if driver in driven:
+        return None, "被驱动骨里有驱动骨「%s」，先把它移出被驱动骨列表。" % driver
+    cm_ok, cm_reason = get_kinds().complex_mapping_editable(file_state(rp))
+    return _State(root, rp, arm, driver, driven, cm_ok, cm_reason), ""
 
 
 def _previewed(st):
-    """Names among the two bones that a preview is driving, so their recorded poses would
+    """Names among the bones involved that a preview is driving, so their recorded poses would
     be the preview's rather than the user's."""
-    names = {st.driver, st.driven}
+    names = set(st.names())
     hit = set()
     anim = st.arm.animation_data
     if anim is not None:
@@ -131,14 +192,17 @@ def _previewed(st):
 _READ_ITEMS = [('AUTO', "自动", "按各键之间变化最大的量选取：旋转，其次位置，其次缩放")] + [
     (ident, "%d %s" % (value, name), desc) for value, ident, name, _q, desc in sr.READ_MODES]
 _AXIS_ITEMS = [('AUTO', "自动", "取变化最大的轴"), ('X', "X", ""), ('Y', "Y", ""), ('Z', "Z", "")]
+_TANGENT_ITEMS = [('LINEAR', "线性", "相邻关键帧之间走直线"),
+                  ('SMOOTH', "平滑", "每个关键帧处的切线随前后趋势变化，曲线不会冲出相邻关键帧的取值范围")]
 
 
-def make_plan(st, read_mode='AUTO', source_axis='AUTO'):
+def make_plan(st, read_mode='AUTO', source_axis='AUTO', tangent='LINEAR'):
     """The plan for the recorded keys, with the preview warning added."""
     plan = core.plan_keys(
-        st.keys(), _rest_of(st.arm, st.driver), _rest_of(st.arm, st.driven),
+        st.keys(), st.driver, st.driven, st.rests(),
         read_mode=None if read_mode == 'AUTO' else read_mode,
-        axis=None if source_axis == 'AUTO' else 'XYZ'.index(source_axis))
+        axis=None if source_axis == 'AUTO' else 'XYZ'.index(source_axis),
+        tangent=tangent, complex_ok=st.cm_ok, complex_reason=st.cm_reason)
     hit = _previewed(st)
     if hit:
         plan.warnings.append("「%s」上有预览在驱动，记录的姿态会被预览改写。先清除预览，再摆姿势记录"
@@ -147,7 +211,7 @@ def make_plan(st, read_mode='AUTO', source_axis='AUTO'):
 
 
 # ---------------------------------------------------------------------------
-# Operators
+# Operators: bones
 # ---------------------------------------------------------------------------
 
 class _SDKOperator(Operator):
@@ -164,8 +228,18 @@ class _SDKOperator(Operator):
         return st
 
 
+class _RootOperator(Operator):
+    """Operators that edit the key list and need only the file."""
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        from . import get_export_root
+        return get_export_root(context)[1] is not None
+
+
 class JCNS_OT_SDKPickBone(Operator):
-    """把姿态模式下的活动骨填进这个骨骼栏"""
+    """取姿态模式下选中的骨骼：驱动骨栏取活动骨并把其余选中骨加入被驱动骨，被驱动骨栏添加所有选中骨"""
     bl_idname = "jcns.sdk_pick_bone"
     bl_label  = "取选中骨"
     bl_options = {'REGISTER', 'UNDO'}
@@ -182,57 +256,205 @@ class JCNS_OT_SDKPickBone(Operator):
         from . import get_export_root
         root, rp = get_export_root(context)
         arm = rp.target_armature
-        pb = context.active_pose_bone
-        if pb is None:
-            self.report({'ERROR'}, "先进入姿态模式，选中一根骨骼。")
-            return {'CANCELLED'}
-        if pb.id_data != arm:
+        active = context.active_pose_bone
+        if active is not None and active.id_data != arm:
             self.report({'ERROR'}, "活动骨不在目标骨架「%s」里。" % arm.name)
             return {'CANCELLED'}
-        setattr(rp, 'sdk_driver_bone' if self.role == 'DRIVER' else 'sdk_driven_bone', pb.name)
+        picked = [pb for pb in (context.selected_pose_bones or []) if pb.id_data == arm]
+        if active is not None and active.name not in [pb.name for pb in picked]:
+            picked.append(active)
+        if not picked:
+            self.report({'ERROR'}, "先进入姿态模式，选中骨骼。")
+            return {'CANCELLED'}
+        if self.role == 'DRIVER':
+            if active is None:
+                self.report({'ERROR'}, "先把要作驱动骨的骨骼设为活动骨。")
+                return {'CANCELLED'}
+            rp.sdk_driver_bone = active.name
+            if active.name in driven_names(rp):
+                _remove_driven(rp, active.name)
+        added = 0
+        for pb in picked:
+            if pb.name != rp.sdk_driver_bone and pb.name not in driven_names(rp):
+                rp.sdk_driven_bones.add().name = pb.name
+                rp.sdk_driven_index = len(rp.sdk_driven_bones) - 1
+                added += 1
+        if self.role == 'DRIVEN' and not added:
+            self.report({'WARNING'}, "选中的骨骼已经在被驱动骨列表里，或就是驱动骨。")
+            return {'CANCELLED'}
         return {'FINISHED'}
 
 
-class JCNS_OT_SDKKeyAdd(_SDKOperator):
-    """把驱动骨和被驱动骨现在的姿态记成一个键"""
-    bl_idname = "jcns.sdk_key_add"
-    bl_label  = "记录当前姿态"
+_bone_items = []
+
+
+def _driven_candidates(self, context):
+    """Bones of the target armature that are not the driver or already driven."""
+    from . import get_export_root
+    global _bone_items
+    root, rp = get_export_root(context)
+    arm = rp.target_armature if rp is not None else None
+    taken = set(driven_names(rp)) | {rp.sdk_driver_bone} if rp is not None else set()
+    names = sorted(b.name for b in arm.data.bones if b.name not in taken) if arm is not None else []
+    _bone_items = [(n, n, "") for n in names] or [('', "没有可添加的骨骼", "")]
+    return _bone_items
+
+
+class JCNS_OT_SDKDrivenAdd(Operator):
+    """从目标骨架的骨骼里选一根，加入被驱动骨列表"""
+    bl_idname = "jcns.sdk_driven_add"
+    bl_label  = "添加被驱动骨"
+    bl_options = {'REGISTER', 'UNDO'}
+    bl_property = "bone"
+
+    bone: EnumProperty(name="骨骼", items=_driven_candidates)
+
+    @classmethod
+    def poll(cls, context):
+        from . import get_export_root
+        root, rp = get_export_root(context)
+        return rp is not None and rp.target_armature is not None
+
+    def invoke(self, context, event):
+        context.window_manager.invoke_search_popup(self)
+        return {'RUNNING_MODAL'}
 
     def execute(self, context):
-        st = self.state(context)
-        if st is None:
+        from . import get_export_root
+        root, rp = get_export_root(context)
+        if not self.bone:
             return {'CANCELLED'}
-        key = st.rp.sdk_keys.add()
-        driver, driven = st.bones()
-        _store(key, 'driver', driver)
-        _store(key, 'driven', driven)
-        st.rp.sdk_key_index = len(st.rp.sdk_keys) - 1
+        rp.sdk_driven_bones.add().name = self.bone
+        rp.sdk_driven_index = len(rp.sdk_driven_bones) - 1
         return {'FINISHED'}
 
 
-class JCNS_OT_SDKKeyRemove(Operator):
-    """删除列表里选中的键"""
-    bl_idname = "jcns.sdk_key_remove"
-    bl_label  = "删除"
+class JCNS_OT_SDKDrivenRemove(Operator):
+    """把列表里选中的骨骼移出被驱动骨，各键里它的记录一并删除"""
+    bl_idname = "jcns.sdk_driven_remove"
+    bl_label  = "移出被驱动骨"
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context):
         from . import get_export_root
         root, rp = get_export_root(context)
-        return rp is not None and len(rp.sdk_keys) > 0
+        return rp is not None and len(rp.sdk_driven_bones) > 0
 
     def execute(self, context):
         from . import get_export_root
         root, rp = get_export_root(context)
-        i = min(rp.sdk_key_index, len(rp.sdk_keys) - 1)
-        rp.sdk_keys.remove(i)
-        rp.sdk_key_index = max(0, min(i, len(rp.sdk_keys) - 1))
+        i = max(0, min(rp.sdk_driven_index, len(rp.sdk_driven_bones) - 1))
+        _remove_driven(rp, rp.sdk_driven_bones[i].name)
+        return {'FINISHED'}
+
+
+# ---------------------------------------------------------------------------
+# Operators: keys
+# ---------------------------------------------------------------------------
+
+class JCNS_OT_SDKKeysInit(_RootOperator):
+    """建立键Start 和键End"""
+    bl_idname = "jcns.sdk_keys_init"
+    bl_label  = "建立键Start 和键End"
+
+    def execute(self, context):
+        from . import get_export_root
+        ensure_keys(get_export_root(context)[1])
+        return {'FINISHED'}
+
+
+class JCNS_OT_SDKKeyAdd(_RootOperator):
+    """在键End 前面插入一个新键，内容复制自键End"""
+    bl_idname = "jcns.sdk_key_add"
+    bl_label  = "插入键"
+
+    def execute(self, context):
+        from . import get_export_root
+        rp = get_export_root(context)[1]
+        keys = load_keys(rp)
+        store_keys(rp, keys, core.insert_key(keys))
+        return {'FINISHED'}
+
+
+class JCNS_OT_SDKKeyRemove(_RootOperator):
+    """删除列表里选中的键。键Start 和键End 不能删除"""
+    bl_idname = "jcns.sdk_key_remove"
+    bl_label  = "删除键"
+
+    @classmethod
+    def poll(cls, context):
+        from . import get_export_root
+        rp = get_export_root(context)[1]
+        return rp is not None and core.can_delete(key_index(rp), len(rp.sdk_keys))[0]
+
+    def execute(self, context):
+        from . import get_export_root
+        rp = get_export_root(context)[1]
+        keys = load_keys(rp)
+        store_keys(rp, keys, core.delete_key(keys, key_index(rp)))
+        return {'FINISHED'}
+
+
+class _KeyMove(_RootOperator):
+    STEP = 0
+
+    @classmethod
+    def poll(cls, context):
+        from . import get_export_root
+        rp = get_export_root(context)[1]
+        return rp is not None and core.move_target(key_index(rp), len(rp.sdk_keys), cls.STEP) is not None
+
+    def execute(self, context):
+        from . import get_export_root
+        rp = get_export_root(context)[1]
+        keys = load_keys(rp)
+        new = core.move_key(keys, key_index(rp), self.STEP)
+        if new is None:
+            return {'CANCELLED'}
+        store_keys(rp, keys, new)
+        return {'FINISHED'}
+
+
+class JCNS_OT_SDKKeyUp(_KeyMove):
+    """把选中的键在中间键里上移一位。键Start 和键End 的位置固定"""
+    bl_idname = "jcns.sdk_key_up"
+    bl_label  = "上移键"
+    STEP = -1
+
+
+class JCNS_OT_SDKKeyDown(_KeyMove):
+    """把选中的键在中间键里下移一位。键Start 和键End 的位置固定"""
+    bl_idname = "jcns.sdk_key_down"
+    bl_label  = "下移键"
+    STEP = 1
+
+
+class JCNS_OT_SDKKeyRecord(_SDKOperator):
+    """把骨骼现在的姿态记进选中的键。不指定骨骼时记录所有涉及的骨骼"""
+    bl_idname = "jcns.sdk_key_record"
+    bl_label  = "记录"
+
+    bone: StringProperty(name="骨骼", default="", description="只记录这一根骨骼。留空则记录全部")
+
+    def execute(self, context):
+        st = self.state(context)
+        if st is None:
+            return {'CANCELLED'}
+        if self.bone and self.bone not in st.names():
+            self.report({'ERROR'}, "「%s」不是驱动骨，也不在被驱动骨列表里。" % self.bone)
+            return {'CANCELLED'}
+        ensure_keys(st.rp)
+        keys, i = st.keys(), key_index(st.rp)
+        for name in ([self.bone] if self.bone else st.names()):
+            loc, rot, scale = snapshot(st.arm.pose.bones[name])
+            core.record(keys, i, name, core.Pose(loc, rot, scale))
+        store_keys(st.rp, keys, i)
         return {'FINISHED'}
 
 
 class JCNS_OT_SDKKeyGoto(_SDKOperator):
-    """把驱动骨和被驱动骨摆成选中键的姿态"""
+    """把选中的键里已记录的骨骼摆回记录时的姿态"""
     bl_idname = "jcns.sdk_key_goto"
     bl_label  = "跳到此键"
 
@@ -245,15 +467,19 @@ class JCNS_OT_SDKKeyGoto(_SDKOperator):
         st = self.state(context)
         if st is None:
             return {'CANCELLED'}
-        key = st.rp.sdk_keys[min(st.rp.sdk_key_index, len(st.rp.sdk_keys) - 1)]
-        for pb, side in zip(st.bones(), ('driver', 'driven')):
-            apply_pose(pb, getattr(key, side + '_loc'), getattr(key, side + '_rot'),
-                       getattr(key, side + '_scale'))
+        key = st.keys()[key_index(st.rp)]
+        todo = [n for n in st.names() if n in key.poses]
+        if not todo:
+            self.report({'ERROR'}, "这个键里还没有记录任何骨骼。")
+            return {'CANCELLED'}
+        for name in todo:
+            p = key.poses[name]
+            apply_pose(st.arm.pose.bones[name], p.loc, p.quat, p.scale)
         return {'FINISHED'}
 
 
 class JCNS_OT_SDKPoseReset(_SDKOperator):
-    """把驱动骨和被驱动骨的姿态清零，回到静止姿态"""
+    """把驱动骨和所有被驱动骨的姿态清零，回到静止姿态"""
     bl_idname = "jcns.sdk_pose_reset"
     bl_label  = "回到静止姿态"
 
@@ -261,8 +487,8 @@ class JCNS_OT_SDKPoseReset(_SDKOperator):
         st = self.state(context)
         if st is None:
             return {'CANCELLED'}
-        for pb in st.bones():
-            apply_pose(pb, (0.0, 0.0, 0.0), (1.0, 0.0, 0.0, 0.0), (1.0, 1.0, 1.0))
+        for name in st.names():
+            apply_pose(st.arm.pose.bones[name], (0.0, 0.0, 0.0), (1.0, 0.0, 0.0, 0.0), (1.0, 1.0, 1.0))
         return {'FINISHED'}
 
 
@@ -271,7 +497,7 @@ class JCNS_OT_SDKPoseReset(_SDKOperator):
 # ---------------------------------------------------------------------------
 
 def _fill_source(sp, c, driver):
-    from . import INT_TO_AXIS
+    from . import INT_TO_AXIS, jcns_cm
     sp.source_bone = driver
     sp.source_axis = INT_TO_AXIS[c.source_axis]
     sp.read_mode = sr.read_mode_id(c.read_mode)
@@ -281,6 +507,13 @@ def _fill_source(sp, c, driver):
         setattr(sp, field, round(v, 5) + 0.0)
     for field, v in zip(('to_start', 'to_kink', 'to_end'), c.to_anchors):
         setattr(sp, field, round(v, 5) + 0.0)
+    if c.complex:
+        # As for any keyframed source: the curve holds the mapping, the anchors stay zero,
+        # the record count and flag are what an imported curve carries.
+        sp.cm_cache.clear()
+        jcns_cm.set_keys(sp, list(c.keys))
+        sp.complex_mapping_info_count = len(c.keys)
+        sp.complex_mapping_flag = 1
 
 
 def land(context, st, plan, append):
@@ -300,7 +533,7 @@ def land(context, st, plan, append):
     for c in plan.constraints:
         transform = TRANSFORM_TYPE_MAP[c.transform_type]
         axis = INT_TO_AXIS[c.axis]
-        channel = (st.driven, transform, axis)
+        channel = (c.driven, transform, axis)
         members = group_constraints_by_channel(st.root).get(channel, [])
         if any(e.jcns_cns_props.preview_on for e in members) and channel not in was_previewed:
             was_previewed.append(channel)
@@ -310,7 +543,7 @@ def land(context, st, plan, append):
             hp = members[-1].jcns_cns_props
             ok, _why = core.can_append({'additive': hp.additive, 'cone_infos': len(hp.cone_infos),
                                         'n_sources': len(hp.sources), 'target_property': hp.target_property,
-                                        'property_hash': hp.property_hash}, c)
+                                        'property_hash': hp.property_hash}, c, complex_ok=st.cm_ok)
             host = members[-1] if ok else None
         if host is not None:
             p = host.jcns_cns_props
@@ -325,7 +558,7 @@ def land(context, st, plan, append):
             if last is None:
                 raise RuntimeError("根节点不属于任何集合。")
             p = last.jcns_cns_props
-            p.target_bone, p.transform_type, p.target_axis = st.driven, transform, axis
+            p.target_bone, p.transform_type, p.target_axis = c.driven, transform, axis
             p.additive = c.additive
             _fill_source(p.sources[0], c, st.driver)
             created += 1
@@ -341,22 +574,21 @@ def land(context, st, plan, append):
     return created, appended, last
 
 
+_ROW_ICONS = {'head': 'CONSTRAINT', 'bone': 'BONE_DATA', 'line': 'BLANK1', 'error': 'INFO'}
+
+
 def _plan_lines(layout, context, plan, st):
     from .jcns_ui import _wrap_label
+    for kind, text in core.describe_rows(plan, st.driver):
+        _wrap_label(layout, context, text, icon=_ROW_ICONS[kind])
     if plan.errors:
-        for text in plan.errors:
-            _wrap_label(layout, context, text, icon='INFO')
         return
-    lines = core.describe(plan, st.driver, st.driven)
-    _wrap_label(layout, context, lines[0], icon='CONSTRAINT')
-    for line in lines[1:]:
-        _wrap_label(layout, context, line, icon='BLANK1')
     for text in plan.warnings:
         _wrap_label(layout, context, text, icon='ERROR', alert=True)
 
 
 class JCNS_OT_SDKGenerate(_SDKOperator):
-    """按记录的键生成 Ranges 约束：驱动骨的读数映射到被驱动骨变化了的通道，静止姿态不在键里时会给出提示"""
+    """按记录的键生成 Ranges 约束：驱动骨的读数映射到各被驱动骨变化了的通道，静止姿态不在键里时会给出提示"""
     bl_idname = "jcns.sdk_generate"
     bl_label  = "生成约束"
 
@@ -364,6 +596,9 @@ class JCNS_OT_SDKGenerate(_SDKOperator):
                             description="从驱动骨读什么。自动时按各键之间的变化选取")
     source_axis: EnumProperty(name="读取轴", items=_AXIS_ITEMS, default='AUTO',
                               description="读驱动骨的哪个局部轴。自动时取变化最大的轴")
+    tangent: EnumProperty(name="曲线切线", items=_TANGENT_ITEMS, default='LINEAR',
+                          description="4 个及以上的键生成 ComplexMapping 曲线时，关键帧处的切线怎么取；"
+                                      "2 个或 3 个键时不起作用")
     append_sources: BoolProperty(
         name="追加为已有约束的新源（求和）", default=True,
         description="被驱动的通道上已有约束时，把驱动骨作为新的源加到最后一条里，各源输出相加；"
@@ -383,16 +618,18 @@ class JCNS_OT_SDKGenerate(_SDKOperator):
         layout = self.layout
         layout.prop(self, "read_mode")
         layout.prop(self, "source_axis")
-        layout.prop(self, "append_sources")
         st = _state(context)[0]
+        if st is not None and sum(1 for k in st.keys() if st.driver in k.poses) > core.MAX_KEYS:
+            layout.prop(self, "tangent")
+        layout.prop(self, "append_sources")
         if st is not None:
-            _plan_lines(layout.box(), context, make_plan(st, self.read_mode, self.source_axis), st)
+            _plan_lines(layout.box(), context, make_plan(st, self.read_mode, self.source_axis, self.tangent), st)
 
     def execute(self, context):
         st = self.state(context)
         if st is None:
             return {'CANCELLED'}
-        plan = make_plan(st, self.read_mode, self.source_axis)
+        plan = make_plan(st, self.read_mode, self.source_axis, self.tangent)
         if not plan.ok:
             self.report({'ERROR'}, plan.errors[0])
             return {'CANCELLED'}
@@ -415,18 +652,27 @@ class JCNS_OT_SDKGenerate(_SDKOperator):
 # Panel
 # ---------------------------------------------------------------------------
 
+class JCNS_UL_SDKDriven(UIList):
+    """被驱动骨列表。"""
+    bl_idname = "JCNS_UL_sdk_driven"
+
+    def draw_item(self, context, layout, data, item, icon, active_data, active_prop, index):
+        layout.label(text=item.name, icon='BONE_DATA')
+
+
 class JCNS_UL_SDKKeys(UIList):
-    """记录的键，每行显示驱动骨相对静止姿态的主要变化。"""
+    """记录的键，每行显示键名和驱动骨在这个键里的读数。"""
     bl_idname = "JCNS_UL_sdk_keys"
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_prop, index):
-        text = ""
+        text = "未记录"
         st = _state(context)[0]
         if st is not None:
-            text = core.main_change(_pose_of(item, 'driver'), _rest_of(st.arm, st.driver))
+            snap = next((s for s in item.snapshots if s.bone == st.driver), None)
+            if snap is not None:
+                text = core.main_change(pose_of(snap), _rest_of(st.arm, st.driver))
         row = layout.row(align=True)
-        row.label(text="键 %d" % (index + 1), icon='KEYFRAME')
-        row.label(text=text)
+        row.label(text="%s　%s" % (core.key_name(index, len(data.sdk_keys)), text), icon='KEYFRAME')
 
 
 _plan_failed = False
@@ -470,14 +716,21 @@ class JCNS_PT_SDK(Panel):
         body = layout.column()
         body.enabled = caps.can_add
 
-        for label, prop, role in (("驱动骨", 'sdk_driver_bone', 'DRIVER'),
-                                  ("被驱动骨", 'sdk_driven_bone', 'DRIVEN')):
-            row = body.row(align=True)
-            split = row.split(factor=0.3)
-            split.label(text=label)
-            cell = split.row(align=True)
-            cell.prop(rp, prop, text="", icon='BONE_DATA')
-            cell.operator("jcns.sdk_pick_bone", text="取选中骨", icon='EYEDROPPER').role = role
+        row = body.row(align=True)
+        split = row.split(factor=0.3)
+        split.label(text="驱动骨")
+        cell = split.row(align=True)
+        cell.prop(rp, 'sdk_driver_bone', text="", icon='BONE_DATA')
+        cell.operator("jcns.sdk_pick_bone", text="取选中骨", icon='EYEDROPPER').role = 'DRIVER'
+
+        body.label(text="被驱动骨 · %d 根" % len(rp.sdk_driven_bones), icon='BONE_DATA')
+        row = body.row()
+        row.template_list("JCNS_UL_sdk_driven", "", rp, "sdk_driven_bones", rp, "sdk_driven_index",
+                          rows=2, maxrows=4)
+        col = row.column(align=True)
+        col.operator("jcns.sdk_driven_add", text="", icon='ADD')
+        col.operator("jcns.sdk_driven_remove", text="", icon='REMOVE')
+        body.operator("jcns.sdk_pick_bone", text="添加选中骨", icon='EYEDROPPER').role = 'DRIVEN'
 
         st, why = _state(context)
         if st is None:
@@ -485,13 +738,35 @@ class JCNS_PT_SDK(Panel):
                 _wrap_label(body, context, why, icon='INFO')
             return
 
-        body.label(text="键 · %d 个" % len(rp.sdk_keys), icon='KEYFRAME')
+        if len(rp.sdk_keys) < 2:
+            body.operator("jcns.sdk_keys_init", icon='KEYFRAME')
+            return
+        count = len(rp.sdk_keys)
+        body.label(text="键 · %d 个" % count, icon='KEYFRAME')
         row = body.row()
         row.template_list("JCNS_UL_sdk_keys", "", rp, "sdk_keys", rp, "sdk_key_index",
-                          rows=3 if len(rp.sdk_keys) < 3 else 4, maxrows=4)
-        body.operator("jcns.sdk_key_add", icon='KEYFRAME_HLT')
+                          rows=4, maxrows=6)
+        col = row.column(align=True)
+        col.operator("jcns.sdk_key_add", text="", icon='ADD')
+        col.operator("jcns.sdk_key_remove", text="", icon='REMOVE')
+        col.separator()
+        col.operator("jcns.sdk_key_up", text="", icon='TRIA_UP')
+        col.operator("jcns.sdk_key_down", text="", icon='TRIA_DOWN')
+        _wrap_label(body, context, "键按驱动骨的读数排列，不是按时间。键Start 是起点，键End 是终点，"
+                    "中间的键是折点（共 3 个键）或关键帧（4 个及以上）。", icon='INFO')
+
+        index = key_index(rp)
+        box = body.box()
+        box.label(text="%s 里的记录" % core.key_name(index, count), icon='KEYFRAME')
+        have = {s.bone for s in rp.sdk_keys[index].snapshots}
+        for name in st.names():
+            row = box.row(align=True)
+            row.label(text=name, icon='BONE_DATA')
+            row.label(text="已记录" if name in have else "未记录",
+                      icon='CHECKMARK' if name in have else 'RADIOBUT_OFF')
+            row.operator("jcns.sdk_key_record", text="记录").bone = name
         row = body.row(align=True)
-        row.operator("jcns.sdk_key_remove", icon='X')
+        row.operator("jcns.sdk_key_record", text="全部记录", icon='KEYFRAME_HLT')
         row.operator("jcns.sdk_key_goto", icon='POSE_HLT')
         body.operator("jcns.sdk_pose_reset", icon='LOOP_BACK')
 
@@ -502,11 +777,18 @@ class JCNS_PT_SDK(Panel):
 
 _classes = [
     JCNS_OT_SDKPickBone,
+    JCNS_OT_SDKDrivenAdd,
+    JCNS_OT_SDKDrivenRemove,
+    JCNS_OT_SDKKeysInit,
     JCNS_OT_SDKKeyAdd,
     JCNS_OT_SDKKeyRemove,
+    JCNS_OT_SDKKeyUp,
+    JCNS_OT_SDKKeyDown,
+    JCNS_OT_SDKKeyRecord,
     JCNS_OT_SDKKeyGoto,
     JCNS_OT_SDKPoseReset,
     JCNS_OT_SDKGenerate,
+    JCNS_UL_SDKDriven,
     JCNS_UL_SDKKeys,
     JCNS_PT_SDK,
 ]

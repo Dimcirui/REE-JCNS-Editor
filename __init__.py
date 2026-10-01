@@ -661,7 +661,7 @@ class JCNSConstraintProperties(PropertyGroup):
 # Property Group: attached to the root Empty of each JCNS collection
 # ---------------------------------------------------------------------------
 
-from .jcns_sdk_ops import JCNSSDKKey, search_bones
+from .jcns_sdk_ops import JCNSSDKBone, JCNSSDKKey, JCNSSDKSnapshot, search_bones
 
 
 def _armature_poll(self, obj):
@@ -773,10 +773,8 @@ class JCNSRootProperties(PropertyGroup):
         name="驱动骨", description="摆姿势建约束里被读取的骨骼",
         default="", search=search_bones, search_options={'SUGGESTION'},
     )
-    sdk_driven_bone: StringProperty(
-        name="被驱动骨", description="摆姿势建约束里被驱动的骨骼",
-        default="", search=search_bones, search_options={'SUGGESTION'},
-    )
+    sdk_driven_bones: CollectionProperty(type=JCNSSDKBone)
+    sdk_driven_index: IntProperty(default=0)
     sdk_keys: CollectionProperty(type=JCNSSDKKey)
     sdk_key_index: IntProperty(default=0)
     source_filepath: StringProperty(
@@ -1049,7 +1047,9 @@ _classes = [
     JCNSWeightedSource,
     JCNSSourceProperties,
     JCNSConstraintProperties,
+    JCNSSDKSnapshot,
     JCNSSDKKey,
+    JCNSSDKBone,
     JCNSRootProperties,
 ]
 
