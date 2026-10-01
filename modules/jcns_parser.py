@@ -256,6 +256,7 @@ class JCNSParser:
         self.read_joint_table    = []
         self.cone_drivers       = []
         self.header = read_header(data)
+        self.section_order = self._read_section_order(data)
         print(f"Version: {self.version} ({VERSION_GAMES.get(self.version, '?')}), "
               f"write mode: {self.write_mode}")
         self._parse_hash_list(data)
@@ -268,6 +269,13 @@ class JCNSParser:
         self._parse_object_settings(data)
         self._parse_skin_constraints(data)
         return self.constraints
+
+    def _read_section_order(self, data):
+        """SectionTable: the section ids in the order the engine runs them ([] when the file has none)."""
+        n, off = self.header['SectionTableItemCount'], self.header.get('SectionTableEntry', 0)
+        if not n or not off or off + 4 * n > len(data):
+            return []
+        return list(struct.unpack_from(f'<{n}I', data, off))
 
     def _parse_cone_drivers(self, data):
         """Section 0 ConeDriver table (v35 layout only; older ones stay in place)."""
