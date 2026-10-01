@@ -60,6 +60,7 @@ INCLUDE_FILES = [
     "jcns_merge_ops.py",
     "jcns_operators.py",
     "jcns_preview.py",
+    "jcns_sdk_ops.py",
     "jcns_ui.py",
     "modules_shim.py",
     "README.md",
