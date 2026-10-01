@@ -430,7 +430,8 @@ class JCNS_OT_SDKKeyRecord(_SDKOperator):
     bl_idname = "jcns.sdk_key_record"
     bl_label  = "记录"
 
-    bone: StringProperty(name="骨骼", default="", description="只记录这一根骨骼。留空则记录全部")
+    bone: StringProperty(name="骨骼", default="", options={'SKIP_SAVE'},
+                        description="只记录这一根骨骼。留空则记录全部")
 
     @classmethod
     def description(cls, context, properties):
@@ -808,7 +809,7 @@ class JCNS_PT_SDK(Panel):
             row.label(text="", icon='CHECKMARK' if name in have else 'RADIOBUT_OFF')
             row.operator("jcns.sdk_key_record", text="", icon='REC').bone = name
         row = body.row(align=True)
-        row.operator("jcns.sdk_key_record", text="全部记录", icon='KEYFRAME_HLT')
+        row.operator("jcns.sdk_key_record", text="全部记录", icon='KEYFRAME_HLT').bone = ""
         row.operator("jcns.sdk_key_goto", icon='POSE_HLT')
         body.operator("jcns.sdk_pose_reset", icon='LOOP_BACK')
 
