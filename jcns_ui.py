@@ -414,23 +414,11 @@ def _short_label(kind):
     return head if head.isascii() else kind.label
 
 
-def _draw_tabs(layout, rp, kinds, counts, state):
-    """Icon tabs for the kinds that have entries (Ranges always), then a + for each
-    addable kind that has none yet."""
+def _draw_tabs(layout, rp):
+    """Icon tabs, one per kind."""
     row = layout.row(align=True)
     row.scale_y = 1.25
-    for k in kinds.TAB_KINDS:
-        if k.id == 'Ranges' or counts.get(k.id) or k.id == rp.browser_kind:
-            row.prop_enum(rp, "browser_kind", k.id, text="", icon=k.icon)
-
-    missing = [k for k in kinds.TAB_KINDS
-               if k.addable and not counts.get(k.id) and k.id != 'Ranges']
-    if missing and state.rebuild:
-        row = layout.row(align=True)
-        for k in missing:
-            sub = row.row(align=True)
-            sub.enabled = kinds.capabilities(k.id, state).can_add
-            sub.operator("jcns.add_section_entry", text=_short_label(k), icon='ADD').kind = k.id
+    row.prop(rp, "browser_kind", expand=True, icon_only=True)
 
 
 class JCNS_PT_Edit(_RootPanel, Panel):
@@ -449,7 +437,7 @@ class JCNS_PT_Edit(_RootPanel, Panel):
         caps = kinds.capabilities(kind.id, state)
         counts = entry_counts(root)
 
-        _draw_tabs(layout, rp, kinds, counts, state)
+        _draw_tabs(layout, rp)
 
         n = counts.get(kind.id, 0)
         layout.label(text="%s · %d" % (kind.label, n), icon=kind.icon)
