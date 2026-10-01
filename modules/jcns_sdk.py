@@ -1,11 +1,17 @@
 """
-Set-driven-key planning: from poses of a driver bone and a driven bone to Ranges
-constraints.  Pure Python, no bpy.
+Set-driven-key planning: from recorded poses of a driver bone and its driven bones to
+Ranges constraints.  Pure Python, no bpy.
 
-A key is the pair of raw pose snapshots of the two bones, recorded together.  Nothing
-about how they are read is decided at record time; plan_keys() picks the driver quantity
-and the driven channels from how the poses differ between keys, then turns each driven
-channel into one entry whose single source maps the driver value to the channel value.
+A key is one recording: the raw pose snapshot of every bone recorded in it, by bone name.
+Nothing about how a pose is read is decided at record time; plan_keys() picks the driver
+quantity and each driven bone's channels from how the poses differ between keys, then turns
+every driven channel into one entry with one source that maps the driver value to the
+channel value.  Two keys give a two-point mapping, three a three-point mapping, four or more
+a ComplexMapping curve with one keyframe per key.
+
+The key list always holds a start key, an end key and any number of keys between them; a
+key's name comes from its position (key_name).  The list order is authoritative, the
+generated mapping follows the driver readings, and order_warnings() reports where they differ.
 
 Driver values are what jcns_capture.capture_source reads (rest pose included), channel
 values what jcns_capture.capture_target would have to write, so the anchors can be
@@ -15,11 +21,12 @@ import math
 from dataclasses import dataclass, field
 
 import jcns_capture as cap
+import jcns_complex
 import jcns_mapping
 import jcns_source_read as sr
 from jcns_merge import MAX_SOURCES
 
-MAX_KEYS = 3
+MAX_KEYS = 3                     # more distinct keys than this become a ComplexMapping curve
 
 # Driver quantity by priority: (read mode, quantity).  Rotation is read as swing-twist, the
 # engine's most common read.
@@ -31,10 +38,16 @@ CHANNEL_MIN = {'Rotation': 0.05, 'Translation': 0.005, 'Scale': 1e-4}
 # Driver readings closer than this are the same reading.
 SAME_DRIVE = {'Rotation': 0.01, 'Translation': 0.001, 'Scale': 1e-5}
 REST_TOL = 1e-4                  # output at rest vs the value that leaves the bone at rest
+# Keyframes closer than this in x read back as a step (jcns_cm.step_gap's floor).
+CM_MIN_GAP = 0.03
 
 UNITS = {'Rotation': "°", 'Translation': " cm", 'Scale': ""}
 _TARGET_NAMES = {'Rotation': "旋转", 'Translation': "平移", 'Scale': "缩放"}
 ROTATION_TYPES = (1, 4, 5, 6)    # TransformTypes whose three channels are independent
+TANGENTS = ('LINEAR', 'SMOOTH')
+
+KEY_START = "键Start"
+KEY_END = "键End"
 
 
 @dataclass(frozen=True)
@@ -47,8 +60,8 @@ class Pose:
 
 @dataclass
 class Key:
-    driver: Pose
-    driven: Pose
+    """One recording.  A bone with no entry in `poses` was not recorded in this key."""
+    poses: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -65,7 +78,7 @@ class Drive:
     read_mode: int
     axis: int
     quantity: str
-    values: list                 # the reading of each key, in key order
+    values: list                 # the reading of each key that recorded the driver, in list order
 
     def label(self):
         return drive_label(self.read_mode, self.axis)
@@ -73,7 +86,8 @@ class Drive:
 
 @dataclass
 class Constraint:
-    """One Ranges entry with one source; anchors are ascending in the driver value."""
+    """One Ranges entry with one source.  Anchors are ascending in the driver value; a
+    ComplexMapping constraint has all-zero anchors and `keys` [(x, y, slope_in, slope_out)]."""
     transform_type: int
     axis: int
     additive: bool
@@ -84,12 +98,24 @@ class Constraint:
     three_point: bool
     from_anchors: tuple
     to_anchors: tuple
+    driven: str = ""
+    keys: tuple = ()
+
+    @property
+    def complex(self):
+        return bool(self.keys)
 
     def source_label(self):
         return drive_label(self.read_mode, self.source_axis)
 
     def target_label(self):
         return _TARGET_NAMES[self.quantity] + 'XYZ'[self.axis]
+
+    def evaluate(self, x):
+        if self.keys:
+            return jcns_complex.evaluate(list(self.keys), x)
+        return jcns_mapping.eval_piecewise(*self.from_anchors, *self.to_anchors, x,
+                                           two_point=not self.three_point)
 
 
 @dataclass
@@ -99,10 +125,22 @@ class Plan:
     warnings: list = field(default_factory=list)
     constraints: list = field(default_factory=list)
     drive: Drive = None
+    mode: str = ""               # 'two', 'three' or 'complex'
+    key_count: int = 0           # distinct keys the mapping is built from
+
+    def bones(self):
+        """Driven bones that get constraints, in the order they were asked for."""
+        out = []
+        for c in self.constraints:
+            if c.driven not in out:
+                out.append(c.driven)
+        return out
 
 
 class _Reject(Exception):
-    pass
+    def __init__(self, *reasons):
+        super().__init__(reasons[0])
+        self.reasons = list(reasons)
 
 
 def drive_label(read_mode, axis):
@@ -140,10 +178,128 @@ def _spread(values):
 
 
 # ---------------------------------------------------------------------------
+# The key list: names, insertion, order, deletion
+# ---------------------------------------------------------------------------
+
+def key_name(index, count):
+    """A key's name comes from its position: first = start, last = end, the rest numbered."""
+    if index == 0:
+        return KEY_START
+    if index == count - 1:
+        return KEY_END
+    return "键%d" % index
+
+
+def key_names(count):
+    return [key_name(i, count) for i in range(count)]
+
+
+def initial_keys():
+    return [Key(), Key()]
+
+
+def ensure_ends(keys):
+    """Keep at least the start and end key; returns whether anything was added."""
+    added = len(keys) < 2
+    while len(keys) < 2:
+        keys.append(Key())
+    return added
+
+
+def insert_key(keys):
+    """A new key just before the end key, holding a copy of the end key's snapshots.
+    Returns its index."""
+    ensure_ends(keys)
+    keys.insert(len(keys) - 1, Key(dict(keys[-1].poses)))
+    return len(keys) - 2
+
+
+def is_middle(index, count):
+    return 0 < index < count - 1
+
+
+def can_delete(index, count):
+    """(ok, reason): only keys between the start and the end can go."""
+    if not is_middle(index, count):
+        return False, "键Start 和键End 不能删除"
+    return True, ""
+
+
+def delete_key(keys, index):
+    """Remove a middle key; returns the index to select afterwards (a middle key if any is left)."""
+    ok, why = can_delete(index, len(keys))
+    if not ok:
+        raise ValueError(why)
+    del keys[index]
+    return min(index, len(keys) - 2)
+
+
+def move_target(index, count, step):
+    """Where a middle key lands when moved by `step` (+1 / -1), or None: the start and
+    end key stay put, and nothing moves past them."""
+    if step not in (-1, 1) or not is_middle(index, count) or not is_middle(index + step, count):
+        return None
+    return index + step
+
+
+def move_key(keys, index, step):
+    """Move a middle key one place; returns its new index, or None when it cannot move."""
+    to = move_target(index, len(keys), step)
+    if to is not None:
+        keys[index], keys[to] = keys[to], keys[index]
+    return to
+
+
+def record(keys, index, bone, pose):
+    keys[index].poses[bone] = pose
+
+
+def forget_bone(keys, bone):
+    """Drop a bone's snapshot from every key."""
+    for k in keys:
+        k.poses.pop(bone, None)
+
+
+def order_warnings(entries, count, quantity):
+    """Warnings for driver readings that disagree with the list order.
+
+    `entries` is [(index in the key list, driver reading)] for the keys that recorded the
+    driver.  A middle key should read between the start and the end key, and the keys should
+    run from one end towards the other; generation sorts by reading either way.
+    """
+    names = key_names(count)
+    by = dict(entries)
+    tol = SAME_DRIVE[quantity]
+    out, outside = [], set()
+    if 0 in by and count - 1 in by:
+        lo, hi = sorted((by[0], by[count - 1]))
+        for i, v in entries:
+            if is_middle(i, count) and not lo - tol <= v <= hi + tol:
+                outside.add(i)
+                out.append("%s 的读数 %s 不在%s（%s）和%s（%s）之间"
+                           % (names[i], _fmt(v, quantity), KEY_START, _fmt(by[0], quantity),
+                              KEY_END, _fmt(by[count - 1], quantity)))
+    rest = [(i, v) for i, v in entries if i not in outside]
+    direction = 0
+    if 0 in by and count - 1 in by and abs(by[count - 1] - by[0]) > tol:
+        direction = 1 if by[count - 1] > by[0] else -1
+    elif len(rest) > 1 and abs(rest[-1][1] - rest[0][1]) > tol:
+        direction = 1 if rest[-1][1] > rest[0][1] else -1
+    if direction:
+        for (i, a), (j, b) in zip(rest, rest[1:]):
+            if (b - a) * direction < -tol:
+                out.append("%s 的读数 %s 与前面的%s（%s）顺序相反"
+                           % (names[j], _fmt(b, quantity), names[i], _fmt(a, quantity)))
+    if out:
+        out.append("列表顺序与读数不一致，生成时按读数排序；键按驱动骨的读数排列，不是按时间")
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Detecting what moved
 # ---------------------------------------------------------------------------
 
-def _detect_drive(keys, rest, read_mode, axis, order):
+def _detect_drive(poses, rest, read_mode, axis, order):
     if read_mode is None:
         reads = _AUTO_READS
     else:
@@ -155,7 +311,7 @@ def _detect_drive(keys, rest, read_mode, axis, order):
     for mode, quantity in reads:
         best = None
         for a in axes:
-            values = [read_driver(k.driver, rest, mode, a, order) for k in keys]
+            values = [read_driver(p, rest, mode, a, order) for p in poses]
             if best is None or _spread(values) > best[0] + 1e-12:
                 best = (_spread(values), a, values)
         if best[0] > DRIVER_MIN[quantity]:
@@ -166,21 +322,23 @@ def _detect_drive(keys, rest, read_mode, axis, order):
     raise _Reject("%s驱动骨，各键之间没有变化；换一种读取方式或轴试试" % what)
 
 
-def _detect_channels(keys, rest, rotation_type, warnings):
-    """[(quantity, transform type, axis, values)] for every driven channel that differs between keys."""
+def _detect_channels(bone, poses, rest, rotation_type, warnings):
+    """[(bone, quantity, transform type, axis, values)] for every channel of `bone` that
+    differs between the keys."""
     found = []
     for quantity, tt in (('Rotation', rotation_type), ('Translation', 0), ('Scale', 2)):
         for axis in range(3):
             label = _TARGET_NAMES[quantity] + 'XYZ'[axis]
-            got = [read_channel(k.driven, rest, tt, axis) for k in keys]
+            got = [read_channel(p, rest, tt, axis) for p in poses]
             if any(g is None for g in got):
-                warnings.append("被驱动骨的%s取不出值（父骨缩放为 0），已跳过" % label)
+                warnings.append("被驱动骨「%s」的%s取不出值（父骨缩放为 0），已跳过" % (bone, label))
                 continue
             if quantity == 'Rotation' and max(g[1] for g in got) > 0.5:
-                warnings.append("被驱动骨的%s有 %.1f° 表达不了的旋转" % (label, max(g[1] for g in got)))
+                warnings.append("被驱动骨「%s」的%s有 %.1f° 表达不了的旋转"
+                                % (bone, label, max(g[1] for g in got)))
             values = [g[0] for g in got]
             if _spread(values) > CHANNEL_MIN[quantity]:
-                found.append((quantity, tt, axis, values))
+                found.append((bone, quantity, tt, axis, values))
     return found
 
 
@@ -188,19 +346,20 @@ def _detect_channels(keys, rest, rotation_type, warnings):
 # Planning
 # ---------------------------------------------------------------------------
 
-def _dedupe(drive, channels):
-    """Key indices in ascending driver order; keys with the same reading and the same
-    channel values are one key, the same reading with different channel values is ambiguous."""
+def _dedupe(drive, channels, names):
+    """Positions in ascending driver order; keys with the same reading and the same channel
+    values are one key, the same reading with different channel values is ambiguous."""
     same = SAME_DRIVE[drive.quantity]
     order = sorted(range(len(drive.values)), key=lambda i: drive.values[i])
     kept, notes = [], []
     for i in order:
         if kept and abs(drive.values[i] - drive.values[kept[-1]]) <= same:
             j = kept[-1]
-            if any(abs(vals[i] - vals[j]) > CHANNEL_MIN[q] for q, _tt, _a, vals in channels):
-                raise _Reject("键 %d 和键 %d 的驱动骨读数相同（%s），被驱动骨却不同，对应关系不明；"
-                              "删掉其中一个键" % (min(i, j) + 1, max(i, j) + 1, _fmt(drive.values[i], drive.quantity)))
-            notes.append("键 %d 和键 %d 两根骨的姿态相同，按一个键算" % (min(i, j) + 1, max(i, j) + 1))
+            a, b = sorted((i, j))
+            if any(abs(vals[i] - vals[j]) > CHANNEL_MIN[q] for _b, q, _tt, _a, vals in channels):
+                raise _Reject("%s 和%s 的驱动骨读数相同（%s），被驱动骨却不同，对应关系不明；"
+                              "删掉其中一个键" % (names[a], names[b], _fmt(drive.values[i], drive.quantity)))
+            notes.append("%s 和%s 的姿态相同，按一个键算" % (names[a], names[b]))
             continue
         kept.append(i)
     return kept, notes
@@ -212,15 +371,57 @@ def _anchors(xs, ys):
     return tuple(xs), tuple(ys)
 
 
-def _rest_warnings(plan, driver_rest, driven_rest, drive, order):
+def linear_tangents(xs, ys):
+    """[(slope_in, slope_out)] that make every segment a straight line: each key takes the
+    slopes of the segments on either side, the end keys the slope of their only segment."""
+    d = [(ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]) for i in range(len(xs) - 1)]
+    n = len(xs)
+    return [(d[i - 1] if i > 0 else d[0], d[i] if i < n - 1 else d[n - 2]) for i in range(n)]
+
+
+def _end_slope(h0, h1, d0, d1):
+    m = ((2 * h0 + h1) * d0 - h0 * d1) / (h0 + h1)
+    if m * d0 <= 0:
+        return 0.0
+    if d0 * d1 <= 0 and abs(m) > 3 * abs(d0):
+        return 3 * d0
+    return m
+
+
+def smooth_tangents(xs, ys):
+    """[(slope_in, slope_out)] of a monotone cubic through the points (PCHIP): flat where
+    the data turns or stalls, never overshooting a segment's end values."""
+    n = len(xs)
+    h = [xs[i + 1] - xs[i] for i in range(n - 1)]
+    d = [(ys[i + 1] - ys[i]) / h[i] for i in range(n - 1)]
+    if n == 2:
+        return [(d[0], d[0])] * 2
+    m = [0.0] * n
+    for i in range(1, n - 1):
+        if d[i - 1] * d[i] > 0:
+            w1, w2 = 2 * h[i] + h[i - 1], h[i] + 2 * h[i - 1]
+            m[i] = (w1 + w2) / (w1 / d[i - 1] + w2 / d[i])
+    m[0] = _end_slope(h[0], h[1], d[0], d[1])
+    m[-1] = _end_slope(h[-1], h[-2], d[-1], d[-2])
+    return [(s, s) for s in m]
+
+
+def complex_keys(xs, ys, tangent='LINEAR'):
+    """ComplexMapping keys [(x, y, slope_in, slope_out)] for ascending xs."""
+    slopes = (smooth_tangents if tangent == 'SMOOTH' else linear_tangents)(xs, ys)
+    return [(x, y, a, b) for x, y, (a, b) in zip(xs, ys, slopes)]
+
+
+def _rest_warnings(plan, driver_rest, rests, drive, order):
     x_rest = read_driver(Pose(), driver_rest, drive.read_mode, drive.axis, order)
     in_keys = any(abs(x_rest - v) <= CHANNEL_MIN[drive.quantity] for v in drive.values)
     off = []
     for c in plan.constraints:
-        y = jcns_mapping.eval_piecewise(*c.from_anchors, *c.to_anchors, x_rest, two_point=not c.three_point)
-        want = read_channel(Pose(), driven_rest, c.transform_type, c.axis, c.additive)[0]
+        y = c.evaluate(x_rest)
+        want = read_channel(Pose(), rests[c.driven], c.transform_type, c.axis, c.additive)[0]
         if abs(y - want) > REST_TOL:
-            off.append("%s 输出 %s（应为 %s）" % (c.target_label(), _fmt(y, c.quantity), _fmt(want, c.quantity)))
+            off.append("%s %s 输出 %s（应为 %s）" % (c.driven, c.target_label(), _fmt(y, c.quantity),
+                                                   _fmt(want, c.quantity)))
     if not off:
         return
     if in_keys:
@@ -230,72 +431,153 @@ def _rest_warnings(plan, driver_rest, driven_rest, drive, order):
                              % (_fmt(x_rest, drive.quantity), "、".join(off)))
 
 
-def plan_keys(keys, driver_rest, driven_rest, read_mode=None, axis=None, euler_order=0,
-              rotation_type=1):
-    """The constraints `keys` (a list of Key) describe.
+def plan_keys(keys, driver, driven, rests, read_mode=None, axis=None, euler_order=0,
+              rotation_type=1, tangent='LINEAR', complex_ok=True, complex_reason=""):
+    """The constraints `keys` (a list of Key, start key first, end key last) describe.
 
-    `read_mode` (ReadMode value or identifier) and `axis` (0-2) force the driver's read;
-    None picks it from what moved.  Rotations are written as additive TransformType
-    `rotation_type` (1, 4, 5 or 6), so a bone at rest produces 0.
-    Rejected (plan.errors, no constraints): fewer than 2 keys, more than MAX_KEYS, no
-    driver or no driven movement, equal driver readings with different driven poses.
-    Warnings do not block: rest pose outside the keys or off the rest value, channels
-    that could not be read.
+    `driver` is the driver bone's name, `driven` the list of driven bone names, `rests` maps
+    each of them to its BoneRest.  `read_mode` (ReadMode value or identifier) and `axis`
+    (0-2) force the driver's read; None picks it from what moved.  Rotations are written as
+    additive TransformType `rotation_type` (1, 4, 5 or 6), so a bone at rest produces 0.
+    `tangent` ('LINEAR' or 'SMOOTH') shapes a ComplexMapping curve.  `complex_ok` says
+    whether the file can hold one, `complex_reason` why not.
+
+    Rejected (plan.errors, no constraints): no driver or driven bone, a bone listed twice,
+    fewer than 2 keys with the driver recorded, no driver movement, nothing moving in any
+    driven bone, equal driver readings with different driven poses, more than MAX_KEYS
+    distinct keys in a file without ComplexMapping.
+    Warnings do not block: keys ignored for lacking the driver, driven bones skipped for
+    lacking a snapshot in some key or for not moving, list order against readings, rest pose
+    outside the keys or off the rest value, channels that could not be read.
     """
     plan = Plan()
     try:
-        _plan(plan, list(keys), driver_rest, driven_rest, read_mode, axis, euler_order, rotation_type)
+        _plan(plan, list(keys), driver, list(driven), rests, read_mode, axis, euler_order,
+              rotation_type, tangent, complex_ok, complex_reason)
     except _Reject as exc:
-        plan.errors.append(str(exc))
+        plan.errors += exc.reasons
         plan.constraints = []
+        plan.mode = ""
     plan.ok = not plan.errors and bool(plan.constraints)
     return plan
 
 
-def _plan(plan, keys, driver_rest, driven_rest, read_mode, axis, order, rotation_type):
+def _plan(plan, keys, driver, driven, rests, read_mode, axis, order, rotation_type, tangent,
+          complex_ok, complex_reason):
     if rotation_type not in ROTATION_TYPES:
         raise _Reject("旋转目标的变换类型只能是 %s" % "、".join(map(str, ROTATION_TYPES)))
+    if tangent not in TANGENTS:
+        raise _Reject("曲线切线只能是线性或平滑")
+    if not driver:
+        raise _Reject("先设置驱动骨")
+    if not driven:
+        raise _Reject("先添加被驱动骨")
+    if driver in driven:
+        raise _Reject("被驱动骨里有驱动骨「%s」" % driver)
+    for b in driven:
+        if driven.count(b) > 1:
+            raise _Reject("被驱动骨「%s」重复" % b)
+    for b in [driver] + driven:
+        if b not in rests:
+            raise _Reject("取不到「%s」的静止姿态" % b)
     if len(keys) < 2:
         raise _Reject("至少需要 2 个键（现有 %d 个）" % len(keys))
-    drive = _detect_drive(keys, driver_rest, read_mode, axis, order)
+
+    names = key_names(len(keys))
+    kept = [i for i, k in enumerate(keys) if driver in k.poses]
+    if len(kept) < len(keys):
+        plan.warnings.append("%s 没有记录驱动骨「%s」，已忽略"
+                             % ("、".join(names[i] for i in range(len(keys)) if i not in kept), driver))
+    if len(kept) < 2:
+        raise _Reject("至少需要 2 个键记录了驱动骨（现有 %d 个）" % len(kept))
+
+    drive = _detect_drive([keys[i].poses[driver] for i in kept], rests[driver], read_mode, axis, order)
     plan.drive = drive
-    channels = _detect_channels(keys, driven_rest, rotation_type, plan.warnings)
+    plan.warnings += order_warnings(list(zip(kept, drive.values)), len(keys), drive.quantity)
+
+    channels, skips = [], []
+    for b in driven:
+        missing = [names[i] for i in kept if b not in keys[i].poses]
+        if len(missing) == len(kept):
+            skips.append((b, "没有记录姿态"))
+        elif missing:
+            skips.append((b, "在%s 里没有记录" % "、".join(missing)))
+        else:
+            found = _detect_channels(b, [keys[i].poses[b] for i in kept], rests[b], rotation_type,
+                                     plan.warnings)
+            if not found:
+                skips.append((b, "在各键之间没有变化"))
+            channels += found
     if not channels:
-        raise _Reject("被驱动骨在各键之间没有变化")
-    kept, notes = _dedupe(drive, channels)
+        raise _Reject(*["被驱动骨「%s」%s" % s for s in skips])
+    plan.warnings += ["被驱动骨「%s」%s，已跳过" % s for s in skips]
+
+    pos, notes = _dedupe(drive, channels, [names[i] for i in kept])
     plan.warnings += notes
-    if len(kept) > MAX_KEYS:
-        raise _Reject("最多 %d 个键，更多需用 ComplexMapping" % MAX_KEYS)
-    xs = [drive.values[i] for i in kept]
-    for quantity, tt, ch_axis, values in channels:
-        from_a, to_a = _anchors(xs, [values[i] for i in kept])
+    xs = [drive.values[p] for p in pos]
+    plan.key_count = len(pos)
+    if len(pos) > MAX_KEYS:
+        if not complex_ok:
+            raise _Reject("%d 个键要生成 ComplexMapping 曲线，%s；最多 %d 个键"
+                          % (len(pos), complex_reason or "这个文件不能编辑它", MAX_KEYS))
+        plan.mode = 'complex'
+        for a, b in zip(pos, pos[1:]):
+            if drive.values[b] - drive.values[a] < CM_MIN_GAP:
+                plan.warnings.append("%s 和%s 的读数只差 %s，曲线上会读成一个台阶"
+                                     % (names[kept[a]], names[kept[b]],
+                                        _fmt(drive.values[b] - drive.values[a], drive.quantity)))
+    else:
+        plan.mode = 'two' if len(pos) == 2 else 'three'
+    for bone, quantity, tt, ch_axis, values in channels:
+        ys = [values[p] for p in pos]
+        if plan.mode == 'complex':
+            from_a = to_a = (0.0, 0.0, 0.0)
+            cm = tuple(complex_keys(xs, ys, tangent))
+        else:
+            from_a, to_a = _anchors(xs, ys)
+            cm = ()
         plan.constraints.append(Constraint(
             transform_type=tt, axis=ch_axis, additive=True, quantity=quantity,
             read_mode=drive.read_mode, source_axis=drive.axis, euler_order=order,
-            three_point=len(kept) == 3, from_anchors=from_a, to_anchors=to_a))
-    _rest_warnings(plan, driver_rest, driven_rest, drive, order)
+            three_point=plan.mode != 'two', from_anchors=from_a, to_anchors=to_a,
+            driven=bone, keys=cm))
+    _rest_warnings(plan, rests[driver], rests, drive, order)
 
 
-def describe(plan, driver_bone, driven_bone):
-    """Lines for the panel: what the plan generates, or why it cannot."""
+_MODE_TEXT = {'two': "两点映射", 'three': "三点映射"}
+
+
+def describe_rows(plan, driver_bone):
+    """[(kind, text)] for the panel: what the plan generates, or why it cannot.
+    kind is 'error', 'head', 'bone' or 'line'."""
     if plan.errors:
-        return list(plan.errors)
-    lines = ["将生成 %d 条：" % len(plan.constraints)]
-    lines += ["%s %s → %s %s" % (driver_bone, c.source_label(), driven_bone, c.target_label())
-              for c in plan.constraints]
-    return lines
+        return [('error', t) for t in plan.errors]
+    how = ("ComplexMapping 曲线，%d 个关键帧" % plan.key_count if plan.mode == 'complex'
+           else _MODE_TEXT[plan.mode])
+    rows = [('head', "将生成 %d 条（%s）：" % (len(plan.constraints), how))]
+    for bone in plan.bones():
+        mine = [c for c in plan.constraints if c.driven == bone]
+        rows.append(('bone', "%s：%d 条" % (bone, len(mine))))
+        rows += [('line', "%s %s → %s %s" % (driver_bone, c.source_label(), bone, c.target_label()))
+                 for c in mine]
+    return rows
+
+
+def describe(plan, driver_bone):
+    return [text for _kind, text in describe_rows(plan, driver_bone)]
 
 
 # ---------------------------------------------------------------------------
 # Landing on an existing file
 # ---------------------------------------------------------------------------
 
-def can_append(existing, constraint):
+def can_append(existing, constraint, complex_ok=True):
     """(ok, reason): may `constraint`'s source join the existing entry on its channel?
 
     `existing` is a dict with `additive`, `cone_infos`, `n_sources`, `target_property`.  A source
     only adds to the entry's sum, so the entry must mean the same thing: the same Flags
-    bit0 (scale ignores it), no ConeDriver inputs, room for one more source.
+    bit0 (scale ignores it), no ConeDriver inputs, room for one more source.  A ComplexMapping
+    source also needs a file that can hold ComplexMapping.
     """
     if existing.get('target_property') or existing.get('property_hash'):
         return False, "目标是材质或形变属性"
@@ -305,6 +587,8 @@ def can_append(existing, constraint):
         return False, "已有约束的驱动源已满 %d 个" % MAX_SOURCES
     if constraint.transform_type != 2 and bool(existing.get('additive')) != bool(constraint.additive):
         return False, "已有约束的「叠加」与新约束不同"
+    if constraint.complex and not complex_ok:
+        return False, "这个文件不能编辑 ComplexMapping"
     return True, ""
 
 
