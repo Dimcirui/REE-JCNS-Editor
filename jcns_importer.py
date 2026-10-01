@@ -335,7 +335,9 @@ def do_import(filepath, context, armature_obj=None):
         p2.rot_unknown_bytes = (r['bytes'][0], r['bytes'][2], r['bytes'][3])
         p2.rot_gains = r['floats']
         obj.name = section_empty_name('RotExpression', idx, p2)
-    rp.rot_map_hex = bytes(rot_meta['map']).hex()
+    rp.rot_map_value = rot_meta['map_value']
+    if not rot_meta['map_uniform']:
+        print("[JCNS] RotExpressionMap holds different values, using the first (%d)" % rot_meta['map_value'])
 
     rp.cone_drivers_json = json.dumps([{
         'Name': cd['Name'], 'Direction': list(cd['Direction']), 'Matrix': list(cd['Matrix']),

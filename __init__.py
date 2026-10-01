@@ -714,17 +714,12 @@ def file_state(rp):
     from jcns_parser import write_mode
     from .jcns_exporter import _root_version
     v = _root_version(rp)
-    try:
-        rot_map = bytes.fromhex(rp.rot_map_hex or '')
-    except ValueError:
-        rot_map = b''
     return get_kinds().FileState(
         version=v,
         rebuild=write_mode(v) == 'rebuild',
         sections_cached=bool(rp.sections_cached),
         has_armature=rp.target_armature is not None,
         has_read_table=bool(rp.read_joint_signature_json),
-        rot_map_uniform=len(set(rot_map)) <= 1,
     )
 
 
@@ -824,7 +819,10 @@ class JCNSRootProperties(PropertyGroup):
     file_constant: IntProperty(default=5)
     read_joint_table_hex: StringProperty(default="")
     read_joint_signature_json: StringProperty(default="")
-    rot_map_hex: StringProperty(default="")
+    # The RotExpressionMap value shared by every RotExpression entry.
+    rot_map_value: IntProperty(
+        name="RotExpr 映射值", default=0, min=0, max=255,
+        description="每条 RotExpr 条目共用的映射常量；新增条目沿用它。具体作用未知")
     object_settings_json: StringProperty(default="")
     # ConeDriver table (v35+), cached so a rebuild can re-emit it
     cone_drivers_json: StringProperty(default="")

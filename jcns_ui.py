@@ -327,6 +327,9 @@ class JCNS_PT_FileInfo(Panel):
             n_obj = 0
         col.label(text="ObjectSettings：%d 条（原样保留）" % n_obj, icon='OBJECT_DATA')
         col.label(text="ConeDriver 表：%d 个" % len(_cone_names(rp)), icon='CONE')
+        from . import entry_counts
+        if entry_counts(root).get('RotExpression'):
+            col.prop(rp, "rot_map_value")
         if rp.read_joint_signature_json:
             col.label(text="读取骨表：有，由 Skin/Aim 的骨骼按骨架层级推出", icon='BONE_DATA')
         else:

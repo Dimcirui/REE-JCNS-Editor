@@ -78,7 +78,6 @@ class FileState:
     sections_cached: bool = True    # the importer stored Skin/Aim/RotExpr data in Blender
     has_armature: bool = False      # a target armature is set
     has_read_table: bool = False    # the file ships a ReadJointTable (needs the skeleton to re-derive)
-    rot_map_uniform: bool = True    # RotExpressionMap is one constant, so entries can be added/removed
 
 
 @dataclass(frozen=True)
@@ -146,8 +145,6 @@ def capabilities(kind_id, st):
         if k.id in ('Skin', 'Aim') and st.has_read_table and not st.has_armature:
             block = ("文件带读取骨表（ReadJointTable），增删条目后要按骨架重算它："
                      "请先设置目标骨架")
-        elif k.id == 'RotExpression' and not st.rot_map_uniform:
-            block = "RotExpressionMap 不是单一常量，无法为增删的条目推导"
         move_why = "顺序在游戏里的含义未证实，不提供换序"
         why = {'move': move_why}
         if block:

@@ -175,11 +175,8 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
              'rotation': tuple(o.jcns_cns_props.rot_rotation), 'scale': tuple(o.jcns_cns_props.rot_scale),
              'bytes': _rot_bytes(o.jcns_cns_props), 'floats': tuple(o.jcns_cns_props.rot_gains)}
             for o in section_empties(root_obj, 'RotExpression')]
-    try:
-        parser.rot_expressions, parser.rot_expression_map = X.rot_parser_form(
-            rots, {'map': list(bytes.fromhex(root_props.rot_map_hex or ''))}, parser.version)
-    except ValueError as exc:
-        return [str(exc)]
+    parser.rot_expressions, parser.rot_expression_map = X.rot_parser_form(
+        rots, {'map_value': root_props.rot_map_value}, parser.version)
 
     # ConeDrivers are not editable; re-emitted from the import cache.
     n_cone = parser.header.get('ConeDriverCount', 0)

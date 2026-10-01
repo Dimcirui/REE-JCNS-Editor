@@ -46,7 +46,7 @@ Derived data:
       unexplained)
     * the two hash-index arrays point at the record's inline JointHash /
       SourceJointHash
-    * the map holds one value per file; new entries repeat it
+    * the map holds one value per entry, the same for all of them
 """
 
 import struct
@@ -235,19 +235,12 @@ def rot_editable(parser):
             'rotation': rec['Rotation'], 'scale': rec['Scale'],
             'bytes': tuple(tail[:4]), 'floats': struct.unpack_from('<3f', tail, 4),
         })
-    return out, {'map': list(parser.rot_expression_map)}
+    values = list(parser.rot_expression_map)
+    return out, {'map_value': values[0] if values else 0, 'map_uniform': len(set(values)) <= 1}
 
 
 def rot_parser_form(records, meta, version=102):
-    old_map = meta.get('map', [])
-    n = len(records)
-    if len(old_map) == n:
-        new_map = old_map
-    elif len(set(old_map)) <= 1:
-        new_map = [old_map[0] if old_map else 0] * n
-    else:
-        raise ValueError("RotExpressionMap 在这个文件里不是单一常量，无法为增删的条目推导，"
-                         "RotExpression 的条目数不能改。")
+    new_map = [meta['map_value'] & 0xFF] * len(records)
     out = []
     for r in records:
         tail = bytes(b & 0xFF for b in r['bytes']) + struct.pack('<3f', *r['floats'])
