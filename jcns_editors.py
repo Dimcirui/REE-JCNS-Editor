@@ -606,7 +606,7 @@ class JCNS_PT_Ed_Skin_Reserved(_Editor, _Sub, Panel):
         c = _begin(self.layout, context, banner=False)
         if c is None:
             return
-        _draw_raw_group(c.body, "v102 恒为 0000", 'PREFERENCES', [(c.p, [("skin_tail_hex", "尾部 2 字节")])])
+        _draw_raw_group(c.body, "v102 固定为 0", 'PREFERENCES', [(c.p, [("skin_tail", "尾部 2 字节")])])
 
 
 class JCNS_PT_Ed_Skin_Preview(_PreviewSub, Panel):

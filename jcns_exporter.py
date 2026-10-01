@@ -133,19 +133,12 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
     def H(name):
         return _name_to_hash(name.strip())
 
-    def _tail(hexstr):
-        try:
-            raw = bytes.fromhex(hexstr.strip())
-        except ValueError:
-            return None
-        return raw[:2].ljust(2, bytes(1)) if raw else None
-
     records = [{'object': H(o.jcns_cns_props.target_bone),
-                'tail': _tail(o.jcns_cns_props.skin_tail_hex),
+                'tail': bytes(o.jcns_cns_props.skin_tail),
                 'sources': [{'hash': H(w.bone), 'weight': w.weight} for w in o.jcns_cns_props.skin_sources]}
                for o in section_empties(root_obj, 'Skin')]
     table = bytes.fromhex(root_props.read_joint_table_hex or '')
-    meta = {'constant': root_props.file_constant, 'tail': X.skin_default_tail(records),
+    meta = {'constant': root_props.file_constant,
             'read_joint_table': [int.from_bytes(table[i:i + 4], 'little') for i in range(0, len(table), 4)]}
     locked = json.loads(root_props.read_joint_signature_json) if root_props.read_joint_signature_json else []
     # The table also covers the Aim joints, so it is resolved against both.

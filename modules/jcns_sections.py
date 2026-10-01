@@ -12,8 +12,8 @@ Derived data:
       with no repeated hash
     * the record's first tail byte and the source-info u32 are one per-file
       constant, usually 5
-    * the other two tail bytes vary per record from v35 on, so they are carried
-      per record
+    * the other two tail bytes vary per record from v35 on, so each record has
+      its own; a new record starts from the file's most common pair
     * ReadJointTable lists the joints whose world matrices the Skin and Aim
       sections read: every skin source, and the parent of every joint they
       write (a result computed in world space is brought back into its parent's
@@ -60,7 +60,7 @@ def skin_editable(parser):
     """(records, meta) from a parsed file.
 
     records: [{'object': hash, 'tail': 2 bytes, 'sources': [{'hash': h, 'weight': w}, ...]}, ...]
-    meta:    {'constant': int, 'tail': the most common 'tail', 'read_joint_table': [hash, ...]}
+    meta:    {'constant': int, 'read_joint_table': [hash, ...]}
     """
     infos = parser.skin_source_infos
     records = []
@@ -73,13 +73,12 @@ def skin_editable(parser):
             srcs.append({'hash': h, 'weight': s['Weight']})
         records.append({'object': sk['ObjectHash'], 'tail': bytes(sk['Tail'][1:3]), 'sources': srcs})
     constant = parser.skin_constraints[0]['Tail'][0] if parser.skin_constraints else 5
-    return records, {'constant': constant, 'tail': skin_default_tail(records),
-                     'read_joint_table': list(parser.read_joint_table)}
+    return records, {'constant': constant, 'read_joint_table': list(parser.read_joint_table)}
 
 
 def skin_default_tail(records):
     """Tail bytes for a new record: the file's most common, else zero."""
-    tails = [r['tail'] for r in records if r.get('tail') is not None]
+    tails = [bytes(r['tail']) for r in records]
     return max(set(tails), key=tails.count) if tails else bytes(2)
 
 
@@ -99,7 +98,7 @@ def skin_parser_form(records, meta):
     const = meta.get('constant', 5) & 0xFF
     skins = [{
         'ObjectHash': r['object'], 'ObjectHashIndex': 0,
-        'Tail': bytes([const]) + bytes(r.get('tail') or meta.get('tail') or bytes(2))[:2].ljust(2, bytes(1)),
+        'Tail': bytes([const]) + bytes(r['tail']),
         'SourceCount': len(r['sources']),
         'sources': [{'SourceRef': index[s['hash']], 'Weight': float(s['weight'])} for s in r['sources']],
     } for r in records]

@@ -591,10 +591,10 @@ class JCNSConstraintProperties(PropertyGroup):
     # --- SkinConstraint (target_bone is the skinned object) ---
     skin_sources: CollectionProperty(type=JCNSWeightedSource)
     active_skin_source_index: IntProperty(default=0)
-    skin_tail_hex: StringProperty(
-        name="尾部 2 字节", default="",
-        description="记录尾部第 2、3 字节（第 1 字节是每文件常量）。v102 恒为 0000，RE9 v35 逐条不同；"
-                    "留空则用本文件最常见的值")
+    skin_tail: IntVectorProperty(
+        name="尾部 2 字节", size=2, default=(0, 0), min=0, max=255,
+        description="记录尾部第 2、3 字节（第 1 字节是每文件常量）。v102 固定为 0，RE9（v35）逐条不同；"
+                    "新建条目取本文件最常见的值")
 
     # --- Aim (target_bone is the aimed joint) ---
     aim_target_bone: StringProperty(name="瞄准目标", default="", update=_refresh_preview,

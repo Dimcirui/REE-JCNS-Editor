@@ -293,7 +293,7 @@ def do_import(filepath, context, armature_obj=None):
         obj, p2 = _section_empty('Skin', idx, 'SINGLE_ARROW', 0.03)
         p2.constraint_type = 'Skin'
         p2.target_bone = _nm(r['object'])
-        p2.skin_tail_hex = r['tail'].hex()
+        p2.skin_tail = tuple(r['tail'])
         for src in r['sources']:
             w = p2.skin_sources.add()
             w.bone, w.weight = _nm(src['hash']), src['weight']
