@@ -15,7 +15,7 @@ from bpy.types import PropertyGroup
 bl_info = {
     "name": "Wilds JCNS Editor",
     "author": "Dimcirui",
-    "version": (0, 14, 1),
+    "version": (0, 15, 0),
     "blender": (3, 6, 0),
     "location": "View3D > Sidebar > JCNS Editor | File > Import/Export",
     "description": (
