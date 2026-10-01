@@ -768,9 +768,9 @@ def _browser_kind_items():
 
 class JCNSRootProperties(PropertyGroup):
     """On the root Empty of a JCNS collection (one root plus N entry Empties)."""
-    # Pose-driven constraint creation (jcns_sdk_ops.py)
+    # Constraint baking (jcns_sdk_ops.py)
     sdk_driver_bone: StringProperty(
-        name="驱动骨", description="摆姿势建约束里被读取的骨骼",
+        name="驱动骨", description="烘焙约束里被读取的骨骼",
         default="", search=search_bones, search_options={'SUGGESTION'},
     )
     sdk_driven_bones: CollectionProperty(type=JCNSSDKBone)
@@ -817,6 +817,12 @@ class JCNSRootProperties(PropertyGroup):
     browser_kind: EnumProperty(
         name="分区", description="在列表里显示哪一类条目",
         items=_browser_kind_items(), default='Ranges',
+    )
+    browser_view: EnumProperty(
+        name="视图", description="Ranges 条目按条目排列，或按被驱动的骨骼分组",
+        items=[('ENTRY', "按条目", "按文件顺序列出条目"),
+               ('BONE', "按骨骼", "按被驱动的骨骼分组，列出每个通道和上面的条目")],
+        default='ENTRY',
     )
     entry_index: IntProperty(
         name="条目", description="列表里当前条目的序号；读写的是当前活动物体",

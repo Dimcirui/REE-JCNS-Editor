@@ -1,20 +1,19 @@
 """
 jcns_ui.py
 ----------
-侧边栏（View3D > 侧栏 > JCNS 编辑器）的框架：状态、文件、分区浏览器。
+侧边栏（View3D > 侧栏 > JCNS 编辑器）的框架：状态、预览、条目浏览器、文件信息。
 
 每个 section 自己的编辑界面在 jcns_editors.py；哪些分区存在、各自能做什么由
 modules/jcns_kinds.py 决定，预览（驱动器 / 骨骼约束）由 jcns_preview.py 负责。
 
-面板按「你多久看一次」分层：
+顶层面板按 bl_order 排列：
 
-  JCNS_PT_Status            始终显示 —— 导入/导出、工作集合、骨架
-  JCNS_PT_File              文件 —— 名称、版本
-    JCNS_PT_FileInfo          文件级数据（ObjectSettings、ConeDriver 表、读取骨表）
-  JCNS_PT_Browser           分区浏览器 —— 图标标签页 + 条目列表 + 增删换序
-    JCNS_PT_BrowserPreview    当前分区的预览（驱动器 / 骨骼约束）
-    JCNS_PT_BrowserChannels   Ranges：按被驱动的骨骼通道分组
-  （jcns_editors.py）       当前条目的编辑器，每种类型各一组面板
+  0 JCNS_PT_Status     导入/导出、工作集合、骨架、文件名与版本
+  1 JCNS_PT_SDK        烘焙约束（jcns_sdk_ops.py）
+  2 JCNS_PT_Preview    整个界面唯一的预览入口
+  3 JCNS_PT_Edit       分区标签、条目列表（或按骨骼分组）、增删换序
+      （jcns_editors.py）选中条目的编辑详情，作为「编辑」的子面板
+  4 JCNS_PT_FileInfo   文件级数据，默认折叠
 """
 
 import os
@@ -242,7 +241,8 @@ def _resolve_root(context):
 
 
 # ---------------------------------------------------------------------------
-# 常驻提示面板
+# 顶层面板（bl_order 0..4）：MHWs JCNS / 烘焙约束 / 预览 / 编辑 / 文件信息
+# 烘焙约束在 jcns_sdk_ops.py；编辑的详情是 jcns_editors.py 里挂在「编辑」下的子面板。
 # ---------------------------------------------------------------------------
 
 class JCNS_PT_Status(Panel):
@@ -251,7 +251,7 @@ class JCNS_PT_Status(Panel):
     bl_space_type  = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category    = 'JCNS 编辑器'
-    bl_order       = 0
+    bl_order    = 0
 
     def draw(self, context):
         layout = self.layout
@@ -264,83 +264,89 @@ class JCNS_PT_Status(Panel):
                    icon='OUTLINER_COLLECTION')
 
         root, rp = _resolve_root(context)
-        if root is not None:
-            _field_row(layout, "骨架：", rp, "target_armature", icon='ARMATURE_DATA')
-        else:
-            col = layout.column(align=True)
-            col.label(text="还没有 JCNS 文件", icon='INFO')
-            col.label(text="先导入 .jcns 文件，或选中生成的空物体。")
+        if root is None:
+            layout.label(text="先导入 JCNS 文件，或选中它的根空物体", icon='INFO')
+            return
+        _field_row(layout, "骨架：", rp, "target_armature", icon='ARMATURE_DATA')
+
+        from .modules_shim import get_schema
+        from .jcns_exporter import _root_version
+        v = _root_version(rp)
+        name = rp.source_filepath.replace('\\', '/').split('/')[-1] or root.name
+        layout.label(text="%s · v%d" % (name, v), icon='FILE')
+        if v not in get_schema().VERIFIED_VERSIONS:
+            layout.label(text="版本支持不完整，导出前先备份", icon='ERROR')
 
 
-# ---------------------------------------------------------------------------
-# 文件
-# ---------------------------------------------------------------------------
-
-def _draw_version_note(layout, rp):
-    from .modules_shim import get_schema
-    from .jcns_exporter import _root_version
-    schema = get_schema()
-    v = _root_version(rp)
-    col = layout.column(align=True)
-    col.label(text=f"v{v} · {schema.VERSION_GAMES.get(v, '未知游戏')}", icon='INFO')
-    if v not in schema.VERIFIED_VERSIONS:
-        col.label(text="这个版本的支持不完整，导出前请备份原文件", icon='ERROR')
-
-
-class JCNS_PT_File(Panel):
-    bl_label    = "JCNS 文件"
-    bl_idname   = "JCNS_PT_file"
+class _RootPanel:
+    """Mixin: the panel needs a JCNS file."""
     bl_space_type  = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category    = 'JCNS 编辑器'
-    bl_order       = 1
 
     @classmethod
     def poll(cls, context):
         return _resolve_root(context)[0] is not None
 
-    def draw(self, context):
-        root, rp = _resolve_root(context)
-        box = self.layout.box()
-        box.label(text=rp.source_filepath.replace('\\', '/').split('/')[-1] or root.name,
-                  icon='FILE')
-        _draw_version_note(box, rp)
 
+# ---------------------------------------------------------------------------
+# 预览
+# ---------------------------------------------------------------------------
 
-class JCNS_PT_FileInfo(Panel):
-    """不属于任何一条条目、只随文件带着走的数据。"""
-    bl_label    = "文件级数据"
-    bl_idname   = "JCNS_PT_file_info"
-    bl_space_type  = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category    = 'JCNS 编辑器'
-    bl_parent_id   = "JCNS_PT_file"
-    bl_options     = {'DEFAULT_CLOSED'}
+class JCNS_PT_Preview(_RootPanel, Panel):
+    """整个界面唯一的预览入口：整个文件，或只有选中的条目。"""
+    bl_label    = "预览"
+    bl_idname   = "JCNS_PT_preview"
+    bl_order    = 2
+
+    def draw_header(self, context):
+        self.layout.label(text="", icon='HIDE_OFF')
 
     def draw(self, context):
-        import json
+        from . import get_jcns_constraint, jcns_preview
+        layout = self.layout
         root, rp = _resolve_root(context)
-        col = self.layout.column(align=True)
-        try:
-            n_obj = len(json.loads(rp.object_settings_json)) if rp.object_settings_json else 0
-        except ValueError:
-            n_obj = 0
-        col.label(text="ObjectSettings：%d 条（原样保留）" % n_obj, icon='OBJECT_DATA')
-        col.label(text="ConeDriver 表：%d 个" % len(_cone_names(rp)), icon='CONE')
-        from . import entry_counts
-        if entry_counts(root).get('RotExpression'):
-            col.prop(rp, "rot_map_value")
-        if len(rp.read_joint_table):
-            col.label(text="读取骨表：%d 项，由 Skin/Aim 的骨骼按骨架层级推出" % len(rp.read_joint_table),
-                      icon='BONE_DATA')
-            col.template_list("UI_UL_list", "jcns_read_joints", rp, "read_joint_table",
-                              rp, "read_joint_index", rows=min(len(rp.read_joint_table), 5))
-        else:
-            col.label(text="读取骨表：无", icon='BONE_DATA')
+        kinds = _kinds()
+
+        on = total = 0
+        rough = []
+        for kind in jcns_preview.previewable_kinds():
+            a, b = jcns_preview.preview_counts(root, kind.id)
+            on, total = on + a, total + b
+            if b and jcns_preview.backend_of(kind.id).experimental:
+                rough.append(kind.label.split()[0])
+
+        layout.label(text="已应用 %d/%d" % (on, total),
+                     icon='CHECKMARK' if total and on == total else 'BLANK1')
+        has_arm = rp.target_armature is not None
+        if not has_arm:
+            layout.label(text="先设置目标骨架", icon='ERROR')
+
+        col = layout.column(align=True)
+        col.enabled = has_arm
+        row = col.row(align=True)
+        row.operator("jcns.preview_apply", text="应用", icon='PLAY').scope = 'FILE'
+        row.operator("jcns.preview_clear", text="清除", icon='X').scope = 'FILE'
+
+        obj, p = get_jcns_constraint(context)
+        backend = jcns_preview.backend_of(kinds.kind_of(p.constraint_type).id) if p is not None else None
+        sub = col.row(align=True)
+        sub.enabled = backend is not None
+        split = sub.split(factor=0.45)
+        split.label(text="仅选中的条目")
+        pair = split.row(align=True)
+        pair.operator("jcns.preview_apply", text="应用").scope = 'ENTRY'
+        pair.operator("jcns.preview_clear", text="清除").scope = 'ENTRY'
+
+        if backend is not None:
+            for alert, text in backend.problems(obj):
+                _wrap_label(layout, context, text, icon='ERROR' if alert else 'INFO', alert=alert)
+        if rough:
+            layout.label(text="%s 的预览仅供参考" % "、".join(rough), icon='QUESTION')
 
 
 # ---------------------------------------------------------------------------
-# 分区浏览器
+# 编辑：分区标签 + 条目列表（或按骨骼分组）；选中条目的详情是 jcns_editors 里的子面板
 # ---------------------------------------------------------------------------
 
 # 列表和行绘制在同一次重绘里：filter_items 先算好、draw_item 再读。
@@ -402,17 +408,35 @@ class JCNS_UL_Entries(bpy.types.UIList):
             row.label(text="", icon='HIDE_OFF')
 
 
-class JCNS_PT_Browser(Panel):
-    bl_label    = "分区"
-    bl_idname   = "JCNS_PT_browser"
-    bl_space_type  = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category    = 'JCNS 编辑器'
-    bl_order       = 2
+def _short_label(kind):
+    """"Skin 蒙皮" -> "Skin"; labels without a latin name stay whole."""
+    head = kind.label.split()[0]
+    return head if head.isascii() else kind.label
 
-    @classmethod
-    def poll(cls, context):
-        return _resolve_root(context)[0] is not None
+
+def _draw_tabs(layout, rp, kinds, counts, state):
+    """Icon tabs for the kinds that have entries (Ranges always), then a + for each
+    addable kind that has none yet."""
+    row = layout.row(align=True)
+    row.scale_y = 1.25
+    for k in kinds.TAB_KINDS:
+        if k.id == 'Ranges' or counts.get(k.id) or k.id == rp.browser_kind:
+            row.prop_enum(rp, "browser_kind", k.id, text="", icon=k.icon)
+
+    missing = [k for k in kinds.TAB_KINDS
+               if k.addable and not counts.get(k.id) and k.id != 'Ranges']
+    if missing and state.rebuild:
+        row = layout.row(align=True)
+        for k in missing:
+            sub = row.row(align=True)
+            sub.enabled = kinds.capabilities(k.id, state).can_add
+            sub.operator("jcns.add_section_entry", text=_short_label(k), icon='ADD').kind = k.id
+
+
+class JCNS_PT_Edit(_RootPanel, Panel):
+    bl_label    = "编辑"
+    bl_idname   = "JCNS_PT_edit"
+    bl_order    = 3
 
     def draw(self, context):
         from . import (entry_collection, entry_counts, file_state,
@@ -421,25 +445,29 @@ class JCNS_PT_Browser(Panel):
         root, rp = _resolve_root(context)
         kinds = _kinds()
         kind = kinds.kind_of(rp.browser_kind)
-        caps = kinds.capabilities(kind.id, file_state(rp))
+        state = file_state(rp)
+        caps = kinds.capabilities(kind.id, state)
+        counts = entry_counts(root)
 
-        row = layout.row(align=True)
-        row.scale_y = 1.25
-        row.prop(rp, "browser_kind", expand=True, icon_only=True)
+        _draw_tabs(layout, rp, kinds, counts, state)
 
-        n = entry_counts(root).get(kind.id, 0)
-        layout.label(text="%s · %d 条" % (kind.label, n), icon=kind.icon)
+        n = counts.get(kind.id, 0)
+        layout.label(text="%s · %d" % (kind.label, n), icon=kind.icon)
         if caps.banner:
-            _wrap_label(layout, context, caps.banner,
-                        icon='LOCKED' if not caps.can_edit else 'INFO')
+            layout.label(text=caps.banner, icon='LOCKED')
 
-        # 选中的条目不在当前分区时，编辑器仍会显示它；这里给一个跳过去的按钮。
+        # 选中的条目不在当前分区时，详情仍会显示它；这里给一个跳过去的按钮。
         obj, p = get_jcns_constraint(context)
         active_kind = kinds.kind_of(p.constraint_type) if p is not None else None
         if active_kind is not None and active_kind.id != kind.id and active_kind.tab:
             layout.prop_enum(rp, "browser_kind", active_kind.id,
-                             text="选中的是 %s，切到该分区" % active_kind.label,
-                             icon=active_kind.icon)
+                             text="切到 %s" % _short_label(active_kind), icon=active_kind.icon)
+
+        if kind.id == 'Ranges':
+            layout.row().prop(rp, "browser_view", expand=True)
+            if rp.browser_view == 'BONE':
+                _draw_channels(layout, context, root, rp)
+                return
 
         coll = entry_collection(root)
         row = layout.row()
@@ -465,126 +493,85 @@ class JCNS_PT_Browser(Panel):
             sub.operator("jcns.move_constraint", text="", icon='TRIA_DOWN').direction = 'DOWN'
 
 
-class JCNS_PT_BrowserPreview(Panel):
-    """当前分区能不能在视口里看到效果：Ranges 是驱动器，其余是骨骼约束。"""
-    bl_label    = "预览"
-    bl_idname   = "JCNS_PT_browser_preview"
-    bl_space_type  = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category    = 'JCNS 编辑器'
-    bl_parent_id   = "JCNS_PT_browser"
+def _draw_channels(layout, context, root, rp):
+    """Ranges grouped by driven bone: each channel with the entries on it."""
+    from . import group_constraints_by_channel, jcns_merge_ops
+    m = _mapping()
 
-    @classmethod
-    def poll(cls, context):
-        root, rp = _resolve_root(context)
-        return root is not None and bool(_kinds().kind_of(rp.browser_kind).preview)
+    groups = group_constraints_by_channel(root)
+    if not groups:
+        layout.label(text="没有条目", icon='INFO')
+        return
 
-    def draw_header(self, context):
-        self.layout.label(text="", icon='HIDE_OFF')
+    by_bone = {}
+    for (bone, transform, axis), members in groups.items():
+        by_bone.setdefault(bone or '???', []).append((transform, axis, members))
+
+    active = context.active_object
+    jcns_merge_ops.draw_merge_all(layout, context, groups, rp)
+
+    for bone in sorted(by_bone):
+        box = layout.box()
+        col = box.column(align=True)
+        col.label(text=bone, icon='BONE_DATA')
+
+        for transform, axis, members in sorted(by_bone[bone], key=lambda x: (x[0], x[1])):
+            # Only the last constraint on the channel actually drives it.
+            sources = list(members[-1].jcns_cns_props.sources)
+            info = m.describe_channel(sources)
+
+            row = col.row(align=True)
+            row.alert = info['offset_at_rest']
+            applied = any(e.jcns_cns_props.preview_on for e in members)
+            icon = ('ERROR' if info['offset_at_rest']
+                    else 'DRIVER' if applied else 'BLANK1')
+            srcs = "、".join(sorted({sp.source_bone + " " + sp.source_axis
+                                    for sp in sources if sp.source_bone})) or "（无）"
+            suffix = ""
+            if info['offset_at_rest']:
+                suffix = "   静止 %s%s" % (_fmt(info['at_rest']), _target_unit(transform))
+            elif info['all_inert']:
+                suffix = "   （无输出）"
+            row.label(text="局部 %s 轴 ← %s%s" % (axis, srcs, suffix), icon=icon)
+
+            if len(members) > 1:
+                col.label(text="        %d 条共用此通道" % len(members), icon='DOT')
+            for e in members:
+                sub = col.row(align=True)
+                sub.active = (e is active)
+                op = sub.operator("object.select_pattern", text="    " + e.name, emboss=False)
+                op.pattern = e.name
+                op.extend = False
+
+
+# ---------------------------------------------------------------------------
+# 文件信息
+# ---------------------------------------------------------------------------
+
+class JCNS_PT_FileInfo(_RootPanel, Panel):
+    """不属于任何一条条目、只随文件带着走的数据。"""
+    bl_label    = "文件信息"
+    bl_idname   = "JCNS_PT_file_info"
+    bl_order    = 4
+    bl_options  = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
-        from . import jcns_preview
-        layout = self.layout
+        import json
         root, rp = _resolve_root(context)
-        kind = _kinds().kind_of(rp.browser_kind)
-        backend = jcns_preview.backend_of(kind.id)
-        on, total = jcns_preview.preview_counts(root, kind.id)
-
-        layout.label(text="%s：已应用 %d / %d" % (backend.noun, on, total),
-                     icon='CHECKMARK' if total and on == total else 'BLANK1')
-        _wrap_label(layout, context, backend.note,
-                    icon='ERROR' if backend.experimental else 'INFO')
-        has_arm = rp.target_armature is not None
-        if not has_arm:
-            _wrap_label(layout, context, "先在上面的「骨架」里设置目标骨架。",
-                        icon='ERROR', alert=True)
-
-        col = layout.column(align=True)
-        col.enabled = has_arm
-        row = col.row(align=True)
-        op = row.operator("jcns.preview_apply", text="应用本分区", icon='PLAY')
-        op.scope, op.kind = 'KIND', kind.id
-        op = row.operator("jcns.preview_clear", text="清除本分区", icon='X')
-        op.scope, op.kind = 'KIND', kind.id
-        row = col.row(align=True)
-        op = row.operator("jcns.preview_apply", text="应用全部分区")
-        op.scope = 'FILE'
-        op = row.operator("jcns.preview_clear", text="清除全部分区")
-        op.scope = 'FILE'
-
-
-class JCNS_PT_BrowserChannels(Panel):
-    """按驱动的骨骼通道分组列出约束，能看出同一个轴上有几条约束、哪一条生效"""
-    bl_label    = "被驱动的骨骼"
-    bl_idname   = "JCNS_PT_browser_channels"
-    bl_space_type  = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category    = 'JCNS 编辑器'
-    bl_parent_id   = "JCNS_PT_browser"
-    bl_options     = {'DEFAULT_CLOSED'}
-
-    @classmethod
-    def poll(cls, context):
-        root, rp = _resolve_root(context)
-        return root is not None and rp.browser_kind == 'Ranges'
-
-    def draw(self, context):
-        from . import group_constraints_by_channel
-        layout = self.layout
-        obj, rp = _resolve_root(context)
-        m = _mapping()
-
-        groups = group_constraints_by_channel(obj)
-        if not groups:
-            layout.label(text="没有 Ranges 类型的约束。", icon='INFO')
-            return
-
-        by_bone = {}
-        for (bone, transform, axis), members in groups.items():
-            by_bone.setdefault(bone or '???', []).append((transform, axis, members))
-
-        active = context.active_object
-        total = sum(len(mm) for v in by_bone.values() for _, _, mm in v)
-        layout.label(text="%d 根骨骼 · %d 个通道 · %d 条约束"
-                          % (len(by_bone), len(groups), total))
-        from . import jcns_merge_ops
-        jcns_merge_ops.draw_merge_all(layout, context, groups, rp)
-
-        for bone in sorted(by_bone):
-            box = layout.box()
-            col = box.column(align=True)
-            col.label(text=bone, icon='BONE_DATA')
-
-            for transform, axis, members in sorted(by_bone[bone],
-                                                   key=lambda x: (x[0], x[1])):
-                # Only the last constraint on the channel actually drives it.
-                sources = list(members[-1].jcns_cns_props.sources)
-                info = m.describe_channel(sources)
-
-                row = col.row(align=True)
-                row.alert = info['offset_at_rest']
-                applied = any(e.jcns_cns_props.preview_on for e in members)
-                icon = ('ERROR' if info['offset_at_rest']
-                        else 'DRIVER' if applied else 'BLANK1')
-                srcs = "、".join(sorted({sp.source_bone + " " + sp.source_axis
-                                        for sp in sources if sp.source_bone})) or "（无）"
-                suffix = ""
-                if info['offset_at_rest']:
-                    suffix = "   静止 %s%s" % (_fmt(info['at_rest']), _target_unit(transform))
-                elif info['all_inert']:
-                    suffix = "   （无输出）"
-                row.label(text="局部 %s 轴 ← %s%s" % (axis, srcs, suffix), icon=icon)
-
-                if len(members) > 1:
-                    col.label(text="        %d 条约束合并到此通道" % len(members),
-                              icon='DOT')
-                for e in members:
-                    sub = col.row(align=True)
-                    sub.active = (e is active)
-                    op = sub.operator("object.select_pattern", text="    " + e.name,
-                                      emboss=False)
-                    op.pattern = e.name
-                    op.extend = False
+        col = self.layout.column(align=True)
+        try:
+            n_obj = len(json.loads(rp.object_settings_json)) if rp.object_settings_json else 0
+        except ValueError:
+            n_obj = 0
+        col.label(text="ObjectSettings：%d" % n_obj, icon='OBJECT_DATA')
+        col.label(text="ConeDriver 表：%d" % len(_cone_names(rp)), icon='CONE')
+        from . import entry_counts
+        if entry_counts(root).get('RotExpression'):
+            col.prop(rp, "rot_map_value")
+        col.label(text="读取骨表：%d" % len(rp.read_joint_table), icon='BONE_DATA')
+        if len(rp.read_joint_table):
+            col.template_list("UI_UL_list", "jcns_read_joints", rp, "read_joint_table",
+                              rp, "read_joint_index", rows=min(len(rp.read_joint_table), 5))
 
 
 # ---------------------------------------------------------------------------
@@ -597,11 +584,9 @@ _classes = [
     JCNS_UL_ConeInfos,
     JCNS_UL_Entries,
     JCNS_PT_Status,
-    JCNS_PT_File,
+    JCNS_PT_Preview,
+    JCNS_PT_Edit,
     JCNS_PT_FileInfo,
-    JCNS_PT_Browser,
-    JCNS_PT_BrowserPreview,
-    JCNS_PT_BrowserChannels,
 ]
 
 

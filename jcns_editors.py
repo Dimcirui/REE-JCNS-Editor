@@ -1,10 +1,13 @@
 """
 jcns_editors.py
 ---------------
-每种 section 各一组编辑器面板，没有通用表单：
+每种 section 各一组编辑器面板，没有通用表单。它们都挂在顶层「编辑」（jcns_ui.JCNS_PT_Edit）下面，
+只在当前条目是这一类型时出现：
 
-  主面板              JCNS_PT_Ed_<Kind>        只在当前条目是这一类型时出现
-    子面板            JCNS_PT_Ed_<Kind>_<Sub>  按需要拆出来，原始字段一律默认折叠
+  JCNS_PT_Ed_<Kind>        这一类型的主面板（Ranges 的是「被驱动」，同级还有驱动、映射曲线等）
+    JCNS_PT_Ed_<Kind>_<Sub>  按需要拆出来的子面板，原始字段一律默认折叠
+
+预览不在这里：整个界面只有顶层「预览」一个入口。
 
 新增编辑器：继承 _Editor，设 KIND，写 draw，注册进 _classes（父面板排在子面板前面）。
 类型本身的事实在 modules/jcns_kinds.py，预览在 jcns_preview.py。
@@ -69,7 +72,7 @@ class _Editor:
 
 
 class _EditorMain(_Editor):
-    bl_order = 3
+    bl_parent_id = "JCNS_PT_edit"
 
     def draw_header(self, context):
         self.layout.label(text="", icon=_kinds().kind_of(self.KIND).icon)
@@ -78,47 +81,6 @@ class _EditorMain(_Editor):
 class _Sub:
     """Mixin: a sub-panel that starts collapsed (raw fields and other rarely-touched data)."""
     bl_options = {'DEFAULT_CLOSED'}
-
-
-def draw_entry_preview(layout, context, c):
-    """The per-entry Apply / Clear block, the same for every previewable kind."""
-    from . import jcns_preview
-    backend = jcns_preview.backend_of(c.kind.id)
-    if backend is None:
-        layout.label(text="这一类没有预览", icon='INFO')
-        return
-    for alert, text in backend.problems(c.obj):
-        _wrap_label(layout, context, text, icon='ERROR' if alert else 'INFO', alert=alert)
-    if backend.experimental:
-        _wrap_label(layout, context, "这一类的预览效果可能与游戏里不同，只适合用来对照。", icon='INFO')
-    has_arm = c.rp.target_armature is not None
-    if not has_arm:
-        _wrap_label(layout, context, "先在上面的「骨架」里设置目标骨架。", icon='ERROR', alert=True)
-    col = layout.column(align=True)
-    col.scale_y = 1.3
-    col.enabled = has_arm
-    op = col.operator("jcns.preview_apply",
-                      text=("重新应用%s" if c.p.preview_on else "应用%s") % backend.noun,
-                      icon='PLAY')
-    op.scope = 'ENTRY'
-    sub = col.row(align=True)
-    sub.enabled = c.p.preview_on
-    op = sub.operator("jcns.preview_clear", text="清除%s" % backend.noun, icon='X')
-    op.scope = 'ENTRY'
-
-
-class _PreviewSub(_Editor, _Sub):
-    """A kind's preview sub-panel: subclasses only name their parent."""
-    bl_label = "预览"
-    bl_options = set()
-
-    def draw_header(self, context):
-        self.layout.label(text="", icon='HIDE_OFF')
-
-    def draw(self, context):
-        c = _begin(self.layout, context, banner=False)
-        if c is not None:
-            draw_entry_preview(self.layout, context, c)
 
 
 # ---------------------------------------------------------------------------
@@ -308,21 +270,19 @@ def _source_read_notes(c, p, sp):
 
 
 class JCNS_PT_Ed_Ranges(_EditorMain, Panel):
-    """目标骨骼、通道，以及和别的约束抢同一通道时谁生效。"""
-    bl_label  = "范围约束"
+    """被驱动的骨骼、通道，以及和别的约束共用同一通道时谁生效。"""
+    bl_label  = "被驱动"
     bl_idname = "JCNS_PT_ed_ranges"
     KIND = 'Ranges'
 
     def draw(self, context):
-        from . import sibling_constraints, get_constraint_empties
+        from . import sibling_constraints, get_constraint_empties, jcns_merge_ops
         c = _begin(self.layout, context)
         if c is None:
             return
         layout, obj, p = c.body, c.obj, c.p
 
-        box = layout.box()
-        box.label(text="目标", icon='OUTLINER_OB_ARMATURE')
-        col = box.column(align=True)
+        col = layout.column(align=True)
         _field_row(col, "骨骼：", p, "target_bone")
         _field_row(col, "局部轴向：", p, "target_axis")
         _field_row(col, "变换：", p, "transform_type")
@@ -331,37 +291,20 @@ class JCNS_PT_Ed_Ranges(_EditorMain, Panel):
             _field_row(col, "属性：", p, "target_property")
         _field_row(col, "叠加：", p, "additive")
         from .jcns_drivers import jcns_source_read as sr
-        _draw_rules(box, sr.target_rule(_transform_int(p.transform_type), p.additive))
+        _draw_rules(layout, sr.target_rule(_transform_int(p.transform_type), p.additive))
 
         # 导出按 [N] 前缀排列；同一通道上后写的那条覆盖前面的。
         sibs = sibling_constraints(obj)
         if sibs:
             ordered = get_constraint_empties(c.root) if c.root else []
-            channel_members = [e for e in ordered if e is obj or e in sibs] if ordered else [obj]
-            is_winner = bool(channel_members) and channel_members[-1] is obj
-            sbox = layout.box()
-            scol = sbox.column(align=True)
-            scol.label(text="另有 %d 条约束也在驱动 %s 的局部 %s 轴"
-                            % (len(sibs), p.target_bone or '?', p.target_axis),
-                       icon='INFO')
-            for s in sibs:
-                scol.label(text="    " + s.name, icon='DOT')
-            if is_winner:
-                scol.label(text="本条在最后，实际生效的是它。", icon='CHECKMARK')
-            else:
-                row = scol.row()
-                row.alert = True
-                row.label(text="本条会被靠后的那条整条覆盖，不产生任何效果。",
-                          icon='ERROR')
-                scol.label(text="想让它生效，用列表右侧的 ▲▼ 把它移到最后。")
-            from . import jcns_merge_ops
-            jcns_merge_ops.draw_channel_merge(sbox, context, channel_members, c.rp)
+            members = [e for e in ordered if e is obj or e in sibs] if ordered else [obj]
+            jcns_merge_ops.draw_channel_merge(layout.box(), context, members, c.rp, obj)
 
 
 class JCNS_PT_Ed_Ranges_Sources(_Editor, Panel):
-    bl_label  = "驱动源"
+    bl_label  = "驱动"
     bl_idname = "JCNS_PT_ed_ranges_sources"
-    bl_parent_id = "JCNS_PT_ed_ranges"
+    bl_parent_id = "JCNS_PT_edit"
     KIND = 'Ranges'
 
     def draw_header(self, context):
@@ -408,7 +351,7 @@ class JCNS_PT_Ed_Ranges_Sources(_Editor, Panel):
 class JCNS_PT_Ed_Ranges_Mapping(_Editor, Panel):
     bl_label  = "映射曲线"
     bl_idname = "JCNS_PT_ed_ranges_mapping"
-    bl_parent_id = "JCNS_PT_ed_ranges"
+    bl_parent_id = "JCNS_PT_edit"
     KIND = 'Ranges'
 
     @classmethod
@@ -450,7 +393,7 @@ class JCNS_PT_Ed_Ranges_Cones(_Editor, Panel):
     """ConeDriver 输入：关节摆进某个锥形的程度驱动这条约束，与驱动源并列。"""
     bl_label  = "ConeDriver 输入"
     bl_idname = "JCNS_PT_ed_ranges_cones"
-    bl_parent_id = "JCNS_PT_ed_ranges"
+    bl_parent_id = "JCNS_PT_edit"
     KIND = 'Ranges'
 
     @classmethod
@@ -487,31 +430,33 @@ class JCNS_PT_Ed_Ranges_Cones(_Editor, Panel):
 
 
 class JCNS_PT_Ed_Ranges_Tools(_Editor, Panel):
-    bl_label  = "预览与工具"
+    bl_label  = "工具"
     bl_idname = "JCNS_PT_ed_ranges_tools"
-    bl_parent_id = "JCNS_PT_ed_ranges"
+    bl_parent_id = "JCNS_PT_edit"
     KIND = 'Ranges'
 
     def draw_header(self, context):
-        self.layout.label(text="", icon='HIDE_OFF')
+        self.layout.label(text="", icon='TOOL_SETTINGS')
 
     def draw(self, context):
         c = _begin(self.layout, context, banner=False)
         if c is None:
             return
-        draw_entry_preview(self.layout, context, c)
-        self.layout.separator()
-        sub = self.layout.column()
-        sub.enabled = c.caps.can_add          # mirroring creates entries
+        sub = self.layout.column(align=True)
+        sub.enabled = c.caps.can_add          # mirroring and merging create or delete entries
         sub.operator("jcns.mirror_constraints", text="镜像到另一侧…", icon='MOD_MIRROR')
+        sub.operator("jcns.merge_all_channels", icon='AUTOMERGE_ON')
 
 
 class JCNS_PT_Ed_Ranges_Advanced(_Editor, _Sub, Panel):
-    """含义还没弄清的字段。取值固定的字段在「保留字段」里。"""
-    bl_label  = "未知字段"
+    """含义还没弄清的字段，和取值固定、导出时原样写回的字段。"""
+    bl_label  = "高级"
     bl_idname = "JCNS_PT_ed_ranges_advanced"
-    bl_parent_id = "JCNS_PT_ed_ranges"
+    bl_parent_id = "JCNS_PT_edit"
     KIND = 'Ranges'
+
+    def draw_header(self, context):
+        self.layout.label(text="", icon='PREFERENCES')
 
     def draw(self, context):
         c = _begin(self.layout, context, banner=False)
@@ -536,25 +481,11 @@ class JCNS_PT_Ed_Ranges_Advanced(_Editor, _Sub, Panel):
         _draw_raw_group(layout, "哈希覆盖（0 表示按名字计算）", 'PREFERENCES', [
             (p, [("property_hash", "属性"), ("object_hash", "目标")]),
         ])
-
-
-class JCNS_PT_Ed_Ranges_Reserved(_Editor, _Sub, Panel):
-    """取值固定的字段，导出时原样写回。"""
-    bl_label  = "保留字段"
-    bl_idname = "JCNS_PT_ed_ranges_reserved"
-    bl_parent_id = "JCNS_PT_ed_ranges"
-    KIND = 'Ranges'
-
-    def draw(self, context):
-        c = _begin(self.layout, context, banner=False)
-        if c is None:
-            return
-        p = c.p
-        _draw_raw_group(c.body, "固定为 (0,0,0,1)", 'PREFERENCES', [
+        _draw_raw_group(layout, "固定为 (0,0,0,1)", 'PREFERENCES', [
             (p, [("reserved_vec4_x", "X"), ("reserved_vec4_y", "Y"),
                  ("reserved_vec4_z", "Z"), ("reserved_vec4_w", "W")]),
         ])
-        _draw_raw_group(c.body, "固定为 0", 'PREFERENCES', [(p, [("reserved_tail", "+76 / +78 / +79")])])
+        _draw_raw_group(layout, "固定为 0", 'PREFERENCES', [(p, [("reserved_tail", "+76 / +78 / +79")])])
 
 
 # ---------------------------------------------------------------------------
@@ -609,12 +540,6 @@ class JCNS_PT_Ed_Skin_Reserved(_Editor, _Sub, Panel):
         _draw_raw_group(c.body, "v102 固定为 0", 'PREFERENCES', [(c.p, [("skin_tail", "尾部 2 字节")])])
 
 
-class JCNS_PT_Ed_Skin_Preview(_PreviewSub, Panel):
-    bl_idname = "JCNS_PT_ed_skin_preview"
-    bl_parent_id = "JCNS_PT_ed_skin"
-    KIND = 'Skin'
-
-
 # ---------------------------------------------------------------------------
 # Aim —— 瞄准
 # ---------------------------------------------------------------------------
@@ -661,12 +586,6 @@ _AIM_RULES = {
 }
 
 
-class JCNS_PT_Ed_Aim_Preview(_PreviewSub, Panel):
-    bl_idname = "JCNS_PT_ed_aim_preview"
-    bl_parent_id = "JCNS_PT_ed_aim"
-    KIND = 'Aim'
-
-
 class JCNS_PT_Ed_Aim_Raw(_Editor, _Sub, Panel):
     bl_label  = "未知字段"
     bl_idname = "JCNS_PT_ed_aim_raw"
@@ -710,12 +629,6 @@ _ROT_RULES = {
     'ADD_REST': [("结果 = 静止姿态 · 源旋转按系数缩放后的旋转；系数 (1,1,1) 时是精确拷贝", True),
                  ("系数不是 1 时只有小角度是每轴相乘，大角度偏离线性，精确公式未定", False)],
 }
-
-
-class JCNS_PT_Ed_RotExpr_Preview(_PreviewSub, Panel):
-    bl_idname = "JCNS_PT_ed_rotexpr_preview"
-    bl_parent_id = "JCNS_PT_ed_rotexpr"
-    KIND = 'RotExpression'
 
 
 class JCNS_PT_Ed_RotExpr_Raw(_Editor, _Sub, Panel):
@@ -818,15 +731,11 @@ _classes = [
     JCNS_PT_Ed_Ranges_Cones,
     JCNS_PT_Ed_Ranges_Tools,
     JCNS_PT_Ed_Ranges_Advanced,
-    JCNS_PT_Ed_Ranges_Reserved,
     JCNS_PT_Ed_Skin,
-    JCNS_PT_Ed_Skin_Preview,
     JCNS_PT_Ed_Skin_Reserved,
     JCNS_PT_Ed_Aim,
-    JCNS_PT_Ed_Aim_Preview,
     JCNS_PT_Ed_Aim_Raw,
     JCNS_PT_Ed_RotExpr,
-    JCNS_PT_Ed_RotExpr_Preview,
     JCNS_PT_Ed_RotExpr_Raw,
     JCNS_PT_Ed_Material,
     JCNS_PT_Ed_Material_Raw,

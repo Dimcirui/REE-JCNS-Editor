@@ -1,5 +1,5 @@
 """
-Pose-driven constraint creation (the Set Driven Key workflow) on the Blender side:
+Constraint baking (the Set Driven Key workflow) on the Blender side:
 the key list stored on the root, the panel, and the operators that record poses and
 turn them into Ranges entries.
 
@@ -642,7 +642,7 @@ class JCNS_OT_SDKGenerate(_SDKOperator):
         last.select_set(True)
         msg = "新建 %d 条，追加 %d 个源。" % (created, appended)
         if plan.warnings:
-            self.report({'WARNING'}, msg + "有 %d 条提示，见「摆姿势建约束」面板。" % len(plan.warnings))
+            self.report({'WARNING'}, msg + "有 %d 条提示，见「烘焙约束」面板。" % len(plan.warnings))
         else:
             self.report({'INFO'}, msg)
         return {'FINISHED'}
@@ -686,19 +686,19 @@ def _panel_plan(st):
     except Exception as exc:
         if not _plan_failed:
             _plan_failed = True
-            print("[JCNS] pose-driven plan failed: %r" % exc)
+            print("[JCNS] bake plan failed: %r" % exc)
         plan = core.Plan()
         plan.errors.append("读取姿态时出错，详情请查看系统控制台。")
         return plan
 
 
 class JCNS_PT_SDK(Panel):
-    bl_label    = "摆姿势建约束"
+    bl_label    = "烘焙约束"
     bl_idname   = "JCNS_PT_sdk"
     bl_space_type  = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category    = 'JCNS 编辑器'
-    bl_order       = 4
+    bl_order    = 1
 
     @classmethod
     def poll(cls, context):
