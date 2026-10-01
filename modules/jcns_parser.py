@@ -320,6 +320,7 @@ class JCNSParser:
             # Property of the target (e.g. 'Blend_A' of material 'face'); empty for bones.
             c['PropertyName'] = (self._read_wstring(data, rec['PropertyOffset'])
                                  if rec.get('PropertyOffset') else '')
+            c['_orig_property_name'] = c['PropertyName']
 
             # ObjectName can be an RSZ object or property target (e.g. 'via.motion.Chain'
             # with TransformType=11 and a non-zero PropertyHash) whose ObjectHash is not

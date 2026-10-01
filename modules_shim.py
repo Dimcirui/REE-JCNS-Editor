@@ -64,6 +64,12 @@ def get_kinds():
     return _kinds
 
 
+def get_targets():
+    ensure_path()
+    import jcns_targets
+    return jcns_targets
+
+
 def get_plan():
     global _plan
     if _plan is None:

@@ -126,6 +126,9 @@ def check_in_place_edits(parser):
         if c.get('ObjectName', '') != c.get('_orig_object_name', ''):
             problems.append(f"{head}：约束 {label} 的目标骨骼被改成了 "
                             f"「{c.get('ObjectName', '')}」（不能改名）。")
+        if c.get('PropertyName', '') != c.get('_orig_property_name', ''):
+            problems.append(f"{head}：约束 {label} 的目标属性被改成了 "
+                            f"「{c.get('PropertyName', '')}」（不能改名）。")
         srcs = c.get('sources', [])
         if len(srcs) != c['_rec']['SourceCount_parent'] or any('_rec' not in s for s in srcs):
             problems.append(f"{head}：约束 {label} 的驱动源数量变了（不能增删驱动源）。")
