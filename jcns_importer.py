@@ -318,8 +318,6 @@ def do_import(filepath, context, armature_obj=None):
             aim_type = 'WORLD_UP'
         p2.aim_type = aim_type
         p2.aim_bytes = a['bytes']
-        p2.aim_tail_hex = a['tail'].hex()
-        p2.aim_target_tail_hex = a['target_tail'].hex()
         obj.name = section_empty_name('Aim', idx, p2)
 
     rot_recs, rot_meta = rot_editable(parser)

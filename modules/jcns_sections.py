@@ -38,7 +38,7 @@ Derived data:
       (rotated 180 deg between 0.25 and 2.0), types 1 and 4 match no blend model.  Every shipped
       record has 1.0.
     * no derived data besides the target block; an unused up-joint is -1; the
-      12 tail bytes and the target block's 8 tail bytes are carried, not assumed
+      record's 12 tail bytes and the target block's 8 tail bytes are always zero
   RotExpression
     * byte[1] = 0 replaces the rest pose, 48 gives rest * value.  Coefficients (1,1,1) copy
       the source rotation exactly; other coefficients scale each axis for small angles and
@@ -200,8 +200,6 @@ def aim_editable(parser):
             'vectors': vecs,
             'rotation_type': body[56],
             'bytes': tuple(body[57:60]),
-            'tail': bytes(body[60:72]),
-            'target_tail': bytes(a['target_body'][4:12]),
         })
     return out
 
@@ -214,14 +212,13 @@ def aim_parser_form(records):
             struct.pack_into('<3f', body, 8 + 12 * k, *v)
         body[56] = r['rotation_type'] & 0xFF
         body[57:60] = bytes(b & 0xFF for b in r['bytes'])
-        body[60:72] = r.get('tail', bytes(12))
         up = r.get('up')
         out.append({
             'JointHashIndex': 0, 'JointHash': r['joint'],
             'UnkJointHashIndex': 0 if up is not None else -1, 'UnkJointHash': up or 0,
             'TargetHashIndex': 0, 'TargetHash': r['target'],
             'inline_body': bytes(body),
-            'target_body': struct.pack('<f', r['influence']) + r.get('target_tail', bytes(8)),
+            'target_body': struct.pack('<f', r['influence']) + bytes(8),
         })
     return out
 

@@ -616,8 +616,6 @@ class JCNSConstraintProperties(PropertyGroup):
     aim_type: EnumProperty(name="类型", items=AIM_TYPE_ITEMS, default='WORLD_UP',
                            update=_refresh_preview)
     aim_bytes: IntVectorProperty(name="字节 +57..59", size=3, default=(1, 0, 5), min=0, max=255)
-    aim_tail_hex: StringProperty(name="尾部 12 字节", default="00" * 12)
-    aim_target_tail_hex: StringProperty(name="目标块尾部 8 字节", default="00" * 8)
 
     # --- RotExpression (target_bone is the driven joint) ---
     rot_source_bone: StringProperty(name="源骨骼", default="", update=_refresh_preview,

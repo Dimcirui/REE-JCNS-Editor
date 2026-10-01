@@ -168,8 +168,6 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
             'influence': p.aim_influence,
             'vectors': [tuple(p.aim_offset), tuple(p.aim_axis), tuple(p.aim_up_axis), tuple(p.aim_up_dir)],
             'rotation_type': AIM_TYPE_TO_INT[p.aim_type], 'bytes': tuple(p.aim_bytes),
-            'tail': bytes.fromhex(p.aim_tail_hex or '00' * 12).ljust(12, b'\0')[:12],
-            'target_tail': bytes.fromhex(p.aim_target_tail_hex or '00' * 8).ljust(8, b'\0')[:8],
         })
     parser.aim_constraints = X.aim_parser_form(aims)
 

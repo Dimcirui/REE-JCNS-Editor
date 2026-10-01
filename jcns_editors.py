@@ -668,7 +668,7 @@ class JCNS_PT_Ed_Aim_Preview(_PreviewSub, Panel):
 
 
 class JCNS_PT_Ed_Aim_Raw(_Editor, _Sub, Panel):
-    bl_label  = "未知与保留字段"
+    bl_label  = "未知字段"
     bl_idname = "JCNS_PT_ed_aim_raw"
     bl_parent_id = "JCNS_PT_ed_aim"
     KIND = 'Aim'
@@ -680,9 +680,6 @@ class JCNS_PT_Ed_Aim_Raw(_Editor, _Sub, Panel):
         p = c.p
         _draw_raw_group(c.body, "未知字段", 'PREFERENCES', [
             (p, [("aim_bytes", "")]),
-        ])
-        _draw_raw_group(c.body, "保留字段（恒为 0）", 'PREFERENCES', [
-            (p, [("aim_tail_hex", "尾部")]), (p, [("aim_target_tail_hex", "目标块尾部")]),
         ])
 
 
