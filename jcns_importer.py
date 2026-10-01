@@ -133,6 +133,8 @@ def do_import(filepath, context, armature_obj=None):
     coll.objects.link(root)
 
     root.jcns_root_props.source_filepath = filepath
+    from . import jcns_sdk_ops
+    jcns_sdk_ops.ensure_keys(root.jcns_root_props)
     if armature_obj:
         root.jcns_root_props.target_armature = armature_obj
 
