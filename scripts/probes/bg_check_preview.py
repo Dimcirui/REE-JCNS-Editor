@@ -58,7 +58,7 @@ if args.addon_dir:
     spec.loader.exec_module(addon)
     addon.register()
 else:
-    addon_utils.enable('bl_ext.user_default.wilds_jcns_editor', default_set=True, persistent=False)
+    addon_utils.enable('bl_ext.user_default.ree_jcns_editor', default_set=True, persistent=False)
 bpy.context.preferences.addons['RE-Mesh-Editor'].preferences.showConsole = False
 
 quiet = io.StringIO()
@@ -105,7 +105,7 @@ def recorded(r, nm):
 bones = [b.name for b in arm.pose.bones if b.name.startswith('TestTgt') and b.name in names]
 # Blender pose scale is relative to the rest scale Blender bones cannot hold, so the
 # engine's absolute scale is pose scale * rest scale (jcns_operators.target_post_factor).
-ops = sys.modules[('jcns_probe_addon' if args.addon_dir else 'bl_ext.user_default.wilds_jcns_editor')
+ops = sys.modules[('jcns_probe_addon' if args.addon_dir else 'bl_ext.user_default.ree_jcns_editor')
                   + '.jcns_operators']
 rest_scale = {b: ops.mesh_rest_scale(arm.data.bones[b]) for b in bones}
 thigh = arm.pose.bones['L_Thigh']

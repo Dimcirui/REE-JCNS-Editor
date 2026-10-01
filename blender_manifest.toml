@@ -1,9 +1,9 @@
 schema_version = "1.0.0"
 
-id = "wilds_jcns_editor"
+id = "ree_jcns_editor"
 version = "0.15.0"
-name = "Wilds JCNS 编辑器"
-tagline = "导入、编辑并导出怪物猎人荒野的关节约束文件"
+name = "REE JCNS Editor"
+tagline = "导入、编辑并导出 RE Engine 的关节约束文件（JCNS）"
 maintainer = "Dimcirui"
 type = "add-on"
 

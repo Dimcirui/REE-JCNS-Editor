@@ -63,7 +63,7 @@
   - 0012 里的 `L_Thigh` 是本体骨的副本，**录下来是不动的**。
     所以引擎的真实输入要从一条线性条目反推，比如 `x = Out8 / 0.5`。
 - 用户的 Blender 经常开着别的工作（RE6 场景等），**不要切场景、也不要清预览**。只做两件事：
-  1. 把代码复制到 `%APPDATA%/Blender Foundation/Blender/5.1/extensions/user_default/wilds_jcns_editor/`；
+  1. 把代码复制到 `%APPDATA%/Blender Foundation/Blender/5.1/extensions/user_default/ree_jcns_editor/`；
   2. 用户同意后，用 MCP 重新加载插件（`addon_disable` / `addon_enable`，并清掉 `sys.modules` 里的旧模块）。
 - 后台 Blender 必须带 `--factory-startup`，否则用户装的其他插件会在启动时崩掉。
   RE Mesh Editor 要关掉 `showConsole`，否则 `wm.console_toggle` 在没有窗口时会崩。
