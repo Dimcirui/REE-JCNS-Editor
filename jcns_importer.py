@@ -299,7 +299,10 @@ def do_import(filepath, context, armature_obj=None):
             w.bone, w.weight = _nm(src['hash']), src['weight']
         obj.name = section_empty_name('Skin', idx, p2)
     rp.file_constant = sk_meta['constant']
-    rp.read_joint_table_hex = b''.join(h.to_bytes(4, 'little') for h in sk_meta['read_joint_table']).hex()
+    rp.read_joint_table.clear()
+    for h in sk_meta['read_joint_table']:
+        item = rp.read_joint_table.add()
+        item.hash, item.name = jcns_targets.to_signed32(h), _nm(h)
     aim_recs = aim_editable(parser)
     rp.read_joint_signature_json = (json.dumps(read_joint_signature(sk_recs, [a['joint'] for a in aim_recs]))
                               if sk_meta['read_joint_table'] else '')

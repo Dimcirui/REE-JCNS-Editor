@@ -137,9 +137,8 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
                 'tail': bytes(o.jcns_cns_props.skin_tail),
                 'sources': [{'hash': H(w.bone), 'weight': w.weight} for w in o.jcns_cns_props.skin_sources]}
                for o in section_empties(root_obj, 'Skin')]
-    table = bytes.fromhex(root_props.read_joint_table_hex or '')
     meta = {'constant': root_props.file_constant,
-            'read_joint_table': [int.from_bytes(table[i:i + 4], 'little') for i in range(0, len(table), 4)]}
+            'read_joint_table': [it.hash & 0xFFFFFFFF for it in root_props.read_joint_table]}
     locked = json.loads(root_props.read_joint_signature_json) if root_props.read_joint_signature_json else []
     # The table also covers the Aim joints, so it is resolved against both.
     aim_joints = [H(o.jcns_cns_props.target_bone) for o in section_empties(root_obj, 'Aim')]

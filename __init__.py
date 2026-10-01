@@ -327,6 +327,12 @@ class JCNSConeInfo(PropertyGroup):
     unk_byte3: IntProperty(name="+23", default=0, min=0, max=255)
 
 
+class JCNSHashItem(PropertyGroup):
+    """A uint32 hash, held as a signed int, with the name it resolved to."""
+    hash: IntProperty(name="哈希", description="按有符号整数显示", default=0)
+    name: StringProperty(name="名称", default="")
+
+
 class JCNSWeightedSource(PropertyGroup):
     """One source bone of a SkinConstraint record."""
     bone: StringProperty(name="骨骼", default="", update=_refresh_preview,
@@ -817,7 +823,9 @@ class JCNSRootProperties(PropertyGroup):
         get=_entry_index_get, set=_entry_index_set,
     )
     file_constant: IntProperty(default=5)
-    read_joint_table_hex: StringProperty(default="")
+    # ReadJointTable: the joints Skin and Aim read, in file order (see jcns_sections).
+    read_joint_table: CollectionProperty(type=JCNSHashItem)
+    read_joint_index: IntProperty(default=0)
     read_joint_signature_json: StringProperty(default="")
     # The RotExpressionMap value shared by every RotExpression entry.
     rot_map_value: IntProperty(
@@ -1033,6 +1041,7 @@ def _poll_jcns_collection(self, collection):
 
 _classes = [
     JCNSCMKey,                  # groups must register before the groups that reference them
+    JCNSHashItem,
     JCNSConeInfo,
     JCNSWeightedSource,
     JCNSSourceProperties,

@@ -330,8 +330,11 @@ class JCNS_PT_FileInfo(Panel):
         from . import entry_counts
         if entry_counts(root).get('RotExpression'):
             col.prop(rp, "rot_map_value")
-        if rp.read_joint_signature_json:
-            col.label(text="读取骨表：有，由 Skin/Aim 的骨骼按骨架层级推出", icon='BONE_DATA')
+        if len(rp.read_joint_table):
+            col.label(text="读取骨表：%d 项，由 Skin/Aim 的骨骼按骨架层级推出" % len(rp.read_joint_table),
+                      icon='BONE_DATA')
+            col.template_list("UI_UL_list", "jcns_read_joints", rp, "read_joint_table",
+                              rp, "read_joint_index", rows=min(len(rp.read_joint_table), 5))
         else:
             col.label(text="读取骨表：无", icon='BONE_DATA')
 
