@@ -847,6 +847,32 @@ def _on_depsgraph_update_fix_duplicates(scene, depsgraph):
 # Operator: Add Constraint
 # ---------------------------------------------------------------------------
 
+def new_constraint_empty(root_obj):
+    """A blank Ranges entry at the end of the file: one source, named '[NN] ...'.
+    -> the Empty, or None when the root is in no collection."""
+    from . import get_constraint_empties, make_constraint_empty_name
+
+    coll = next(iter(root_obj.users_collection), None)
+    if coll is None:
+        return None
+
+    name = make_constraint_empty_name(len(get_constraint_empties(root_obj)), 'BoneName', '', 'X')
+    obj = bpy.data.objects.new(name, None)
+    obj.empty_display_type = 'ARROWS'
+    obj.empty_display_size = 0.05
+    obj.parent = root_obj
+    coll.objects.link(obj)
+
+    p = obj.jcns_cns_props
+    p.is_jcns_constraint = True
+    p.constraint_type = 'Ranges'
+    p.target_bone = ''
+    p.transform_type = 'Rotation'
+    sp = p.sources.add()          # every new constraint starts with one source
+    sp.source_bone = 'BoneName'
+    return obj
+
+
 class JCNS_OT_AddConstraint(Operator):
     """在当前 JCNS 集合里新增一条空白约束"""
     bl_idname = "jcns.add_constraint"
@@ -860,40 +886,17 @@ class JCNS_OT_AddConstraint(Operator):
         return obj is not None and _caps_for(rp, 'Ranges').can_add
 
     def execute(self, context):
-        from . import (get_export_root, get_constraint_empties,
-                       make_constraint_empty_name)
+        from . import get_export_root
 
         root_obj, root_props = get_export_root(context)
-        existing = get_constraint_empties(root_obj)
-        new_idx = len(existing)
-
-        coll = None
-        for c in root_obj.users_collection:
-            coll = c
-            break
-        if coll is None:
+        obj = new_constraint_empty(root_obj)
+        if obj is None:
             self.report({'ERROR'}, "根节点不属于任何集合。")
             return {'CANCELLED'}
 
-        name = make_constraint_empty_name(new_idx, 'BoneName', '', 'X')
-        obj = bpy.data.objects.new(name, None)
-        obj.empty_display_type = 'ARROWS'
-        obj.empty_display_size = 0.05
-        obj.parent = root_obj
-        coll.objects.link(obj)
-
-        p = obj.jcns_cns_props
-        p.is_jcns_constraint = True
-        p.constraint_type = 'Ranges'
-        p.target_bone = ''
-        p.transform_type = 'Rotation'
-        sp = p.sources.add()          # every new constraint starts with one source
-        sp.source_bone = 'BoneName'
-
-
         context.view_layer.objects.active = obj
         obj.select_set(True)
-        self.report({'INFO'}, f"已新增约束「{name}」。")
+        self.report({'INFO'}, f"已新增约束「{obj.name}」。")
         return {'FINISHED'}
 
 
