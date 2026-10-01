@@ -13,7 +13,7 @@ modules/jcns_kinds.py 决定，预览（驱动器 / 骨骼约束）由 jcns_prev
   2 JCNS_PT_Preview    整个界面唯一的预览入口
   3 JCNS_PT_Edit       分区标签、条目列表（或按骨骼分组）、增删换序
       （jcns_editors.py）选中条目的编辑详情，作为「编辑」的子面板
-  4 JCNS_PT_FileInfo   文件级数据，默认折叠
+  4 JCNS_PT_FileInfo   文件信息（ObjectSettings、ConeDriver 表、读取骨表），默认折叠
 """
 
 import os
