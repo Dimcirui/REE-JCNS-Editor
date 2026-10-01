@@ -418,15 +418,13 @@ class JCNS_OT_ImportFile(Operator, ImportHelper):
     )
 
     resolve_hashes: BoolProperty(
-        name="解析目标骨骼名",
-        description="尝试用所选骨架把 TargetHash 还原成骨骼名",
+        name="还原骨骼名",
+        description="用所选骨架把哈希还原成骨骼名",
         default=True,
     )
 
     def draw(self, context):
         layout = self.layout
-        layout.label(text="JCNS 导入选项", icon='SETTINGS')
-        layout.separator()
         layout.prop(self, "resolve_hashes")
         col = layout.column()
         col.enabled = self.resolve_hashes

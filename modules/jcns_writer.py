@@ -277,9 +277,9 @@ class JCNSWriter:
                 cm = s.get('ComplexMapping') or []
                 if len(cm) != s.get('ComplexMappingInfoCount', 0):
                     raise ValueError(
-                        f"驱动源「{s.get('SourceName', '')}」的 ComplexMappingInfoCount="
+                        f"驱动「{s.get('SourceName', '')}」的 ComplexMappingInfoCount="
                         f"{s.get('ComplexMappingInfoCount', 0)}，但只有 {len(cm)} 条映射数据"
-                        "（复制来的驱动源不会带上原数据）。请把它改回 0 或恢复原驱动源。")
+                        "（复制来的驱动不会带上原数据）。请把它改回 0 或恢复原驱动。")
                 if not cm:
                     cm_offsets.append(0)
                     continue

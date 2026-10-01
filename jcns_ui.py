@@ -158,7 +158,7 @@ class JCNS_UL_Sources(bpy.types.UIList):
 
 
 class JCNS_UL_SkinSources(bpy.types.UIList):
-    """SkinConstraint 条目的源骨骼与权重。"""
+    """Skin 条目的驱动与权重。"""
     bl_idname = "JCNS_UL_skin_sources"
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_prop, index):

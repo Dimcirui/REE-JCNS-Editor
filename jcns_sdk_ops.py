@@ -234,12 +234,12 @@ class _RootOperator(Operator):
 
 
 class JCNS_OT_SDKPickBone(Operator):
-    """取姿态模式下选中的骨骼：驱动骨栏取活动骨并把其余选中骨加入被驱动骨，被驱动骨栏添加所有选中骨"""
+    """取姿态模式下选中的骨骼：驱动栏取活动骨并把其余选中骨加入被驱动，被驱动栏添加所有选中骨"""
     bl_idname = "jcns.sdk_pick_bone"
     bl_label  = "取选中骨"
     bl_options = {'REGISTER', 'UNDO'}
 
-    role: EnumProperty(name="骨骼栏", items=[('DRIVER', "驱动骨", ""), ('DRIVEN', "被驱动骨", "")])
+    role: EnumProperty(name="骨骼栏", items=[('DRIVER', "驱动", ""), ('DRIVEN', "被驱动", "")])
 
     @classmethod
     def poll(cls, context):
@@ -263,7 +263,7 @@ class JCNS_OT_SDKPickBone(Operator):
             return {'CANCELLED'}
         if self.role == 'DRIVER':
             if active is None:
-                self.report({'ERROR'}, "先把要作驱动骨的骨骼设为活动骨。")
+                self.report({'ERROR'}, "先把驱动设为活动骨。")
                 return {'CANCELLED'}
             rp.sdk_driver_bone = active.name
             if active.name in driven_names(rp):
@@ -275,7 +275,7 @@ class JCNS_OT_SDKPickBone(Operator):
                 rp.sdk_driven_index = len(rp.sdk_driven_bones) - 1
                 added += 1
         if self.role == 'DRIVEN' and not added:
-            self.report({'WARNING'}, "选中的骨骼已经在被驱动骨列表里，或就是驱动骨。")
+            self.report({'WARNING'}, "选中的骨骼已经在被驱动列表里，或就是驱动。")
             return {'CANCELLED'}
         return {'FINISHED'}
 
@@ -296,9 +296,9 @@ def _driven_candidates(self, context):
 
 
 class JCNS_OT_SDKDrivenAdd(Operator):
-    """从目标骨架的骨骼里选一根，加入被驱动骨列表"""
+    """从目标骨架的骨骼里选一根，加入被驱动列表"""
     bl_idname = "jcns.sdk_driven_add"
-    bl_label  = "添加被驱动骨"
+    bl_label  = "添加被驱动"
     bl_options = {'REGISTER', 'UNDO'}
     bl_property = "bone"
 
@@ -325,9 +325,9 @@ class JCNS_OT_SDKDrivenAdd(Operator):
 
 
 class JCNS_OT_SDKDrivenRemove(Operator):
-    """把列表里选中的骨骼移出被驱动骨，各键里它的记录一并删除"""
+    """把列表里选中的骨骼移出被驱动，各键里它的记录一并删除"""
     bl_idname = "jcns.sdk_driven_remove"
-    bl_label  = "移出被驱动骨"
+    bl_label  = "移出被驱动"
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -373,7 +373,7 @@ class JCNS_OT_SDKKeyAdd(_RootOperator):
 
 
 class JCNS_OT_SDKKeyRemove(_RootOperator):
-    """删除列表里选中的键。键Start 和键End 不能删除"""
+    """删除选中的键，键Start 和键End 除外"""
     bl_idname = "jcns.sdk_key_remove"
     bl_label  = "删除键"
 
@@ -412,14 +412,14 @@ class _KeyMove(_RootOperator):
 
 
 class JCNS_OT_SDKKeyUp(_KeyMove):
-    """把选中的键在中间键里上移一位。键Start 和键End 的位置固定"""
+    """把选中的中间键上移一位"""
     bl_idname = "jcns.sdk_key_up"
     bl_label  = "上移键"
     STEP = -1
 
 
 class JCNS_OT_SDKKeyDown(_KeyMove):
-    """把选中的键在中间键里下移一位。键Start 和键End 的位置固定"""
+    """把选中的中间键下移一位"""
     bl_idname = "jcns.sdk_key_down"
     bl_label  = "下移键"
     STEP = 1
@@ -442,7 +442,7 @@ class JCNS_OT_SDKKeyRecord(_SDKOperator):
         if st is None:
             return {'CANCELLED'}
         if self.bone and self.bone not in st.names():
-            self.report({'ERROR'}, "「%s」不是驱动骨，也不在被驱动骨列表里。" % self.bone)
+            self.report({'ERROR'}, "「%s」不是驱动，也不在被驱动列表里。" % self.bone)
             return {'CANCELLED'}
         ensure_keys(st.rp)
         keys, i = st.keys(), key_index(st.rp)
@@ -479,7 +479,7 @@ class JCNS_OT_SDKKeyGoto(_SDKOperator):
 
 
 class JCNS_OT_SDKPoseReset(_SDKOperator):
-    """把驱动骨和所有被驱动骨的姿态清零，回到静止姿态"""
+    """把驱动和所有被驱动的姿态清零，回到静止姿态"""
     bl_idname = "jcns.sdk_pose_reset"
     bl_label  = "回到静止姿态"
 
@@ -620,25 +620,22 @@ def _plan_lines(layout, context, plan, st):
 
 
 class JCNS_OT_SDKGenerate(_SDKOperator):
-    """按记录的键生成 Ranges 约束：驱动骨的读数映射到各被驱动骨变化了的通道，静止姿态不在键里时会给出提示"""
+    """按记录的键生成约束：驱动的读数映射到各被驱动变化了的通道"""
     bl_idname = "jcns.sdk_generate"
     bl_label  = "生成约束"
 
     read_mode: EnumProperty(name="读取方式", items=_READ_ITEMS, default='AUTO',
-                            description="从驱动骨读什么。自动时按各键之间的变化选取")
+                            description="从驱动读什么。自动时按各键之间的变化选取")
     source_axis: EnumProperty(name="读取轴", items=_AXIS_ITEMS, default='AUTO',
-                              description="读驱动骨的哪个局部轴。自动时取变化最大的轴")
+                              description="读驱动的哪个局部轴。自动时取变化最大的轴")
     tangent: EnumProperty(name="曲线切线", items=_TANGENT_ITEMS, default='LINEAR',
-                          description="4 个及以上的键生成 ComplexMapping 曲线时，关键帧处的切线怎么取；"
-                                      "2 个或 3 个键时不起作用")
+                          description="4 个及以上的键生成曲线时，关键点处的切线怎么取；少于 4 个键时不起作用")
     preview_after: BoolProperty(
         name="生成后预览", default=True,
         description="在骨架上预览生成的约束；没有目标骨架或应用失败时只在报告里提示")
     append_sources: BoolProperty(
-        name="追加为已有约束的新源（求和）", default=True,
-        description="被驱动的通道上已有约束时，把驱动骨作为新的源加到最后一条里，各源输出相加；"
-                    "不能追加的（叠加设置不同、带 ConeDriver 输入、源已满）仍新建。关闭则一律新建，"
-                    "同通道只有最后一条生效")
+        name="追加到已有约束（求和）", default=True,
+        description="通道上已有约束时，作为新的驱动加到最后一条里，输出相加；不能追加的仍新建，关闭则一律新建")
 
     @classmethod
     def poll(cls, context):
@@ -677,7 +674,7 @@ class JCNS_OT_SDKGenerate(_SDKOperator):
             return {'CANCELLED'}
         context.view_layer.objects.active = last
         last.select_set(True)
-        msg = "新建 %d 条，追加 %d 个源。" % (created, appended)
+        msg = "新建 %d 条，追加 %d 个驱动。" % (created, appended)
         if self.preview_after:
             note = preview_channels(st, touched)
             if note:
@@ -694,7 +691,7 @@ class JCNS_OT_SDKGenerate(_SDKOperator):
 # ---------------------------------------------------------------------------
 
 class JCNS_UL_SDKDriven(UIList):
-    """被驱动骨列表。"""
+    """被驱动列表。"""
     bl_idname = "JCNS_UL_sdk_driven"
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_prop, index):
@@ -702,7 +699,7 @@ class JCNS_UL_SDKDriven(UIList):
 
 
 class JCNS_UL_SDKKeys(UIList):
-    """记录的键，每行显示键名和驱动骨在这个键里的读数。"""
+    """记录的键，每行显示键名和驱动在这个键里的读数。"""
     bl_idname = "JCNS_UL_sdk_keys"
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_prop, index):
