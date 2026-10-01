@@ -18,6 +18,7 @@ from .modules_shim import get_schema, ensure_path
 
 ensure_path()
 import jcns_source_read  # noqa: E402
+import jcns_targets  # noqa: E402
 from . import jcns_cm
 
 _SCHEMA = get_schema()
@@ -239,8 +240,12 @@ def do_import(filepath, context, armature_obj=None):
         f2                      = c.get('UnknownFloat2', (0.0, 0.0))
         p.unknown_float2_x, p.unknown_float2_y = f2
         p.unknown_byte_72       = c.get('UnknownByte72', 0)
-        ph                      = c.get('PropertyHash', 0) & 0xFFFFFFFF
-        p.property_hash         = ph - (1 << 32) if ph >= (1 << 31) else ph
+        p.target_property       = c.get('PropertyName', '')
+        p.property_hash         = jcns_targets.property_hash_override(
+            c.get('PropertyHash', 0) & 0xFFFFFFFF, p.target_property)
+        if jcns_targets.is_direct_target(transform_int):
+            p.object_hash       = jcns_targets.object_hash_override(
+                c.get('ObjectHash', 0) & 0xFFFFFFFF, target_bone)
         for ci in c.get('ConeDriverInfo') or []:
             k = p.cone_infos.add()
             k.cone_index, k.value = ci['ConeDriverIndex'], ci['Value']

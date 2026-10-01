@@ -21,6 +21,7 @@ from .modules_shim import get_schema, ensure_path
 
 ensure_path()
 import jcns_source_read  # noqa: E402
+import jcns_targets  # noqa: E402
 
 _SCHEMA = get_schema()
 
@@ -330,8 +331,9 @@ def _transform_int(transform_type, default=1):
 
 def _make_default_constraint_dict(empty_obj):
     """
-    Constraint dict for an Empty with no record in the parsed file.  Opaque fields
-    get writer defaults; _patch_constraint_from_empty() fills the editable ones.
+    Constraint dict for an Empty, with writer defaults for what the Empty does not
+    hold; _patch_constraint_from_empty() fills in the rest.  Rebuilt versions build
+    every constraint this way, so nothing is carried over from the source file.
     """
     from . import AXIS_TO_INT
     p = empty_obj.jcns_cns_props
@@ -350,6 +352,9 @@ def _make_default_constraint_dict(empty_obj):
         'TransformAxis_parent':  tgt_ax,
         'TailBytes':       b'\x00' * 6,
         'ObjectName':        '',
+        'PropertyName':      '',
+        'ObjectHashIndex':   0,
+        'ObjectHash':        0,
         'sources':               [],
     }
 
@@ -366,8 +371,9 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
     Overwrite the editable fields of a parsed constraint dict from the Empty.
 
     SourceHashIndex points at the source name's hash in hash_list, or keeps its old
-    value when absent (the writer appends it).  The writer recomputes TargetHash
-    and ObjectHashIndex from ObjectName.
+    value when absent (the writer appends it).  The writer recomputes the hash-table
+    index of a bone target from ObjectName; a direct target (see jcns_targets) is
+    flagged here with ObjectHashIndex = 0xFFFFFFFF.
     """
     from . import AXIS_TO_INT, INTERPOLATION_TO_INT, flags_byte
     _ensure_modules_path()
@@ -438,7 +444,15 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
                                        p.reserved_vec4_z, p.reserved_vec4_w)
     parsed_c['UnknownFloat2']        = (p.unknown_float2_x, p.unknown_float2_y)
     parsed_c['UnknownByte72']      = p.unknown_byte_72
-    parsed_c['PropertyHash']        = p.property_hash & 0xFFFFFFFF
+    prop = p.target_property.strip()
+    parsed_c['PropertyName']        = prop
+    parsed_c['PropertyHash']        = jcns_targets.property_hash(prop, p.property_hash)
+    if jcns_targets.is_direct_target(parsed_c['TransformType']):
+        parsed_c['ObjectHashIndex'] = 0xFFFFFFFF
+        parsed_c['ObjectHash']      = jcns_targets.object_hash(parsed_c['ObjectName'], p.object_hash)
+        parsed_c['ObjectHashMatchesName'] = not p.object_hash
+    else:
+        parsed_c['ObjectHashIndex'] = 0
     parsed_c['ConeDriverInfo'] = [{
         'Rest0': k.rest[0], 'Rest123': tuple(k.rest[1:]), 'Value': k.value,
         'UnkByte0': k.unk_byte0, 'ConeDriverIndex': k.cone_index, 'UnkByte3': k.unk_byte3}
@@ -537,6 +551,10 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
             self.report({'WARNING'}, "源文件缺失，将使用导入时缓存的文件头导出。")
             parser = _build_stub_parser(root_props, empties)
 
+        if parser.write_mode == 'rebuild' and not root_props.sections_cached:
+            self.report({'ERROR'}, "这个文件是旧版插件导入的，Blender 里没有重建所需的数据；请重新导入后再导出。")
+            return {'CANCELLED'}
+
         problems = _sync_sections_to_parser(root_obj, root_props, parser)
         if problems:
             msg = format_problems_early(problems, os.path.basename(source_path))
@@ -558,16 +576,14 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
             print("[JCNS EXPORT] " + shared)
             self.report({'WARNING'}, shared)
 
-        n_orig = len(parser.constraints)
-        n_curr = len(empties)
-
         final_constraints = []
         for i, empty in enumerate(empties):
-            if i < n_orig:
-                parsed_c = parser.constraints[i]
-            else:
+            if parser.write_mode == 'rebuild':
                 parsed_c = _make_default_constraint_dict(empty)
-                print(f"[JCNS EXPORT] New constraint [{i:02d}] '{empty.name}' — using defaults")
+            else:
+                # In place, each entry rides on the record at its position.
+                parsed_c = (parser.constraints[i] if i < len(parser.constraints)
+                            else _make_default_constraint_dict(empty))
             _patch_constraint_from_empty(parsed_c, empty, parser.hash_list,
                                          root_props.sections_cached, parser.version)
             final_constraints.append(parsed_c)

@@ -31,6 +31,7 @@ def _describe(empty, with_sources=True):
     p = empty.jcns_cns_props
     d = {
         'target_bone': p.target_bone,
+        'target_property': p.target_property,
         'property_hash': p.property_hash,
         'transform_type': p.transform_type,
         'target_axis': p.target_axis,

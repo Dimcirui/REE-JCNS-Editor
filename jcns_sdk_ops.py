@@ -309,7 +309,8 @@ def land(context, st, plan, append):
         if append and members:
             hp = members[-1].jcns_cns_props
             ok, _why = core.can_append({'additive': hp.additive, 'cone_infos': len(hp.cone_infos),
-                                        'n_sources': len(hp.sources), 'property_hash': hp.property_hash}, c)
+                                        'n_sources': len(hp.sources), 'target_property': hp.target_property,
+                                        'property_hash': hp.property_hash}, c)
             host = members[-1] if ok else None
         if host is not None:
             p = host.jcns_cns_props

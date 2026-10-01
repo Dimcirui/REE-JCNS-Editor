@@ -1298,6 +1298,7 @@ class JCNS_OT_MirrorConstraints(Operator):
             q.target_axis = p.target_axis
             q.transform_type = p.transform_type
             q.additive, q.flags_other = p.additive, p.flags_other
+            q.target_property, q.property_hash = p.target_property, p.property_hash
             for old in q.sources:
                 jcns_cm.remove(old)
             q.sources.clear()

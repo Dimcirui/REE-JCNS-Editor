@@ -523,10 +523,23 @@ class JCNSConstraintProperties(PropertyGroup):
         name="未知字节 (+72)", description="具体作用未知。通常为 0（约 99%）",
         default=0, min=0, max=255,
     )
-    # A uint32 hash in a signed IntProperty: values >= 2**31 are stored as their
-    # two's-complement negative (importer), and masked back on export.
+    # Material / RSZ property targets (TransformType 7-11) name a property on the target.
+    target_property: StringProperty(
+        name="目标属性",
+        description="被驱动的属性名，如材质参数名。只有材质、标量类变换用到，骨骼目标留空",
+        default="",
+    )
+    # The two hashes below are overrides in a signed IntProperty (a uint32 above 2**31
+    # is stored as its two's-complement negative); 0 derives the hash from the name.
     property_hash: IntProperty(
-        name="PropertyHash", description="目标属性名的哈希。目标是骨骼时为 0；按有符号整数显示",
+        name="属性哈希覆盖",
+        description="按有符号整数显示。0 表示用目标属性名的哈希；只有属性名对不上哈希时才需要填",
+        default=0,
+    )
+    object_hash: IntProperty(
+        name="目标哈希覆盖",
+        description="只用于形变、材质、标量和命名输出这类按哈希指定的目标。按有符号整数显示。"
+                    "0 表示用目标名的哈希；只有目标名对不上哈希时才需要填",
         default=0,
     )
     # ConeDriverInfo[]: the cones this constraint reads (RE9 uses them heavily)

@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 MAX_SOURCES = 255           # SourceCount is a uint8
 
 # What makes two entries the same channel.
-CHANNEL_FIELDS = ('target_bone', 'property_hash', 'transform_type', 'target_axis')
+CHANNEL_FIELDS = ('target_bone', 'target_property', 'transform_type', 'target_axis')
 
 # Entry-level fields that must agree for a lossless merge: (key, label).
 ENTRY_FIELDS = (
@@ -72,7 +72,7 @@ class MergeResult:
 
 
 def channel_key(entry):
-    return tuple(entry.get(k, 0 if k == 'property_hash' else '') for k in CHANNEL_FIELDS)
+    return tuple(entry.get(k, '') for k in CHANNEL_FIELDS)
 
 
 def _same(a, b):
@@ -118,8 +118,8 @@ def plan_merge(entries, indices, complex_ok=True):
             plan.conflicts.append(Conflict(k, "不在同一个通道上"))
             break
 
-    if any(m.get('property_hash', 0) for m in members):
-        plan.conflicts.append(Conflict('property_hash', "目标是材质或形变属性，不支持合并"))
+    if any(m.get('target_property') or m.get('property_hash', 0) for m in members):
+        plan.conflicts.append(Conflict('target_property', "目标是材质或形变属性，不支持合并"))
 
     differing = [label for key, label in ENTRY_FIELDS
                  if any(not _same(m.get(key), first.get(key)) for m in members[1:])]
@@ -159,7 +159,7 @@ def group_spans(entries):
     target, property and transform type and carry count 0.
     """
     def ident(e):
-        return (e.get('target_bone'), e.get('property_hash', 0), e.get('transform_type'))
+        return (e.get('target_bone'), e.get('target_property', ''), e.get('transform_type'))
 
     spans, i, n = [], 0, len(entries)
     while i < n:
