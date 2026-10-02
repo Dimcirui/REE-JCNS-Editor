@@ -635,8 +635,8 @@ class JCNSWriter:
             })
         if N_MAT > 0:
             patch['MaterialConstraintInfoEntry'] = MAT_START
-        if jxg is not None:
-            patch['JointExprGraphInfoEntry'] = JXG_START
+        # No count marks Section 5: a pointer left from the source file would read as a JXG
+        patch['JointExprGraphInfoEntry'] = JXG_START if jxg is not None else 0
         patch['MultiConstraintCount'] = N_MULTI
         patch['MultiConstraintSourceCount'] = len(multi_infos) if N_MULTI else 0
         patch['ReadJointTableItemCount'] = len(read_joints) if N_MULTI else 0
