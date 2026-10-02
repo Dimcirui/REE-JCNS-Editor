@@ -81,21 +81,21 @@ _ROT_ORDER_ITEMS = _rot_order_items()
 # Source byte +28: how a segment of the mapping runs between its anchors.
 INTERPOLATION_ITEMS = [
     ('LINEAR', T("props.interp.linear"), T("props.interp.linear_desc")),
-    ('SLOW', T("props.interp.cubic_in"), T("props.interp.cubic_in_desc")),
-    ('FAST', T("props.interp.cubic_out"), T("props.interp.cubic_out_desc")),
-    ('SMOOTH', T("props.interp.smoothstep"), T("props.interp.smoothstep_desc")),
+    ('SLOW', T("props.interp.slow"), T("props.interp.slow_desc")),
+    ('FAST', T("props.interp.fast"), T("props.interp.fast_desc")),
+    ('SMOOTH', T("props.interp.smooth"), T("props.interp.smooth_desc")),
 ]
 INTERPOLATION_TO_INT = {item[0]: i for i, item in enumerate(INTERPOLATION_ITEMS)}
 INT_TO_INTERPOLATION = {i: ident for ident, i in INTERPOLATION_TO_INT.items()}
 
 # Aim WorldUpType: how the roll around the aim axis is fixed.
 WORLD_UP_TYPE_ITEMS = [
-    ('SCENE_UP', T("props.world_up_type.world_up"), T("props.world_up_type.world_up_desc")),
-    ('OBJECT_UP', T("props.world_up_type.up_joint_position"), T("props.world_up_type.up_joint_position_desc")),
-    ('OBJECT_ROTATION_UP', T("props.world_up_type.up_joint_axis"), T("props.world_up_type.up_joint_axis_desc")),
-    ('VECTOR', T("props.world_up_type.up_direction"), T("props.world_up_type.up_direction_desc")),
-    ('NONE', T("props.world_up_type.shortest_arc"), T("props.world_up_type.shortest_arc_desc")),
-    ('NONE_MAYA_LIKE', T("props.world_up_type.shortest_arc_parent"), T("props.world_up_type.shortest_arc_parent_desc")),
+    ('SCENE_UP', T("props.world_up_type.scene_up"), T("props.world_up_type.scene_up_desc")),
+    ('OBJECT_UP', T("props.world_up_type.object_up"), T("props.world_up_type.object_up_desc")),
+    ('OBJECT_ROTATION_UP', T("props.world_up_type.object_rotation_up"), T("props.world_up_type.object_rotation_up_desc")),
+    ('VECTOR', T("props.world_up_type.vector"), T("props.world_up_type.vector_desc")),
+    ('NONE', T("props.world_up_type.none"), T("props.world_up_type.none_desc")),
+    ('NONE_MAYA_LIKE', T("props.world_up_type.none_maya_like"), T("props.world_up_type.none_maya_like_desc")),
 ]
 WORLD_UP_TYPE_TO_INT = {item[0]: i for i, item in enumerate(WORLD_UP_TYPE_ITEMS)}
 INT_TO_WORLD_UP_TYPE = {i: ident for ident, i in WORLD_UP_TYPE_TO_INT.items()}

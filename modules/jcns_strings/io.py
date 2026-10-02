@@ -60,8 +60,8 @@ STRINGS = {
         "EN": "The JCNS root this entry belongs to was not found.",
     },
     "io.merge.not_in_ranges": {
-        "ZH": "当前条目不在文件的 Ranges 列表里。",
-        "EN": "The current entry is not in the file's Ranges list.",
+        "ZH": "当前条目不在文件的 Outputs 列表里。",
+        "EN": "The current entry is not in the file's Outputs list.",
     },
     "io.merge.cannot_merge": {"ZH": "不能合并：%s", "EN": "Cannot merge: %s"},
     "io.merge.one.done": {
@@ -209,12 +209,12 @@ STRINGS = {
 
     # ---- jcns_exporter.py ----
     "io.export.cone_not_cached": {
-        "ZH": "这个文件有 %d 条 ConeDriver，但当前根节点是旧版插件导入的，没有缓存它们；请重新导入后再导出。",
+        "ZH": "这个文件有 %d 条 ConeInput，但当前根节点是旧版插件导入的，没有缓存它们；请重新导入后再导出。",
         "EN": "This file has %d ConeDrivers, but the current root was imported by an older version of the add-on and did not cache them; re-import the file and export again.",
     },
     "io.export.cone_bad_index": {
-        "ZH": "约束「%s」引用了第 %d 个 ConeDriver，但文件里只有 %d 个。",
-        "EN": "Constraint “%s” refers to ConeDriver %d, but the file has only %d.",
+        "ZH": "约束「%s」引用了第 %d 个 ConeInput，但文件里只有 %d 个。",
+        "EN": "Constraint “%s” refers to ConeInput %d, but the file has only %d.",
     },
     "io.export.tip": {
         "ZH": "把选中的 JCNS 集合导出为 .jcns 文件，版本与导入时相同",
@@ -313,7 +313,7 @@ STRINGS = {
         "EN": "There is no upgrade step from v%s to v%s.",
     },
     "io.upgrade.v29_cone": {
-        "ZH": "v29 文件不该有 ConeDriver。",
+        "ZH": "v29 文件不该有 ConeInput。",
         "EN": "A v29 file should not have ConeDrivers.",
     },
     "io.upgrade.need_skeleton": {

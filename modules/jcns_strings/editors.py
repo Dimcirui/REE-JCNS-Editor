@@ -19,12 +19,12 @@ STRINGS = {
         "ZH": "引擎的处理规则，含义未知的字段，和取值固定、导出时原样写回的字段。",
         "EN": "How the engine processes this entry, fields of unknown meaning, and fields with fixed values written back unchanged on export.",
     },
-    "editors.panel.multi": {"ZH": "Skin 蒙皮", "EN": "Skin"},
+    "editors.panel.multi": {"ZH": "Multi 蒙皮", "EN": "Multi"},
     "editors.panel.aim": {"ZH": "Aim 瞄准", "EN": "Aim"},
     "editors.panel.rotexpr": {"ZH": "RotExpr 旋转表达式", "EN": "RotExpr"},
     "editors.panel.material": {"ZH": "Material 材质", "EN": "Material"},
     "editors.panel.raw_fields": {"ZH": "原始字段", "EN": "Raw Fields"},
-    "editors.panel.jxg": {"ZH": "JXG 导出图", "EN": "JXG Export Graph"},
+    "editors.panel.jxg": {"ZH": "JXG 表达式图", "EN": "JXG Expression Graph"},
     "editors.panel.unrecognized": {"ZH": "未知类型", "EN": "Unknown Type"},
 
     # --- shared words ---------------------------------------------------------------
@@ -60,7 +60,7 @@ STRINGS = {
         "EN": "Could not find the JCNS root this belongs to.",
     },
 
-    # --- Ranges: warnings -----------------------------------------------------------
+    # --- Outputs: warnings -----------------------------------------------------------
     "editors.warn.folded_dead": {
         "ZH": "折点越界，输出恒为 0",
         "EN": "Kink is out of range; output is always 0",
@@ -80,7 +80,7 @@ STRINGS = {
     },
     "editors.btn.swap_ends": {"ZH": "对调首尾", "EN": "Swap Ends"},
 
-    # --- Ranges: curve and keyframes ------------------------------------------------
+    # --- Outputs: curve and keyframes ------------------------------------------------
     "editors.curve.title": {
         "ZH": "曲线（横轴驱动，纵轴输出）",
         "EN": "Curve (x: driver, y: output)",
@@ -100,7 +100,7 @@ STRINGS = {
         "EN": "Anchors are not 0; the effect together with the curve is unknown",
     },
 
-    # --- Ranges: drivers ------------------------------------------------------------
+    # --- Outputs: drivers ------------------------------------------------------------
     "editors.sources.none": {
         "ZH": "还没有驱动，无输出",
         "EN": "No drivers yet; no output",
@@ -113,7 +113,7 @@ STRINGS = {
     "editors.mapping.driver_item": {"ZH": "驱动 %d：%s %s", "EN": "Driver %d: %s %s"},
     "editors.tools.mirror": {"ZH": "镜像到另一侧…", "EN": "Mirror to Other Side…"},
 
-    # --- Ranges: advanced -----------------------------------------------------------
+    # --- Outputs: advanced -----------------------------------------------------------
     "editors.adv.attr_flags_other": {"ZH": "曲线模式其余位", "EN": "Other curve-mode bits"},
     "editors.adv.attr_flags_other": {"ZH": "其余标志位", "EN": "Other flag bits"},
     "editors.adv.flags_note": {
@@ -134,7 +134,7 @@ STRINGS = {
     "editors.adv.fixed_zero": {"ZH": "固定为 0", "EN": "Fixed at 0"},
     "editors.adv.fields_unknown": {"ZH": "未知字段", "EN": "Unknown fields"},
 
-    # --- Skin -----------------------------------------------------------------------
+    # --- Multi -----------------------------------------------------------------------
     "editors.multi.need_armature": {
         "ZH": "先设置目标骨架，才能增删驱动",
         "EN": "Set the target armature first to add or remove drivers",
@@ -150,27 +150,27 @@ STRINGS = {
         "EN": "Set the target armature first to change the driven bone",
     },
     "editors.aim.vectors": {"ZH": "向量", "EN": "Vectors"},
-    "editors.aim.rule.world_up": {
+    "editors.aim.rule.scene_up": {
         "ZH": "本地瞄准轴指向目标，本地上方向轴对齐世界 +Y",
         "EN": "The local aim axis points at the target; the local up axis aligns with world +Y",
     },
-    "editors.aim.rule.up_joint_position": {
+    "editors.aim.rule.object_up": {
         "ZH": "本地瞄准轴指向目标，本地上方向轴对齐「自己指向辅助骨」的方向",
         "EN": "The local aim axis points at the target; the local up axis aligns with the direction from itself to the helper bone",
     },
-    "editors.aim.rule.up_joint_axis": {
+    "editors.aim.rule.object_rotation_up": {
         "ZH": "本地瞄准轴指向目标，本地上方向轴对齐辅助骨的一根局部轴，由「上方向」向量选（(0,1,0) 是 Y 轴，(0,0,1) 是 Z 轴）",
         "EN": "The local aim axis points at the target; the local up axis aligns with one local axis of the helper bone, chosen by the up direction vector ((0,1,0) is the Y axis, (0,0,1) is the Z axis)",
     },
-    "editors.aim.rule.up_direction": {
+    "editors.aim.rule.vector": {
         "ZH": "本地瞄准轴指向目标，本地上方向轴对齐「上方向」向量给出的世界方向",
         "EN": "The local aim axis points at the target; the local up axis aligns with the world direction given by the up direction vector",
     },
-    "editors.aim.rule.shortest_arc": {
+    "editors.aim.rule.none": {
         "ZH": "从静止姿态朝目标转最短弧，不约束翻滚",
         "EN": "Rotates the shortest arc from the rest pose toward the target; roll is not constrained",
     },
-    "editors.aim.rule.shortest_arc_parent": {
+    "editors.aim.rule.none_maya_like": {
         "ZH": "从父骨朝向起朝目标转最短弧，丢掉静止姿态",
         "EN": "Rotates the shortest arc from the parent bone's orientation toward the target; the rest pose is dropped",
     },

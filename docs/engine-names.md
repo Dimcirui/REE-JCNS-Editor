@@ -4,6 +4,20 @@
 我们解析字段的对应关系。枚举的名字和数值是引擎自己的，标 ✓ 的对应关系有实测或语料支持，
 其余是推断。
 
+插件里的解析键、Blender 属性、枚举标识和界面名已经按本文改成引擎名（2026-10-02，三个提交：
+解析层 `refactor(codec)`、属性层 `refactor(ui)`、文案层 `docs(ui)`）。下面表里的"插件旧名"只作对照。
+
+| 层 | 旧名 → 新名 |
+|---|---|
+| 结构 | ConstraintInfo → OutputData，ConstraintSource → JointDriver，Skin 分区 → Multi，ConeDriver 表 → ConeInput，ConeDriverInfo → ConeDriver，Ranges 分区 → Outputs，JointExportGraph → JointExprGraph |
+| 条目字段 | Flags → AttrFlags（`additive` → `base_pose`，`flags_other` → `attr_flags_other`），TransformType → TransformElement（`transform_type` → `transform_element`），TransformAxis → Axis |
+| 源字段 | CurveMode → AttrFlags（`three_point` → `mid_point`，`curve_mode_extra` → `attr_flags_other`），ReadMode → InputType（`read_mode` → `input_type`），EulerOrder → RotOrder（`euler_order` → `rot_order`），ComplexMappingFlag → CurveType（`complex_mapping_flag` → `curve_type`） |
+| Aim | RotationType → WorldUpType（`aim_type` → `world_up_type`） |
+| 锥形 | `cone_infos` → `cone_drivers`，`cone_index` → `cone_input_index`，`cone_drivers_json` → `cone_inputs_json` |
+| 枚举标识 | 变换类型、读取方式（TRANS/ROT/SCALE/ROT_RPY/ROT_PYR/EXP_MAP）、插值（LINEAR/SLOW/FAST/SMOOTH）、WorldUpType（SCENE_UP…NONE_MAYA_LIKE）全部用引擎名 |
+
+没有引擎名的保持原样：`ref_frame`、`from_*`/`to_*` 锚点、ComplexMapping、`UnknownByte72`（推断是 OutputMode，未实测）、`TailBytes`。
+
 ## 来源
 
 - **native 枚举**：`scripts/probes/dump_native_enums.py` 静态反汇编 exe 里的枚举注册代码
@@ -21,7 +35,7 @@ jcns 资源在运行时叫 `JointExMultiRemapValue`，资源类型是 `via.motio
 
 ### 分区：`ConstraintType`
 
-| 值 | 引擎名 | 我们的叫法 |
+| 值 | 引擎名 | 插件旧名 |
 |---|---|---|
 | 0 | Outputs | Ranges ✓ |
 | 1 | RotExpression | RotExpression ✓ |
@@ -37,7 +51,7 @@ jcns 资源在运行时叫 `JointExMultiRemapValue`，资源类型是 `via.motio
 
 **`TransformElement` = TransformType ✓**
 
-| 值 | 引擎名 | 我们的叫法 |
+| 值 | 引擎名 | 插件旧名 |
 |---|---|---|
 | 0 | Trans | Translation |
 | 1 | Rot | Rotation |
@@ -61,7 +75,7 @@ jcns 资源在运行时叫 `JointExMultiRemapValue`，资源类型是 `via.motio
 
 **`AttrFlags` = Flags 字节 ✓**（语料里出现的值 0/1/5/9/13/16/17/48/49/53/57 都能拆成下面这些位）
 
-| 位 | 引擎名 | 我们已知 |
+| 位 | 引擎名 | 含义 |
 |---|---|---|
 | 1 | BasePose | bit0：1 = 叠加到静止姿态，0 = 替换 ✓ |
 | 2 | World | 未见于语料 |
@@ -93,7 +107,7 @@ jcns 资源在运行时叫 `JointExMultiRemapValue`，资源类型是 `via.motio
 
 **`InputType` = +25 ReadMode ✓（全部和实测一致）**
 
-| 值 | 引擎名 | 我们的叫法 |
+| 值 | 引擎名 | 插件旧名 |
 |---|---|---|
 | 0 | Trans | 位置 |
 | 1 | Rot | XYZ 欧拉 |
@@ -104,7 +118,7 @@ jcns 资源在运行时叫 `JointExMultiRemapValue`，资源类型是 `via.motio
 
 **`AttrFlags` = +24 CurveMode ✓**（语料取值 0/1/2/3/4/5，正好是三个位的组合）
 
-| 位 | 引擎名 | 我们已知 |
+| 位 | 引擎名 | 含义 |
 |---|---|---|
 | 1 | BasePose | 待测（见下） |
 | 2 | MidPoint | bit1"三点曲线" ✓ |
@@ -134,7 +148,7 @@ jcns 资源在运行时叫 `JointExMultiRemapValue`，资源类型是 `via.motio
 
 ### Aim：`AimConstraintData.WorldUpType` = Aim RotationType ✓
 
-| 值 | 引擎名 | 插件现名 |
+| 值 | 引擎名 | 插件旧名 |
 |---|---|---|
 | 0 | SceneUp | WORLD_UP |
 | 1 | ObjectUp | UP_JOINT_POSITION |

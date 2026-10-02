@@ -68,16 +68,16 @@ STRINGS = {
         "EN": "Add Entry",
     },
     "ops.desc.add_section_entry": {
-        "ZH": "在当前 JCNS 文件里新增一条 Skin / Aim / RotExpr 条目",
-        "EN": "Add a Skin / Aim / RotExpr entry to the current JCNS file",
+        "ZH": "在当前 JCNS 文件里新增一条 Multi / Aim / RotExpr 条目",
+        "EN": "Add a Multi / Aim / RotExpr entry to the current JCNS file",
     },
     "ops.desc.multi_source_add": {
-        "ZH": "给选中的 Skin 条目加一个驱动",
-        "EN": "Add a driver to the selected Skin entry",
+        "ZH": "给选中的 Multi 条目加一个驱动",
+        "EN": "Add a driver to the selected Multi entry",
     },
     "ops.desc.multi_source_remove": {
-        "ZH": "删除选中 Skin 条目里当前的驱动",
-        "EN": "Delete the current driver of the selected Skin entry",
+        "ZH": "删除选中 Multi 条目里当前的驱动",
+        "EN": "Delete the current driver of the selected Multi entry",
     },
     "ops.label.multi_normalize_weights": {
         "ZH": "权重归一化",

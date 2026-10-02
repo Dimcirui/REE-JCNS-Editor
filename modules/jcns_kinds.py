@@ -43,9 +43,9 @@ class Kind:
 # `ordered` is true only for Ranges: several Ranges on one channel -> the last one
 # wins.  Other sections keep file order on export but offer no reordering.
 KINDS = (
-    Kind('Outputs', lambda: T("core.kinds.ranges.label"), 'DRIVER', tab=True, ordered=True, addable=True,
+    Kind('Outputs', lambda: T("core.kinds.outputs.label"), 'DRIVER', tab=True, ordered=True, addable=True,
          preview='driver', confidence="实机验证",  # ui-copy: internal
-         summary_fn=lambda: T("core.kinds.ranges.summary")),
+         summary_fn=lambda: T("core.kinds.outputs.summary")),
     Kind('Multi', lambda: T("core.kinds.multi.label"), 'MOD_VERTEX_WEIGHT', tab=True, ordered=False, addable=True,
          preview='constraint', confidence="高（统计推断）",  # ui-copy: internal
          summary_fn=lambda: T("core.kinds.multi.summary")),

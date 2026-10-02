@@ -31,15 +31,15 @@ place: every value can change, the file's structure cannot.
 | 11 | RE2 / Devil May Cry 5 | ✏️ In place |
 
 **Full rebuild**: the whole file is regenerated.
-³ v22 rebuilds Ranges, ConeDrivers and ObjectSettings. A file that has Aim, RotExpression, Skin or Material
+³ v22 rebuilds Outputs, ConeInputs and ObjectSettings. A file that has Aim, RotExpression, Multi or Material
 sections is written in place instead.
 **Imported as v102**: an older file of a game that has a newer version is upgraded
-on import and exported as that newer version. A file with Skin sections needs the
+on import and exported as that newer version. A file with Multi sections needs the
 target armature to derive its ReadJointTable; export asks for it.
 **In place**: the original file is copied and each record is re-packed at its own
 offset; export refuses structural edits and lists what changed. Everything the
 in-place writer does not re-pack is kept byte for byte: ComplexMapping curves,
-ConeDrivers, Skin, Aim, RotExpression, ObjectSettings, the JointExportGraph path
+ConeInputs, Multi, Aim, RotExpression, ObjectSettings, the JointExprGraph path
 and all hashes and names.
 
 ## Supported Sections
@@ -52,10 +52,10 @@ and all hashes and names.
 | 0 | Dependencies | ✅ Regenerated | Kept |
 | 0 | ObjectSettings | Kept | Kept |
 | 1 | RotExpression | ✅ Structurally editable | Kept |
-| 2 | SkinConstraint | ✅ Structurally editable ¹ | Kept |
+| 2 | MultiConstraint | ✅ Structurally editable ¹ | Kept |
 | 3 | Aim | ✅ Structurally editable ¹ | Kept |
 | 4 | Material constraints | ✅ Editable (raw values) | ✏️ Hashes and transform ID |
-| 5 | JointExportGraph | ✅ Path editable | Kept |
+| 5 | JointExprGraph | ✅ Path editable | Kept |
 
 *Structurally editable*: entries can be added, deleted and re-pointed; counts,
 hash-list indices and derived tables are regenerated on export. Raw fields whose
@@ -67,7 +67,7 @@ interpolation, anchors, reference frame and unknown bytes), but constraints and
 sources cannot be added, deleted, renamed, re-pointed or reordered.
 
 ¹ Files that carry a ReadJointTable (SkinConstraintHashTable in the 010 template
-and REE-Lib) need the target armature set before Skin or Aim bones change: the
+and REE-Lib) need the target armature set before Multi or Aim bones change: the
 table is re-derived from the skeleton's hierarchy.
 
 ## Installation

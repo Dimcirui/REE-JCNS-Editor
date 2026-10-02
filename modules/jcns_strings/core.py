@@ -13,11 +13,11 @@ STRINGS = {
     "core.list_sep": {"ZH": "、", "EN": ", "},
 
     # ── jcns_kinds: labels and one-line summaries ─────────────────────────
-    "core.kinds.ranges.label": {"ZH": "范围约束", "EN": "Ranges"},
-    "core.kinds.ranges.summary": {
+    "core.kinds.outputs.label": {"ZH": "Outputs 范围约束", "EN": "Outputs"},
+    "core.kinds.outputs.summary": {
         "ZH": "驱动的读数经折线映射，写到被驱动的一个通道",
         "EN": "A source's reading is mapped through a polyline and written to one channel of the target"},
-    "core.kinds.multi.label": {"ZH": "Skin 蒙皮", "EN": "Skin"},
+    "core.kinds.multi.label": {"ZH": "Multi 蒙皮", "EN": "Multi"},
     "core.kinds.multi.summary": {
         "ZH": "按蒙皮权重把附件骨钉在变形后的皮肤上",
         "EN": "Pins an attachment bone to the deformed skin by skin weights"},
@@ -33,10 +33,10 @@ STRINGS = {
     "core.kinds.material.summary": {
         "ZH": "骨骼驱动材质属性（如 Water_* 骨驱动 Liquid* 材质）",
         "EN": "Bones drive material properties (e.g. Water_* bones drive Liquid* materials)"},
-    "core.kinds.jxg.label": {"ZH": "JXG 导出图", "EN": "JXG graph"},
+    "core.kinds.jxg.label": {"ZH": "JXG 表达式图", "EN": "JXG expression graph"},
     "core.kinds.jxg.summary": {
-        "ZH": "一条 JointExportGraph 资源路径",
-        "EN": "A JointExportGraph resource path"},
+        "ZH": "一条 JointExprGraph 资源路径",
+        "EN": "A JointExprGraph resource path"},
     "core.kinds.unknown.label": {"ZH": "未知", "EN": "Unknown"},
     "core.kinds.unknown.summary": {"ZH": "导出时原样保留", "EN": "Kept as is on export"},
 
@@ -118,11 +118,11 @@ STRINGS = {
         "ZH": "%d 条约束声明的驱动数量超过文件实际内容：%s。该文件本身已损坏（SourceCount 超出可用数据），导出会丢失缺失的驱动。",
         "EN": "%d constraints declare more sources than the file contains: %s. The file itself is damaged (SourceCount exceeds the available data); exporting would drop the missing sources."},
     "core.validate.unread_cone_driver": {
-        "ZH": "%d 条约束的 ConeDriverInfo 数量与读到的数据不符，重建会丢掉它们。",
-        "EN": "%d constraints have a ConeDriverInfo count that does not match the data read; a rebuild would drop them."},
+        "ZH": "%d 条约束的 ConeDriver 数量与读到的数据不符，重建会丢掉它们。",
+        "EN": "%d constraints have a ConeDriver count that does not match the data read; a rebuild would drop them."},
     "core.validate.cone_count": {
-        "ZH": "文件含有 %d 条 ConeDriver，但只读到了 %d 条（只认 v35 起的布局，或源文件缺失而 Blender 里没有缓存），重建会丢掉它们。",
-        "EN": "The file has %d ConeDrivers but only %d were read (only layouts from v35 are recognised, or the source file is missing and Blender holds no cache); a rebuild would drop them."},
+        "ZH": "文件含有 %d 条 ConeInput，但只读到了 %d 条（只认 v35 起的布局，或源文件缺失而 Blender 里没有缓存），重建会丢掉它们。",
+        "EN": "The file has %d ConeInputs but only %d were read (only layouts from v35 are recognised, or the source file is missing and Blender holds no cache); a rebuild would drop them."},
     "core.validate.inplace_count": {
         "ZH": _INPLACE["ZH"] + "约束数量从 %d 变成了 %d（不能新增或删除约束）。",
         "EN": _INPLACE["EN"] + "the constraint count changed from %d to %d (constraints cannot be added or deleted)."},
@@ -148,8 +148,8 @@ STRINGS = {
         "ZH": _INPLACE["ZH"] + "材质约束 #%d 的骨骼被改了（不能改骨骼）。",
         "EN": _INPLACE["EN"] + "the bone of material constraint #%d was changed (bones cannot be changed)."},
     "core.validate.inplace_jxg": {
-        "ZH": _INPLACE["ZH"] + "JointExportGraph 路径不能修改。",
-        "EN": _INPLACE["EN"] + "the JointExportGraph path cannot be changed."},
+        "ZH": _INPLACE["ZH"] + "JointExprGraph 路径不能修改。",
+        "EN": _INPLACE["EN"] + "the JointExprGraph path cannot be changed."},
     "core.validate.problems_head": {
         "ZH": "无法安全导出 —— 发现 %d 处不支持的结构：",
         "EN": "Cannot export safely: %d unsupported structure(s) found:"},
@@ -162,14 +162,14 @@ STRINGS = {
         "ZH": "先设置目标骨架，才能算读取骨表。",
         "EN": "Set the target armature first to derive the ReadJointTable."},
     "core.sections.need_armature_changed": {
-        "ZH": "改动了 Skin 或 Aim 的骨骼，要先设置目标骨架，才能重算读取骨表。",
-        "EN": "Skin or Aim bones were changed; set the target armature first to re-derive the ReadJointTable."},
+        "ZH": "改动了 Multi 或 Aim 的骨骼，要先设置目标骨架，才能重算读取骨表。",
+        "EN": "Multi or Aim bones were changed; set the target armature first to re-derive the ReadJointTable."},
     "core.sections.missing_joints": {
         "ZH": "目标骨架里找不到这些骨骼，无法重算读取骨表：%s",
         "EN": "These bones are not in the target armature, so the ReadJointTable cannot be re-derived: %s"},
     "core.sections.multi_weight_sum": {
-        "ZH": "Skin #%d（%s）权重和为 %.3f",
-        "EN": "Skin #%d (%s): weights sum to %.3f"},
+        "ZH": "Multi #%d（%s）权重和为 %.3f",
+        "EN": "Multi #%d (%s): weights sum to %.3f"},
 
     # ── jcns_parser / jcns_writer / jcns_schema ───────────────────────────
     "core.parser.bad_version": {
@@ -179,8 +179,8 @@ STRINGS = {
         "ZH": "不是 JCNS 文件（缺少 'jcns' 魔数）",
         "EN": "Not a JCNS file (missing the 'jcns' magic)"},
     "core.writer.cone_input_index": {
-        "ZH": "约束「%s」引用了第 %d 个 ConeDriver，但文件里只有 %d 个。",
-        "EN": "Constraint \"%s\" refers to ConeDriver #%d, but the file has only %d."},
+        "ZH": "约束「%s」引用了第 %d 个 ConeInput，但文件里只有 %d 个。",
+        "EN": "Constraint \"%s\" refers to ConeInput #%d, but the file has only %d."},
     "core.writer.complex_count": {
         "ZH": "驱动「%s」的 ComplexMappingInfoCount=%s，但只有 %d 条映射数据（复制来的驱动不会带上原数据）。请把它改回 0 或恢复原驱动。",
         "EN": "Source \"%s\" has ComplexMappingInfoCount=%s but only %d mapping entries (a copied source does not bring the original data). Set it back to 0 or restore the original source."},
@@ -191,28 +191,28 @@ STRINGS = {
         "ZH": "v%s 文件头布局与文件不符：按模板算出的表头结尾是 0x%X，但 ConeDriverTableEntry 指向 0x%X",
         "EN": "v%s header layout does not match the file: the header end computed from the template is 0x%X, but ConeDriverTableEntry points to 0x%X"},
 
-    # ── jcns_source_read: ReadMode table (property / enum text) ──────────
-    "core.input_type.0.name": {"ZH": "位置", "EN": "Position"},
+    # ── jcns_source_read: InputType table (property / enum text) ──────────
+    "core.input_type.0.name": {"ZH": "位置 (Trans)", "EN": "Position (Trans)"},
     "core.input_type.0.desc": {
         "ZH": "相对父骨的位置分量（厘米），含静止偏移；多用于面部滑杆骨和武器部件（约 10%）",
         "EN": "Position component relative to the parent bone (centimetres), rest offset included; mostly used by face slider bones and weapon parts (about 10%)"},
-    "core.input_type.1.name": {"ZH": "欧拉角", "EN": "Euler"},
+    "core.input_type.1.name": {"ZH": "欧拉角 (Rot)", "EN": "Euler (Rot)"},
     "core.input_type.1.desc": {
         "ZH": "相对父骨完整旋转（含静止姿态）的欧拉分量，分解顺序由 +27 欧拉顺序决定（约 6%）",
         "EN": "Euler component of the full rotation relative to the parent bone (rest pose included); the decomposition order comes from the +27 Euler order (about 6%)"},
-    "core.input_type.2.name": {"ZH": "缩放", "EN": "Scale"},
+    "core.input_type.2.name": {"ZH": "缩放 (Scale)", "EN": "Scale"},
     "core.input_type.2.desc": {
         "ZH": "缩放分量，静止时等于骨骼的静止缩放（通常为 1）（约 5%）",
         "EN": "Scale component; at rest it equals the bone's rest scale (usually 1) (about 5%)"},
-    "core.input_type.3.name": {"ZH": "摆动·扭转", "EN": "Swing·Twist"},
+    "core.input_type.3.name": {"ZH": "摆动·扭转 (RotRPY)", "EN": "Swing·Twist (RotRPY)"},
     "core.input_type.3.desc": {
         "ZH": "绕 X 的摆动-扭转分解，q = 摆动·扭转：X 取扭转角，Y/Z 取摆动，含静止姿态；最常用（约 77%）",
         "EN": "Swing-twist decomposition about X, q = swing·twist: X is the twist angle, Y/Z are the swing, rest pose included; the most common (about 77%)"},
-    "core.input_type.4.name": {"ZH": "扭转·摆动", "EN": "Twist·Swing"},
+    "core.input_type.4.name": {"ZH": "扭转·摆动 (RotPYR)", "EN": "Twist·Swing (RotPYR)"},
     "core.input_type.4.desc": {
         "ZH": "同摆动·扭转，但 q = 扭转·摆动（先摆动）：X 与前者相同，Y/Z 不同（约 1%）",
         "EN": "Same as swing·twist, but q = twist·swing (swing applied first): X equals the former, Y/Z differ (about 1%)"},
-    "core.input_type.5.name": {"ZH": "旋转向量", "EN": "Rotation vector"},
+    "core.input_type.5.name": {"ZH": "旋转向量 (ExpMap)", "EN": "Rotation vector (ExpMap)"},
     "core.input_type.5.desc": {
         "ZH": "旋转向量（转轴×角度）的分量，含静止姿态；常用于读大腿、驱动 ThighTwist 一类（约 2%）",
         "EN": "Component of the rotation vector (axis×angle), rest pose included; often used to read the thigh and drive ThighTwist and the like (about 2%)"},

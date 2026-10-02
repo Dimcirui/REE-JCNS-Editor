@@ -544,12 +544,12 @@ class JCNS_PT_Ed_Aim(_EditorMain, Panel):
 
 # 各类型怎样定翻滚。
 _AIM_RULES = {
-    'SCENE_UP': [("editors.aim.rule.world_up", True)],
-    'OBJECT_UP': [("editors.aim.rule.up_joint_position", True)],
-    'OBJECT_ROTATION_UP': [("editors.aim.rule.up_joint_axis", True)],
-    'VECTOR': [("editors.aim.rule.up_direction", True)],
-    'NONE': [("editors.aim.rule.shortest_arc", True)],
-    'NONE_MAYA_LIKE': [("editors.aim.rule.shortest_arc_parent", True)],
+    'SCENE_UP': [("editors.aim.rule.scene_up", True)],
+    'OBJECT_UP': [("editors.aim.rule.object_up", True)],
+    'OBJECT_ROTATION_UP': [("editors.aim.rule.object_rotation_up", True)],
+    'VECTOR': [("editors.aim.rule.vector", True)],
+    'NONE': [("editors.aim.rule.none", True)],
+    'NONE_MAYA_LIKE': [("editors.aim.rule.none_maya_like", True)],
 }
 
 
