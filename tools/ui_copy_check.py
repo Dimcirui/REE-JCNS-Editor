@@ -10,6 +10,8 @@ shows them as tooltips).  A line carrying `# ui-copy: internal` is skipped:
 its strings are never shown.  Prints file:line and the text for each hit; a hit
 still needs a human decision.  Exits 1 when anything was flagged.
 
+Each value of the string tables in modules/jcns_strings is scanned too, in both languages.
+
 A second rule covers the panels' default view (docs/UI_COPY_GUIDE.md, principle 3):
 text drawn by jcns_ui / jcns_editors / jcns_sdk_ops / jcns_merge_ops / jcns_capture
 must not use internal vocabulary.  Classes whose name says Advanced / Raw / Reserved
@@ -23,6 +25,11 @@ import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, 'modules'))
+import jcns_strings  # noqa: E402
+
+# Text now lives in modules/jcns_strings; code refers to it by key.
+TABLE = jcns_strings.load()
 
 RISKY = re.compile('|'.join((
     '实测', '实机', '测试台', '验证', '确认', '语料', '样本', '原版', '推测', '推断',
@@ -122,6 +129,8 @@ def check(path):
         if node.lineno in internal:
             continue
         s = node.value
+        if s in TABLE:
+            continue
         if not (CJK.search(s) or id(node) in ui):
             continue
         for m in RISKY.finditer(s):
@@ -132,9 +141,24 @@ def check(path):
         for node in _drawn_strings(tree):
             if node.lineno in internal or node.lineno in advanced:
                 continue
-            m = INTERNAL.search(node.value)
+            text = TABLE[node.value]['ZH'] if node.value in TABLE else node.value
+            m = INTERNAL.search(text)
             if m:
-                hits.append((node.lineno, m.group(0), 'default view: ' + node.value.strip()[:100]))
+                hits.append((node.lineno, m.group(0), 'default view: ' + text.strip()[:100]))
+    return hits
+
+
+def check_tables():
+    """Every ZH and EN value of the string tables against the risky-word list."""
+    hits = []
+    for key, entry in sorted(TABLE.items()):
+        for lang, text in sorted(entry.items()):
+            m = RISKY.search(text)
+            # "unknown" / "Raw Fields" are the ordinary English for 未知 / 原始字段
+            while m and lang == 'EN' and (m.group(0).lower().startswith('unk') or m.group(0).lower() == 'raw'):
+                m = RISKY.search(text, m.end())
+            if m:
+                hits.append((key + '/' + lang, m.group(0), text.strip().replace('\n', ' ')[:120]))
     return hits
 
 
@@ -142,6 +166,10 @@ def main():
     files = sys.argv[1:] or sorted(glob.glob(os.path.join(ROOT, '*.py')) +
                                    glob.glob(os.path.join(ROOT, 'modules', '*.py')))
     total = 0
+    if not sys.argv[1:]:
+        for key, word, text in check_tables():
+            total += 1
+            print('%s  [%s]  %s' % (key, word, text))
     for f in files:
         if os.path.basename(f) == 'build_addon.py':
             continue
