@@ -553,10 +553,10 @@ class JCNS_OT_NewFile(Operator):
     )
 
     def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self)
+        return context.window_manager.invoke_props_dialog(self, width=320)
 
     def draw(self, context):
-        self.layout.prop(self, "game", expand=True)
+        self.layout.prop(self, "game")
 
     def execute(self, context):
         root = do_new(context, self.game, _armature_for_new(context))
