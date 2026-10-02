@@ -23,21 +23,23 @@ counts of every group that lost a member.
 
 from dataclasses import dataclass, field
 
+from jcns_i18n import T
+
 MAX_SOURCES = 255           # SourceCount is a uint8
 
 # What makes two entries the same channel.
 CHANNEL_FIELDS = ('target_bone', 'target_property', 'transform_type', 'target_axis')
 
-# Entry-level fields that must agree for a lossless merge: (key, label).
+# Entry-level fields that must agree for a lossless merge: (key, label string key).
 ENTRY_FIELDS = (
-    ('additive', "叠加"),
-    ('flags_other', "其余标志位"),
-    ('reserved_vec4', "Vec4"),
-    ('unknown_float2', "Float2"),
-    ('unknown_byte_72', "未知字节 (+72)"),
-    ('unknown_byte_74', "+74"),
-    ('unknown_byte_75', "+75"),
-    ('reserved_tail', "保留字节"),
+    ('additive', "io.merge.field.additive"),
+    ('flags_other', "io.merge.field.flags_other"),
+    ('reserved_vec4', "io.merge.field.vec4"),
+    ('unknown_float2', "io.merge.field.float2"),
+    ('unknown_byte_72', "io.merge.field.unknown_byte_72"),
+    ('unknown_byte_74', "io.merge.field.byte_74"),
+    ('unknown_byte_75', "io.merge.field.byte_75"),
+    ('reserved_tail', "io.merge.field.reserved_tail"),
 )
 
 
@@ -59,7 +61,7 @@ class MergePlan:
 
     def reason(self):
         """One line naming what blocks the merge; empty when it can go ahead."""
-        return "；".join(c.text for c in self.conflicts)
+        return T("io.sep.clause").join(c.text for c in self.conflicts)
 
     def fields(self):
         return [c.field for c in self.conflicts]
@@ -108,34 +110,34 @@ def plan_merge(entries, indices, complex_ok=True):
     idx = tuple(sorted(set(indices)))
     plan = MergePlan(indices=idx, ok=False)
     if len(idx) < 2:
-        plan.conflicts.append(Conflict('members', "这个通道上只有一条约束"))
+        plan.conflicts.append(Conflict('members', T("io.merge.only_one")))
         return plan
     members = [entries[i] for i in idx]
     first = members[0]
 
     for k in CHANNEL_FIELDS:
         if any(not _same(m.get(k), first.get(k)) for m in members[1:]):
-            plan.conflicts.append(Conflict(k, "不在同一个通道上"))
+            plan.conflicts.append(Conflict(k, T("io.merge.not_same_channel")))
             break
 
     if any(m.get('target_property') or m.get('property_hash', 0) for m in members):
-        plan.conflicts.append(Conflict('target_property', "目标是材质或形变属性，不支持合并"))
+        plan.conflicts.append(Conflict('target_property', T("io.merge.target_property")))
 
-    differing = [label for key, label in ENTRY_FIELDS
+    differing = [T(label) for key, label in ENTRY_FIELDS
                  if any(not _same(m.get(key), first.get(key)) for m in members[1:])]
     if differing:
-        plan.conflicts.append(Conflict('entry_fields', "%s不一致" % "、".join(differing)))
+        plan.conflicts.append(Conflict('entry_fields', T("io.merge.fields_differ", T("io.sep.list").join(differing))))
 
     if any(m.get('cone_infos') for m in members):
-        plan.conflicts.append(Conflict('cone_infos', "带 ConeDriver 输入，多源约束表达不了"))
+        plan.conflicts.append(Conflict('cone_infos', T("io.merge.cone_infos")))
 
     if any(not m.get('sources') for m in members):
-        plan.conflicts.append(Conflict('sources', "有条目没有驱动"))
+        plan.conflicts.append(Conflict('sources', T("io.merge.no_sources")))
     elif sum(len(m['sources']) for m in members) > MAX_SOURCES:
-        plan.conflicts.append(Conflict('sources', "合并后驱动超过 %d 个" % MAX_SOURCES))
+        plan.conflicts.append(Conflict('sources', T("io.merge.too_many_sources", MAX_SOURCES)))
 
     if not complex_ok and any(s.get('complex_mapping') for m in members for s in m.get('sources', ())):
-        plan.conflicts.append(Conflict('complex_mapping', "含复杂映射曲线，这个文件不支持把它并入别的条目"))
+        plan.conflicts.append(Conflict('complex_mapping', T("io.merge.complex_mapping")))
 
     plan.keep = idx[-1]
     plan.remove = idx[:-1]
@@ -185,7 +187,7 @@ def apply_plans(entries, plans):
     seen = set()
     for p in applied:
         if seen & set(p.indices):
-            raise ValueError("合并计划互相重叠")
+            raise ValueError(T("io.merge.overlap"))
         seen |= set(p.indices)
 
     removed = {i for p in applied for i in p.remove}

@@ -14,6 +14,8 @@ No bpy import.
 
 import struct
 
+from jcns_i18n import T
+
 
 # ── Version predicates ─────────────────────────────────────────────────────
 
@@ -143,14 +145,14 @@ VERSION_GAMES = {
     11:  "RE2 / DMC5",
     12:  "RE3",
     16:  "RE8",
-    19:  "RE2/RE3/RE7 光追版",
+    19:  T("core.schema.game_19"),
     21:  "MH Rise",
     22:  "RE4 / SF6",
     24:  "DD2",
-    29:  "MH Wilds（TU4 之前）",
+    29:  T("core.schema.game_29"),
     35:  "RE9 / PRAGMATA / MH Stories 3",
     36:  "Onimusha: Way of the Sword",
-    102: "MH Wilds（TU4 之后）",
+    102: T("core.schema.game_102"),
 }
 SUPPORTED_VERSIONS = tuple(sorted(VERSION_GAMES))
 
@@ -235,8 +237,7 @@ def check_header_layout(header, version, data_entry):
     end = data_entry + HEADER.size(version)
     cd = header.get('ConeDriverTableEntry', 0)
     if cd != end:
-        return (f"v{version} 文件头布局与文件不符：按模板算出的表头结尾是 0x{end:X}，"
-                f"但 ConeDriverTableEntry 指向 0x{cd:X}")
+        return T("core.schema.header_layout", version, end, cd)
     return ''
 
 

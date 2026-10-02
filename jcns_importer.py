@@ -14,7 +14,7 @@ from bpy.props import StringProperty, BoolProperty, EnumProperty
 from bpy.types import Operator
 from bpy_extras.io_utils import ImportHelper
 
-from .modules_shim import get_schema, ensure_path
+from .modules_shim import get_schema, ensure_path, T
 
 ensure_path()
 import jcns_source_read  # noqa: E402
@@ -109,13 +109,13 @@ def do_import(filepath, context, armature_obj=None):
         parser = JCNSParser(filepath)
         constraints = parser.parse()
     except Exception as exc:
-        return None, 0, f"解析失败：{exc}"
+        return None, 0, T("io.import.parse_failed", exc)
 
     # A file the writer cannot reproduce could never be exported back: refuse it.
     from jcns_validate import check_exportable
     problems = check_exportable(parser)
     if problems:
-        msg = ("无法导入 —— 这个文件含有写入器无法完整还原的结构，编辑了也没法导出：\n"
+        msg = (T("io.import.not_exportable")
                + "\n".join(f"  * {p}" for p in problems))
         return None, 0, msg
 
@@ -129,10 +129,10 @@ def do_import(filepath, context, armature_obj=None):
         try:
             upgraded, upgrade_problems = jcns_upgrade.upgrade(parser, latest, parent, skeleton_names)
         except jcns_upgrade.UpgradeError as exc:
-            return None, 0, f"无法升级到 v{latest}：{exc}"
+            return None, 0, T("io.import.upgrade_failed", latest, exc)
         problems = check_exportable(upgraded)
         if problems:
-            return None, 0, ("升级到 v%d 后无法完整还原：\n" % latest
+            return None, 0, (T("io.import.upgrade_not_exportable", latest)
                              + "\n".join(f"  * {p}" for p in problems))
         for line in upgrade_problems:
             print("[JCNS] " + line)
@@ -424,9 +424,9 @@ def do_import(filepath, context, armature_obj=None):
 # ---------------------------------------------------------------------------
 
 class JCNS_OT_ImportFile(Operator, ImportHelper):
-    """导入 RE Engine 的 JCNS 关节约束文件，每条约束生成一个空物体"""
     bl_idname = "jcns.import_file"
     bl_label  = "RE Engine JCNS (.jcns.*)"
+    bl_description = T("io.import.tip")
     bl_options = {'REGISTER', 'UNDO'}
 
     filter_glob: StringProperty(
@@ -436,14 +436,14 @@ class JCNS_OT_ImportFile(Operator, ImportHelper):
 
     # EnumProperty: PointerProperty is invalid on Operators.
     target_armature_name: EnumProperty(
-        name="目标骨架",
-        description="导入时用于把哈希还原成骨骼名的骨架",
+        name=T("io.import.armature.name"),
+        description=T("io.import.armature.tip"),
         items=_get_armature_items,
     )
 
     resolve_hashes: BoolProperty(
-        name="还原骨骼名",
-        description="用所选骨架把哈希还原成骨骼名",
+        name=T("io.import.resolve.name"),
+        description=T("io.import.resolve.tip"),
         default=True,
     )
 
@@ -457,7 +457,7 @@ class JCNS_OT_ImportFile(Operator, ImportHelper):
     def execute(self, context):
         filepath = self.filepath
         if not os.path.isfile(filepath):
-            self.report({'ERROR'}, f"找不到文件：{filepath}")
+            self.report({'ERROR'}, T("io.import.file_not_found", filepath))
             return {'CANCELLED'}
 
         armature_obj = None
@@ -469,13 +469,13 @@ class JCNS_OT_ImportFile(Operator, ImportHelper):
             self.report({'ERROR'}, err)
             return {'CANCELLED'}
 
-        arm_label = armature_obj.name if armature_obj else "无"
-        summary = f"已导入 {count} 条约束 → 「{root.name}」（骨架：{arm_label}）"
+        arm_label = armature_obj.name if armature_obj else T("io.import.armature_none")
+        summary = T("io.import.summary", count, root.name, arm_label)
         rp = root.jcns_root_props
         if rp.upgraded_from:
-            summary += f"，已从 v{rp.upgraded_from} 升级到 v{rp.source_version}"
+            summary += T("io.import.summary_upgraded", rp.upgraded_from, rp.source_version)
             if rp.read_table_pending:
-                summary += "；导出前先设置目标骨架"
+                summary += T("io.import.summary_pending")
         self.report({'INFO'}, summary)
         # Make its collection the working collection so export works without a selection.
         bpy.ops.object.select_all(action='DESELECT')

@@ -10,6 +10,10 @@ import os
 import sys
 
 _MODULES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modules")
+if _MODULES not in sys.path:
+    sys.path.insert(0, _MODULES)
+
+from jcns_i18n import T, get_lang, set_lang  # noqa: E402,F401
 _mapping = None
 _mirror = None
 _flags = None

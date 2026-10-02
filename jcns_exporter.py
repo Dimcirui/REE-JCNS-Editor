@@ -17,7 +17,7 @@ from bpy.props import StringProperty, BoolProperty
 from bpy.types import Operator
 from bpy_extras.io_utils import ExportHelper
 
-from .modules_shim import get_schema, ensure_path
+from .modules_shim import get_schema, ensure_path, T
 
 ensure_path()
 import jcns_source_read  # noqa: E402
@@ -158,12 +158,12 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
                                     Tail=bytes.fromhex(cd['Tail']))
                                for cd in json.loads(root_props.cone_drivers_json)]
     elif n_cone:
-        return [f"这个文件有 {n_cone} 条 ConeDriver，但当前根节点是旧版插件导入的，没有缓存它们；请重新导入后再导出。"]
+        return [T("io.export.cone_not_cached", n_cone)]
     n = len(parser.cone_drivers)
     for o in get_constraint_empties(root_obj):
         bad = [k.cone_index for k in o.jcns_cns_props.cone_infos if k.cone_index >= n]
         if bad:
-            return [f"约束「{o.name}」引用了第 {bad[0]} 个 ConeDriver，但文件里只有 {n} 个。"]
+            return [T("io.export.cone_bad_index", o.name, bad[0], n)]
 
     # ObjectSettings are not editable; the stub gets them back from the root
     if getattr(parser, 'is_stub', False) and root_props.object_settings_json:
@@ -429,9 +429,9 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
 # ---------------------------------------------------------------------------
 
 class JCNS_OT_ExportFile(Operator, ExportHelper):
-    """把选中的 JCNS 集合导出为 .jcns 文件，版本与导入时相同"""
     bl_idname = "jcns.export_file"
     bl_label  = "RE Engine JCNS (.jcns.*)"
+    bl_description = T("io.export.tip")
     bl_options = {'REGISTER', 'UNDO'}
 
     filename_ext = ""
@@ -440,8 +440,8 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
         options={'HIDDEN'},
     )
     clean_hashes: BoolProperty(
-        name="清除冗余哈希",
-        description="删除已无约束引用的哈希。不勾选则保留原文件的全部哈希",
+        name=T("io.export.clean_hashes.name"),
+        description=T("io.export.clean_hashes.tip"),
         default=False
     )
 
@@ -482,7 +482,7 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
 
         root_obj, root_props = _get_active_root(context)
         if root_obj is None:
-            self.report({'ERROR'}, "未检测到 JCNS 根节点，请先选中 JCNS 集合的根空物体。")
+            self.report({'ERROR'}, T("io.export.no_root"))
             return {'CANCELLED'}
 
         source_path = bpy.path.abspath(root_props.source_filepath)
@@ -493,7 +493,7 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
         empties = get_constraint_empties(root_obj)
         # Files made only of Skin / Aim / RotExpression / Material entries have no Ranges.
         if not empties and not entries_of(root_obj):
-            self.report({'WARNING'}, "没有找到任何条目，无内容可导出。")
+            self.report({'WARNING'}, T("io.export.no_entries"))
             return {'CANCELLED'}
 
         _ensure_modules_path()
@@ -503,18 +503,18 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
                 parser = JCNSParser(source_path)
                 parser.parse()
             except Exception as exc:
-                self.report({'ERROR'}, f"重新解析源文件失败：{exc}")
+                self.report({'ERROR'}, T("io.export.reparse_failed", exc))
                 return {'CANCELLED'}
         else:
             if not root_props.source_version:
-                self.report({'ERROR'}, f"源文件不存在：{source_path}\n这个根节点是旧版插件导入的，请重新导入该文件。")
+                self.report({'ERROR'}, T("io.export.source_missing_old", source_path))
                 return {'CANCELLED'}
             if not upgraded:
-                self.report({'WARNING'}, "源文件缺失，按 Blender 里的数据重建文件头导出。")
+                self.report({'WARNING'}, T("io.export.source_missing_rebuild"))
             parser = _build_stub_parser(root_props)
 
         if parser.write_mode == 'rebuild' and not root_props.sections_cached:
-            self.report({'ERROR'}, "这个文件是旧版插件导入的，Blender 里没有重建所需的数据；请重新导入后再导出。")
+            self.report({'ERROR'}, T("io.export.old_no_data"))
             return {'CANCELLED'}
 
         problems = _sync_sections_to_parser(root_obj, root_props, parser)
@@ -574,7 +574,7 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
             writer = JCNSWriter(parser, out_path)
             writer.build_lossless(clean_hashes=self.clean_hashes)
         except Exception as exc:
-            self.report({'ERROR'}, f"写入失败：{exc}")
+            self.report({'ERROR'}, T("io.export.write_failed", exc))
             return {'CANCELLED'}
 
         with open(out_path, 'rb') as f:
@@ -585,15 +585,15 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
 
         basename = os.path.basename(out_path)
         if upgraded:
-            self.report({'INFO'}, f"已导出「{basename}」（v{root_props.upgraded_from} → v{parser.version}）。")
+            self.report({'INFO'}, T("io.export.done_upgraded", basename, root_props.upgraded_from, parser.version))
         elif md5_before is None:
-            self.report({'INFO'}, f"已导出「{basename}」（源文件缺失，无法比对 MD5）。")
+            self.report({'INFO'}, T("io.export.done_no_source", basename))
         elif md5_before == md5_after:
-            self.report({'INFO'}, f"已导出「{basename}」—— 内容无变化（MD5 相同）。")
+            self.report({'INFO'}, T("io.export.done_same", basename))
         else:
             self.report(
                 {'INFO'},
-                f"已导出「{basename}」（MD5 {md5_before[:8]}… → {md5_after[:8]}…）"
+                T("io.export.done_changed", basename, md5_before[:8], md5_after[:8])
             )
         return {'FINISHED'}
 

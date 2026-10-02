@@ -23,7 +23,7 @@ import bpy
 from bpy.types import Operator
 from bpy.props import EnumProperty, StringProperty
 
-from .modules_shim import get_kinds, get_plan
+from .modules_shim import get_kinds, get_plan, T
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +104,7 @@ def _plan_for(kind_id, p):
                              p.aim_influence, p.aim_up_bone, AIM_TYPE_TO_INT[p.aim_type], tuple(p.aim_offset))
     if kind_id == 'RotExpression':
         return plan.plan_rot(p.target_bone, p.rot_source_bone, tuple(p.rot_gains))
-    return plan.ConstraintPlan(False, "这一类没有预览")
+    return plan.ConstraintPlan(False, T("ui.preview.no_preview_kind"))
 
 
 class ConstraintBackend(PreviewBackend):
@@ -149,11 +149,11 @@ class ConstraintBackend(PreviewBackend):
         pose = arm.pose.bones
         pb = pose.get(plan.bone)
         if pb is None:
-            return False, "%s — 找不到骨骼「%s」" % (entry.name, plan.bone)
+            return False, T("ui.preview.bone_missing", entry.name, plan.bone)
         wanted = ([plan.target] if plan.target else []) + [b for b, _ in plan.targets]
         missing = [b for b in wanted if b not in pose]
         if missing:
-            return False, "%s — 骨架里没有：%s" % (entry.name, "、".join(missing))
+            return False, T("ui.preview.armature_missing_bones", entry.name, T("ui.sep.list").join(missing))
 
         # The entry's bone may have been changed since the last apply.
         if p.preview_bone and p.preview_bone != plan.bone:
@@ -183,7 +183,7 @@ class ConstraintBackend(PreviewBackend):
         p.preview_bone = plan.bone
         msg = "%s → %s" % (entry.name, plan.con_type)
         if plan.warnings:
-            msg += "（" + "；".join(plan.warnings) + "）"
+            msg += T("ui.preview.warn_suffix", T("ui.sep.semicolon").join(plan.warnings))
         return True, msg
 
     def clear(self, rp, unit):
@@ -245,9 +245,9 @@ def previewable_kinds():
 # ---------------------------------------------------------------------------
 
 _SCOPES = [
-    ('ENTRY', "选中的条目", "只处理选中的条目（Ranges 连同同一通道上的其它条目）"),
-    ('KIND', "本分区", "处理当前分区里的全部条目"),
-    ('FILE', "整个文件", "处理文件里所有能预览的条目"),
+    ('ENTRY', T("ui.preview.scope.entry"), T("ui.preview.scope.entry_desc")),
+    ('KIND', T("ui.preview.scope.kind"), T("ui.preview.scope.kind_desc")),
+    ('FILE', T("ui.preview.scope.file"), T("ui.preview.scope.file_desc")),
 ]
 
 
@@ -258,19 +258,19 @@ def _resolve(context, scope, kind):
     if scope == 'ENTRY':
         obj, p = get_jcns_constraint(context)
         if obj is None:
-            return None, None, "没有选中条目"
+            return None, None, T("ui.preview.err_no_entry")
         root, rp = get_jcns_root_from_constraint(obj)
         kind_id = get_kinds().kind_of(p.constraint_type).id
         backend = backend_of(kind_id)
         if backend is None:
-            return None, None, "「%s」没有预览" % get_kinds().kind_of(kind_id).label
+            return None, None, T("ui.preview.err_kind_no_preview", get_kinds().kind_of(kind_id).label)
         if root is None:
-            return None, None, "找不到所属的 JCNS 根节点"
+            return None, None, T("ui.preview.err_no_root_of")
         return root, rp, [(kind_id, [backend.unit_of(root, obj)])]
 
     root, rp = get_export_root(context)
     if root is None:
-        return None, None, "找不到 JCNS 根节点"
+        return None, None, T("ui.preview.err_no_root")
     if scope == 'KIND':
         kind_ids = [kind or rp.browser_kind]
     else:
@@ -281,15 +281,15 @@ def _resolve(context, scope, kind):
         if backend is not None:
             plan.append((kid, backend.units(root, kid)))
     if not plan:
-        return None, None, "这一分区没有预览"
+        return None, None, T("ui.preview.err_section_no_preview")
     return root, rp, plan
 
 
 class _PreviewOperator(Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
-    scope: EnumProperty(name="范围", items=_SCOPES, default='ENTRY')
-    kind: StringProperty(name="分区", default="", options={'SKIP_SAVE'})
+    scope: EnumProperty(name=T("ui.preview.prop_scope"), items=_SCOPES, default='ENTRY')
+    kind: StringProperty(name=T("ui.preview.prop_kind"), default="", options={'SKIP_SAVE'})
 
     @classmethod
     def poll(cls, context):
@@ -307,7 +307,7 @@ class _PreviewOperator(Operator):
             self.report({'WARNING'}, plan)
             return {'CANCELLED'}
         if rp.target_armature is None:
-            self.report({'ERROR'}, "未设置目标骨架。")
+            self.report({'ERROR'}, T("ui.preview.err_no_armature"))
             return {'CANCELLED'}
 
         done = skipped = entries = 0
@@ -333,40 +333,40 @@ class _PreviewOperator(Operator):
         rp.target_armature.update_tag()
 
         if action == 'apply':
-            msg = "已应用 %d 个预览（%d 条）" % (done, entries)
+            msg = T("ui.preview.done_apply", done, entries)
             if skipped:
-                msg += "；跳过 %d 个，详见系统控制台" % skipped
+                msg += T("ui.preview.done_skipped", skipped)
                 if skipped == 1:
-                    msg += "（%s）" % messages[0]
+                    msg += T("ui.preview.done_skipped_one", messages[0])
             self.report({'WARNING' if skipped and not done else 'INFO'}, msg)
         else:
-            self.report({'INFO'}, "已清除 %d 个预览（%d 条）" % (done, entries))
+            self.report({'INFO'}, T("ui.preview.done_clear", done, entries))
         return {'FINISHED'}
 
 
 class JCNS_OT_PreviewApply(_PreviewOperator):
-    """在骨架上应用预览"""
     bl_idname = "jcns.preview_apply"
-    bl_label  = "应用预览"
+    bl_label  = T("ui.preview.op_apply_label")
+    bl_description = T("ui.preview.op_apply_desc")
 
     @classmethod
     def description(cls, context, properties):
-        return {'ENTRY': "只应用选中的条目", 'KIND': "应用当前分区的全部条目",
-                'FILE': "应用文件里全部能预览的条目"}.get(properties.scope, cls.__doc__)
+        return {'ENTRY': T("ui.preview.op_apply_entry"), 'KIND': T("ui.preview.op_apply_kind"),
+                'FILE': T("ui.preview.op_apply_file")}.get(properties.scope, cls.bl_description)
 
     def execute(self, context):
         return self._run(context, 'apply')
 
 
 class JCNS_OT_PreviewClear(_PreviewOperator):
-    """清除预览"""
     bl_idname = "jcns.preview_clear"
-    bl_label  = "清除预览"
+    bl_label  = T("ui.preview.op_clear_label")
+    bl_description = T("ui.preview.op_clear_desc")
 
     @classmethod
     def description(cls, context, properties):
-        return {'ENTRY': "只清除选中的条目", 'KIND': "清除当前分区的全部条目",
-                'FILE': "清除文件里的全部预览"}.get(properties.scope, cls.__doc__)
+        return {'ENTRY': T("ui.preview.op_clear_entry"), 'KIND': T("ui.preview.op_clear_kind"),
+                'FILE': T("ui.preview.op_clear_file")}.get(properties.scope, cls.bl_description)
 
     def execute(self, context):
         return self._run(context, 'clear')

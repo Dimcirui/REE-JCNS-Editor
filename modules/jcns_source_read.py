@@ -27,20 +27,16 @@ Only ReadMode 0-5 occur.  Pure Python, no bpy.  Quaternions are (w, x, y, z); an
 """
 import math
 
+from jcns_i18n import T
+
 # (value, identifier, name, quantity, description)
 READ_MODES = (
-    (0, 'POSITION', "位置", 'Translation',
-     "相对父骨的位置分量（厘米），含静止偏移；多用于面部滑杆骨和武器部件（约 10%）"),
-    (1, 'EULER', "欧拉角", 'Rotation',
-     "相对父骨完整旋转（含静止姿态）的欧拉分量，分解顺序由 +27 欧拉顺序决定（约 6%）"),
-    (2, 'SCALE', "缩放", 'Scale',
-     "缩放分量，静止时等于骨骼的静止缩放（通常为 1）（约 5%）"),
-    (3, 'SWING_TWIST', "摆动·扭转", 'Rotation',
-     "绕 X 的摆动-扭转分解，q = 摆动·扭转：X 取扭转角，Y/Z 取摆动，含静止姿态；最常用（约 77%）"),
-    (4, 'TWIST_SWING', "扭转·摆动", 'Rotation',
-     "同摆动·扭转，但 q = 扭转·摆动（先摆动）：X 与前者相同，Y/Z 不同（约 1%）"),
-    (5, 'ROTATION_VECTOR', "旋转向量", 'Rotation',
-     "旋转向量（转轴×角度）的分量，含静止姿态；常用于读大腿、驱动 ThighTwist 一类（约 2%）"),
+    (0, 'POSITION', T("core.read_mode.0.name"), 'Translation', T("core.read_mode.0.desc")),
+    (1, 'EULER', T("core.read_mode.1.name"), 'Rotation', T("core.read_mode.1.desc")),
+    (2, 'SCALE', T("core.read_mode.2.name"), 'Scale', T("core.read_mode.2.desc")),
+    (3, 'SWING_TWIST', T("core.read_mode.3.name"), 'Rotation', T("core.read_mode.3.desc")),
+    (4, 'TWIST_SWING', T("core.read_mode.4.name"), 'Rotation', T("core.read_mode.4.desc")),
+    (5, 'ROTATION_VECTOR', T("core.read_mode.5.name"), 'Rotation', T("core.read_mode.5.desc")),
 )
 _BY_VALUE = {m[0]: m for m in READ_MODES}
 _BY_ID = {m[1]: m for m in READ_MODES}
@@ -308,33 +304,35 @@ def translation_basis(rest, offset, parts, parent_scale=(1.0, 1.0, 1.0)):
 # Panel text for the engine rules.  Each line is (text, measured); measured =
 # False marks a modelled rule, which the UI shows with a question mark.
 
-_TARGET_RULES = {
-    0: {True: [("叠加：位置 = 静止偏移 + 输出，沿父骨的轴", True)],
-        False: [("替换：所写轴的位置 = 输出，其余轴保留静止偏移", True)]},
-    1: {True: [("叠加：静止姿态 · Rz·Ry·Rx（XYZ 欧拉，与文件里各轴先后无关）", True)],
-        False: [("替换：静止姿态的 XYZ 欧拉角里换掉所写的轴，其余轴保留", True)]},
-    2: {None: [("所写轴的缩放 = 输出，其余轴保留静止缩放；bit0 不起作用", True)]},
-    4: {True: [("叠加：静止姿态 · 摆动(Y,Z) · 扭转(X)", True)],
-        False: [("替换：静止姿态按摆动·扭转分解，换掉所写的轴，其余轴保留", True)]},
-    5: {True: [("叠加：静止姿态 · 扭转(X) · 摆动(Y,Z)", True)],
-        False: [("替换：静止姿态按扭转·摆动分解，换掉所写的轴，其余轴保留", True)]},
-    6: {True: [("叠加：静止姿态 · 旋转向量（转轴 × 角度）", True)],
-        False: [("替换：静止姿态按旋转向量分解，换掉所写的轴，其余轴保留", True)]},
-    13: {True: [("叠加：静止姿态 · 绕所写轴转「输出」角", True),
-                ("每根骨只有一个：骨上最后一条 13/14 整条胜出，与它写哪个轴无关", True)],
-         False: [("替换：丢掉整个静止旋转，只剩绕所写轴的「输出」角", True),
-                 ("每根骨只有一个：骨上最后一条 13/14 整条胜出，与它写哪个轴无关", True)]},
-    14: {True: [("与 13 相同：静止姿态 · 绕所写轴转「输出」角，骨上最后一条 13/14 生效", True)],
-         False: [("与 13 相同：丢掉整个静止旋转", True)]},
-}
+# Built per call so a language switch shows at once.
+def _target_rules():
+    return {
+        0: {True: [(T("core.rule.t0_add"), True)],
+            False: [(T("core.rule.t0_replace"), True)]},
+        1: {True: [(T("core.rule.t1_add"), True)],
+            False: [(T("core.rule.t1_replace"), True)]},
+        2: {None: [(T("core.rule.t2"), True)]},
+        4: {True: [(T("core.rule.t4_add"), True)],
+            False: [(T("core.rule.t4_replace"), True)]},
+        5: {True: [(T("core.rule.t5_add"), True)],
+            False: [(T("core.rule.t5_replace"), True)]},
+        6: {True: [(T("core.rule.t6_add"), True)],
+            False: [(T("core.rule.t6_replace"), True)]},
+        13: {True: [(T("core.rule.t13_add"), True),
+                    (T("core.rule.t13_single"), True)],
+             False: [(T("core.rule.t13_replace"), True),
+                     (T("core.rule.t13_single"), True)]},
+        14: {True: [(T("core.rule.t14_add"), True)],
+             False: [(T("core.rule.t14_replace"), True)]},
+    }
 
 
 def target_rule(transform_type, additive):
     """Lines saying how the engine applies an entry of this TransformType, with
     Flags bit0 = `additive`.  -> [(text, measured), ...]"""
-    rules = _TARGET_RULES.get(int(transform_type))
+    rules = _target_rules().get(int(transform_type))
     if rules is None:
-        return [("形变 / 材质类目标：具体作用未知，没有预览", False)]
+        return [(T("core.rule.unknown_target"), False)]
     return list(rules.get(None) or rules[bool(additive)])
 
 
@@ -342,17 +340,16 @@ def read_rule(read_mode, euler_order=0, frame_is_identity=True):
     """Lines saying what the engine reads off the source bone.  -> [(text, measured)]"""
     v = read_mode_value(read_mode)
     base = {
-        0: "读相对父骨的位置分量（厘米），静止偏移算在内",
-        1: "读相对父骨完整旋转的欧拉分量（顺序 %s），静止姿态算在内"
-           % EULER_ORDER_NAMES.get(int(euler_order), 'XYZ'),
-        2: "读缩放分量，静止缩放算在内（静止时就是静止缩放）",
-        3: "读相对父骨完整旋转绕 X 的摆动·扭转分解：X = 扭转角，Y/Z = 摆动",
-        4: "同摆动·扭转，但先摆动后扭转：X 相同，Y/Z 不同",
-        5: "读相对父骨完整旋转的旋转向量（转轴 × 角度）分量",
+        0: T("core.rule.read_0"),
+        1: T("core.rule.read_1", EULER_ORDER_NAMES.get(int(euler_order), 'XYZ')),
+        2: T("core.rule.read_2"),
+        3: T("core.rule.read_3"),
+        4: T("core.rule.read_4"),
+        5: T("core.rule.read_5"),
     }.get(v)
     if base is None:
-        return [("未知的读取方式 %r" % (read_mode,), False)]
+        return [(T("core.rule.read_unknown", read_mode), False)]
     lines = [(base, True)]
     if v in (3, 4, 5) and not frame_is_identity:
-        lines.append(("按参考系四元数 f 分解 f^-1·q·f：扭转轴变成 f·X", True))
+        lines.append((T("core.rule.read_frame"), True))
     return lines

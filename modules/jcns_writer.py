@@ -2,6 +2,7 @@ import struct
 import os
 import sys
 
+from jcns_i18n import T
 from jcns_schema import (
     HEADER, CONSTRAINT_INFO, SOURCE_V2, AIM, AIM_TARGET, MATERIAL,
     COMPLEX_MAPPING, OBJECT_SETTING, SKIN, SKIN_SOURCE, SKIN_SOURCE_INFO,
@@ -228,8 +229,8 @@ class JCNSWriter:
             cone_info_at.append(CONE_INFO_START + len(cone_info_blob))
             for ci in infos:
                 if not 0 <= ci['ConeDriverIndex'] < N_CONE:
-                    raise ValueError(f"约束「{c.get('ObjectName', '')}」引用了第 {ci['ConeDriverIndex']} 个 "
-                                     f"ConeDriver，但文件里只有 {N_CONE} 个。")
+                    raise ValueError(T("core.writer.cone_index", c.get('ObjectName', ''),
+                                       ci['ConeDriverIndex'], N_CONE))
                 cone_info_blob.extend(CONE_DRIVER_INFO.pack(ci, version))
 
         # ConstraintSource_v2 section starts after that, 16-aligned.
@@ -276,10 +277,8 @@ class JCNSWriter:
             for s in srcs:
                 cm = s.get('ComplexMapping') or []
                 if len(cm) != s.get('ComplexMappingInfoCount', 0):
-                    raise ValueError(
-                        f"驱动「{s.get('SourceName', '')}」的 ComplexMappingInfoCount="
-                        f"{s.get('ComplexMappingInfoCount', 0)}，但只有 {len(cm)} 条映射数据"
-                        "（复制来的驱动不会带上原数据）。请把它改回 0 或恢复原驱动。")
+                    raise ValueError(T("core.writer.complex_count", s.get('SourceName', ''),
+                                       s.get('ComplexMappingInfoCount', 0), len(cm)))
                 if not cm:
                     cm_offsets.append(0)
                     continue

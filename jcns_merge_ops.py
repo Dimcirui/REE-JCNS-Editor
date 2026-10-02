@@ -13,7 +13,7 @@ order the plans are made in.
 import bpy
 from bpy.types import Operator
 
-from .modules_shim import ensure_path
+from .modules_shim import ensure_path, T
 from . import jcns_cm
 
 ensure_path()
@@ -73,7 +73,7 @@ def _caps_reason(rp):
     caps = _caps_for(rp, 'Ranges')
     if caps.can_add and caps.can_remove:
         return ''
-    return caps.reason('remove') or caps.reason('add') or "这个文件不能增删约束"
+    return caps.reason('remove') or caps.reason('add') or T("io.merge.no_add_remove")
 
 
 def _label(empty):
@@ -82,7 +82,7 @@ def _label(empty):
 
 
 def _channel_text(entry):
-    return "%s 的局部 %s 轴" % (entry['target_bone'] or '?', entry['target_axis'])
+    return T("io.merge.channel_text", entry['target_bone'] or '?', entry['target_axis'])
 
 
 # ---------------------------------------------------------------------------
@@ -185,9 +185,9 @@ def _active_ranges_entry(context):
 
 
 class JCNS_OT_MergeChannel(Operator):
-    """把这个通道上的多条约束合并成一条，各驱动的输出相加"""
     bl_idname = "jcns.merge_channel"
-    bl_label  = "合并本通道"
+    bl_label  = T("io.merge.one.label")
+    bl_description = T("io.merge.one.tip")
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -198,7 +198,7 @@ class JCNS_OT_MergeChannel(Operator):
     def execute(self, context):
         obj, root, rp = _active_ranges_entry(context)
         if root is None:
-            self.report({'ERROR'}, "找不到所属的 JCNS 根节点。")
+            self.report({'ERROR'}, T("io.merge.root_not_found"))
             return {'CANCELLED'}
         why = _caps_reason(rp)
         if why:
@@ -207,12 +207,12 @@ class JCNS_OT_MergeChannel(Operator):
 
         ordered, entries, complex_ok = _collect(root, rp)
         if obj not in ordered:
-            self.report({'ERROR'}, "当前条目不在文件的 Ranges 列表里。")
+            self.report({'ERROR'}, T("io.merge.not_in_ranges"))
             return {'CANCELLED'}
         plan = plan_mod.plan_merge(entries, plan_mod.channel_members(entries, ordered.index(obj)),
                                    complex_ok)
         if not plan.ok:
-            self.report({'WARNING'}, "不能合并：" + plan.reason())
+            self.report({'WARNING'}, T("io.merge.cannot_merge", plan.reason()))
             return {'CANCELLED'}
 
         n = len(plan.indices)
@@ -220,14 +220,14 @@ class JCNS_OT_MergeChannel(Operator):
         label = _channel_text(entries[plan.keep])
         keepers = _carry_out(context, root, rp, ordered, entries, [plan])
         _activate(context, keepers[0])
-        self.report({'INFO'}, "%s：%d 条合并成 1 条，共 %d 个驱动。" % (label, n, n_src))
+        self.report({'INFO'}, T("io.merge.one.done", label, n, n_src))
         return {'FINISHED'}
 
 
 class JCNS_OT_MergeAllChannels(Operator):
-    """把文件里每个有多条约束的通道都合并成一条，各驱动的输出相加；不能合并的通道保持原样"""
     bl_idname = "jcns.merge_all_channels"
-    bl_label  = "合并所有同通道约束"
+    bl_label  = T("io.merge.all.label")
+    bl_description = T("io.merge.all.tip")
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -241,14 +241,14 @@ class JCNS_OT_MergeAllChannels(Operator):
 
     def draw(self, context):
         col = self.layout.column(align=True)
-        col.label(text="每个共用通道合并成一条，各驱动输出相加。")
-        col.label(text="结果可能与现在不同；不能合并的保持原样。")
+        col.label(text=T("io.merge.all.dialog1"))
+        col.label(text=T("io.merge.all.dialog2"))
 
     def execute(self, context):
         from . import get_export_root
         root, rp = get_export_root(context)
         if root is None:
-            self.report({'ERROR'}, "找不到 JCNS 根节点。")
+            self.report({'ERROR'}, T("io.merge.all.root_not_found"))
             return {'CANCELLED'}
         why = _caps_reason(rp)
         if why:
@@ -258,27 +258,28 @@ class JCNS_OT_MergeAllChannels(Operator):
         ordered, entries, complex_ok = _collect(root, rp)
         plans = plan_mod.plan_all(entries, complex_ok)
         if not plans:
-            self.report({'INFO'}, "没有哪个通道有多条约束。")
+            self.report({'INFO'}, T("io.merge.all.none_shared"))
             return {'CANCELLED'}
         skipped = [p for p in plans if not p.ok]
         for p in skipped:
-            print("[JCNS MERGE SKIP] %s：%s" % (_channel_text(entries[p.keep]), p.reason()))
+            print("[JCNS MERGE SKIP] " + T("io.merge.all.skip_log", _channel_text(entries[p.keep]), p.reason()))
         ok_plans = [p for p in plans if p.ok]
         if not ok_plans:
-            self.report({'WARNING'}, "没有可合并的通道；%d 个通道不能合并，原因见系统控制台。" % len(skipped))
+            self.report({'WARNING'}, T("io.merge.all.none_mergeable", len(skipped)))
             return {'CANCELLED'}
 
         n_entries = sum(len(p.indices) for p in ok_plans)
         keepers = _carry_out(context, root, rp, ordered, entries, ok_plans)
         if context.view_layer.objects.active is None:
             _activate(context, keepers[0])
-        msg = "已合并 %d 个通道（%d 条约束并入 %d 条）" % (len(ok_plans), n_entries, len(ok_plans))
+        msg = T("io.merge.all.done", len(ok_plans), n_entries, len(ok_plans))
         if skipped:
-            msg += "；%d 个通道不能合并，保持原样：%s" % (
-                len(skipped), "；".join("%s（%s）" % (_channel_text(entries[p.keep]), p.reason())
-                                       for p in skipped[:2]))
+            msg += T("io.merge.all.skipped",
+                     len(skipped), T("io.sep.clause").join(
+                         T("io.merge.channel_with_note", _channel_text(entries[p.keep]), p.reason())
+                         for p in skipped[:2]))
             if len(skipped) > 2:
-                msg += "等，其余见系统控制台"
+                msg += T("io.merge.all.skipped_more")
         self.report({'WARNING' if skipped else 'INFO'}, msg)
         return {'FINISHED'}
 
@@ -296,7 +297,7 @@ def draw_channel_merge(layout, context, members, rp, active):
     last = members[-1] is active
     row = layout.row()
     row.alert = not last
-    row.label(text="与 %s 共用通道，只有最后一条生效" % "、".join(_label(e) for e in others),
+    row.label(text=T("io.merge.panel.shared", T("io.sep.list").join(_label(e) for e in others)),
               icon='INFO' if last else 'ERROR')
     why = _caps_reason(rp)
     if why:
@@ -305,9 +306,9 @@ def draw_channel_merge(layout, context, members, rp, active):
     entries = [_describe(e) for e in members]
     plan = plan_mod.plan_merge(entries, range(len(entries)), _complex_ok(rp))
     if not plan.ok:
-        layout.label(text="不能合并：" + plan.reason(), icon='ERROR')
+        layout.label(text=T("io.merge.cannot_merge", plan.reason()), icon='ERROR')
         return
-    layout.operator("jcns.merge_channel", text="合并", icon='AUTOMERGE_ON')
+    layout.operator("jcns.merge_channel", text=T("io.merge.panel.button"), icon='AUTOMERGE_ON')
 
 
 def draw_merge_all(layout, context, groups, rp):
@@ -317,7 +318,7 @@ def draw_merge_all(layout, context, groups, rp):
     if not n:
         return
     box = layout.box()
-    box.label(text="%d 个通道有多条约束，只有最后一条生效" % n, icon='INFO')
+    box.label(text=T("io.merge.panel.shared_count", n), icon='INFO')
     why = _caps_reason(rp)
     if why:
         box.label(text=why, icon='LOCKED')
@@ -335,12 +336,14 @@ def shared_channel_warning(empties, rp):
     shared = plan_mod.contested(entries)
     if not shared:
         return ''
-    shown = "；".join("%s（%s）" % (_channel_text(entries[g[0]]), "、".join(_label(empties[i]) for i in g))
-                     for g in shared[:3])
+    shown = T("io.sep.clause").join(
+        T("io.merge.channel_with_note", _channel_text(entries[g[0]]),
+          T("io.sep.list").join(_label(empties[i]) for i in g))
+        for g in shared[:3])
     if len(shared) > 3:
-        shown += "等"
-    text = "有 %d 个通道被多条约束共用，只有最后一条生效：%s。" % (len(shared), shown)
-    return text if _caps_reason(rp) else text + "要叠加请先合并。"
+        shown += T("io.merge.more_suffix")
+    text = T("io.merge.warning.shared", len(shared), shown)
+    return text if _caps_reason(rp) else text + T("io.merge.warning.hint")
 
 
 # ---------------------------------------------------------------------------

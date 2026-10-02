@@ -2,6 +2,7 @@ import struct
 import os
 import sys
 
+from jcns_i18n import T
 import jcns_schema as S
 from jcns_schema import (
     HEADER, CONSTRAINT_INFO, AIM, AIM_TARGET, MATERIAL, ROT_EXPRESSION,
@@ -38,9 +39,9 @@ def read_header(data, check_layout=True):
     the check for headers this add-on assembled itself, never for a file read in."""
     version = struct.unpack_from('<I', data, 0)[0]
     if version not in SUPPORTED_VERSIONS:
-        raise ValueError(f"不支持的 JCNS 版本：{version}（支持 {list(SUPPORTED_VERSIONS)}）")
+        raise ValueError(T("core.parser.bad_version", version, list(SUPPORTED_VERSIONS)))
     if data[4:8] != b'jcns':
-        raise ValueError("不是 JCNS 文件（缺少 'jcns' 魔数）")
+        raise ValueError(T("core.parser.not_jcns"))
     file_entry = struct.unpack_from('<Q', data, 32)[0]
     if file_entry + 8 > len(data):
         raise ValueError(f"FileEntry pointer 0x{file_entry:X} exceeds file size {len(data)}")

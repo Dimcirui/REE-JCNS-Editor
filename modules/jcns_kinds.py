@@ -14,47 +14,59 @@ Kept free of `bpy` so the rules can be tested offline (tests/test_kinds.py).
 
 from dataclasses import dataclass
 
+from jcns_i18n import T
+
 
 # ── Kinds ───────────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class Kind:
     id: str               # constraint_type value
-    label: str            # shown in tabs / headers
+    label_fn: object      # () -> label shown in tabs / headers, in the active language
     icon: str             # Blender icon id
     tab: bool             # has a tab in the browser
     ordered: bool         # entry order is known to matter (up / down allowed)
     addable: bool         # a new entry can be created from the UI
     preview: str          # preview backend id, '' when the kind cannot be previewed
     confidence: str       # how well the engine behaviour is understood
-    summary: str          # one line: what the section is for
+    summary_fn: object    # () -> one line saying what the section is for
+
+    @property
+    def label(self):
+        return self.label_fn()
+
+    @property
+    def summary(self):
+        return self.summary_fn()
 
 
 # `ordered` is true only for Ranges: several Ranges on one channel -> the last one
 # wins.  Other sections keep file order on export but offer no reordering.
 KINDS = (
-    Kind('Ranges', "范围约束", 'DRIVER', tab=True, ordered=True, addable=True,
+    Kind('Ranges', lambda: T("core.kinds.ranges.label"), 'DRIVER', tab=True, ordered=True, addable=True,
          preview='driver', confidence="实机验证",  # ui-copy: internal
-         summary="驱动的读数经折线映射，写到被驱动的一个通道"),
-    Kind('Skin', "Skin 蒙皮", 'MOD_VERTEX_WEIGHT', tab=True, ordered=False, addable=True,
+         summary_fn=lambda: T("core.kinds.ranges.summary")),
+    Kind('Skin', lambda: T("core.kinds.skin.label"), 'MOD_VERTEX_WEIGHT', tab=True, ordered=False, addable=True,
          preview='constraint', confidence="高（统计推断）",  # ui-copy: internal
-         summary="按蒙皮权重把附件骨钉在变形后的皮肤上"),
-    Kind('Aim', "Aim 瞄准", 'CON_TRACKTO', tab=True, ordered=False, addable=True,
+         summary_fn=lambda: T("core.kinds.skin.summary")),
+    Kind('Aim', lambda: T("core.kinds.aim.label"), 'CON_TRACKTO', tab=True, ordered=False, addable=True,
          preview='constraint', confidence="主体高，字段中",  # ui-copy: internal
-         summary="look-at：让一根骨的轴指向另一根骨"),
-    Kind('RotExpression', "RotExpr 旋转表达式", 'DRIVER_ROTATIONAL_DIFFERENCE',
+         summary_fn=lambda: T("core.kinds.aim.summary")),
+    Kind('RotExpression', lambda: T("core.kinds.rotexpr.label"), 'DRIVER_ROTATIONAL_DIFFERENCE',
          tab=True, ordered=False, addable=True,
          preview='constraint', confidence="中高（统计推断）",  # ui-copy: internal
-         summary="按轴乘系数把驱动的旋转拷贝给被驱动"),
-    Kind('Material', "Material 材质", 'MATERIAL', tab=True, ordered=False, addable=False,
+         summary_fn=lambda: T("core.kinds.rotexpr.summary")),
+    Kind('Material', lambda: T("core.kinds.material.label"), 'MATERIAL', tab=True, ordered=False,
+         addable=False,
          preview='', confidence="低",  # ui-copy: internal
-         summary="骨骼驱动材质属性（如 Water_* 骨驱动 Liquid* 材质）"),
-    Kind('JointExportGraph', "JXG 导出图", 'FILE_FOLDER', tab=True, ordered=False,
+         summary_fn=lambda: T("core.kinds.material.summary")),
+    Kind('JointExportGraph', lambda: T("core.kinds.jxg.label"), 'FILE_FOLDER', tab=True, ordered=False,
          addable=False, preview='', confidence="低",  # ui-copy: internal
-         summary="一条 JointExportGraph 资源路径"),
+         summary_fn=lambda: T("core.kinds.jxg.summary")),
     # Anything the importer does not produce.  Exported untouched.
-    Kind('Unknown', "未知", 'QUESTION', tab=False, ordered=False, addable=False,
-         preview='', confidence="未知", summary="导出时原样保留"),  # ui-copy: internal
+    Kind('Unknown', lambda: T("core.kinds.unknown.label"), 'QUESTION', tab=False, ordered=False,
+         addable=False, preview='', confidence="未知",  # ui-copy: internal
+         summary_fn=lambda: T("core.kinds.unknown.summary")),
 )
 
 _BY_ID = {k.id: k for k in KINDS}
@@ -108,9 +120,9 @@ def complex_mapping_editable(st):
     """(editable, reason) for ComplexMapping keyframes: they belong to a Ranges
     source but are rebuilt and cached like the non-Ranges sections."""
     if not st.rebuild:
-        return False, f"v{st.version} 只能就地回写，曲线已锁定"
+        return False, T("core.kinds.cm_locked", st.version)
     if not st.sections_cached:
-        return False, "旧版插件导入，重新导入后才能编辑曲线"
+        return False, T("core.kinds.cm_old_import")
     return True, ''
 
 
@@ -120,31 +132,31 @@ def capabilities(kind_id, st):
     v = st.version
 
     if k.id == 'Unknown':
-        msg = "类型未知，导出时原样保留"
+        msg = T("core.kinds.unknown_msg")
         return _caps(False, False, False, False, msg,
                      edit=msg, add=msg, remove=msg, move=msg)
 
     if k.id == 'Ranges':
         if not st.rebuild:
-            msg = f"v{v} 只能改数值，不能增删、换序或改骨骼名"
+            msg = T("core.kinds.ranges_values_only", v)
             return _caps(True, False, False, False, msg,
                          add=msg, remove=msg, move=msg)
         return _caps(True, True, True, True)
 
     if k.id in ('Skin', 'Aim', 'RotExpression'):
         if not st.rebuild:
-            msg = f"v{v} 只能就地回写，已锁定"
+            msg = T("core.kinds.inplace_locked", v)
             return _caps(False, False, False, False, msg,
                          edit=msg, add=msg, remove=msg, move=msg)
         if not st.sections_cached:
-            msg = "旧版插件导入，重新导入后可编辑"
+            msg = T("core.kinds.old_import")
             return _caps(False, False, False, False, msg,
                          edit=msg, add=msg, remove=msg, move=msg)
         # Count changes need derived data re-computed on export.
         block = ''
         if k.id in ('Skin', 'Aim') and st.has_read_table and not st.has_armature:
-            block = "先设置目标骨架，才能增删条目"
-        move_why = "这一类不提供换序"
+            block = T("core.kinds.need_armature")
+        move_why = T("core.kinds.no_reorder")
         why = {'move': move_why}
         if block:
             why.update(add=block, remove=block)
@@ -152,20 +164,20 @@ def capabilities(kind_id, st):
 
     if k.id == 'Material':
         if not st.rebuild:
-            msg = f"v{v} 只能改哈希和变换 ID"
+            msg = T("core.kinds.material_hash_only", v)
             return _caps(True, False, False, False, msg,
                          add=msg, remove=msg, move=msg)
         return _caps(True, False, True, False, '',
-                     add="暂不支持新建",
-                     move="这一类不提供换序")
+                     add=T("core.kinds.no_create"),
+                     move=T("core.kinds.no_reorder"))
 
     if k.id == 'JointExportGraph':
         if not st.rebuild:
-            msg = f"v{v} 就地回写，路径已锁定"
+            msg = T("core.kinds.jxg_locked", v)
             return _caps(False, False, False, False, msg,
                          edit=msg, add=msg, remove=msg, move=msg)
         return _caps(True, False, True, False, '',
-                     add="暂不支持新建",
-                     move="JXG 每个文件只有一条")
+                     add=T("core.kinds.no_create"),
+                     move=T("core.kinds.jxg_single"))
 
     raise AssertionError(k.id)      # KINDS and this function must stay in step

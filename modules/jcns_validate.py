@@ -12,6 +12,8 @@ be exported back is not opened at all.
 Kept free of any `bpy` import so it can be run from a plain Python test harness.
 """
 
+from jcns_i18n import T
+
 
 def _count_truncated_sources(parser):
     """Constraints whose declared SourceCount does not match the blocks actually read
@@ -41,21 +43,14 @@ def check_exportable(parser):
     in_place = getattr(parser, 'write_mode', 'rebuild') == 'inplace'
 
     if in_place and getattr(parser, 'is_stub', False):
-        problems.append(
-            f"v{parser.header.get('Version', '?')} 只能在原文件上就地回写，"
-            "但源文件已找不到。请找回源文件后再导出。"
-        )
+        problems.append(T("core.validate.stub", parser.header.get('Version', '?')))
         return problems
 
     n = _count_truncated_sources(parser)
     if n:
         names = [c.get('ObjectName') or '?' for c in parser.constraints
                  if len(c.get('sources', [])) != c.get('SourceCount_parent', 0)]
-        problems.append(
-            f"{n} 条约束声明的驱动数量超过文件实际内容："
-            f"{'、'.join(names)}。该文件本身已损坏（SourceCount 超出可用数据），"
-            "导出会丢失缺失的驱动。"
-        )
+        problems.append(T("core.validate.truncated_sources", n, T("core.list_sep").join(names)))
 
     if in_place:
         return problems
@@ -64,15 +59,11 @@ def check_exportable(parser):
     # only what the parser (or Blender) actually holds.
     n = _count_unread_cone_info(parser)
     if n:
-        problems.append(
-            f"{n} 条约束的 ConeDriverInfo 数量与读到的数据不符，重建会丢掉它们。"
-        )
+        problems.append(T("core.validate.unread_cone_info", n))
     count = _header_count(parser, 'ConeDriverCount')
     if count and len(getattr(parser, 'cone_drivers', [])) != count:
-        problems.append(
-            f"文件含有 {count} 条 ConeDriver，但只读到了 {len(getattr(parser, 'cone_drivers', []))} 条"
-            "（只认 v35 起的布局，或源文件缺失而 Blender 里没有缓存），重建会丢掉它们。"
-        )
+        problems.append(T("core.validate.cone_count", count,
+                          len(getattr(parser, 'cone_drivers', []))))
 
     return problems
 
@@ -89,51 +80,50 @@ def check_in_place_edits(parser):
     """
     problems = []
     v = parser.header.get('Version', '?')
-    head = f"v{v} 只支持就地修改数值"
     orig_n = parser.header.get('ConstraintCount', 0)
 
     cns = parser.constraints
     if len(cns) != orig_n or any('_rec' not in c for c in cns):
-        problems.append(f"{head}：约束数量从 {orig_n} 变成了 {len(cns)}（不能新增或删除约束）。")
+        problems.append(T("core.validate.inplace_count", v, orig_n, len(cns)))
         return problems
 
     for i, c in enumerate(cns):
         label = c.get('_orig_object_name') or f'#{i}'
         if c.get('ObjectName', '') != c.get('_orig_object_name', ''):
-            problems.append(f"{head}：约束 {label} 的被驱动骨骼被改成了 "
-                            f"「{c.get('ObjectName', '')}」（不能改名）。")
+            problems.append(T("core.validate.inplace_object", v, label, c.get('ObjectName', '')))
         if c.get('PropertyName', '') != c.get('_orig_property_name', ''):
-            problems.append(f"{head}：约束 {label} 的目标属性被改成了 "
-                            f"「{c.get('PropertyName', '')}」（不能改名）。")
+            problems.append(T("core.validate.inplace_property", v, label, c.get('PropertyName', '')))
         srcs = c.get('sources', [])
         if len(srcs) != c['_rec']['SourceCount_parent'] or any('_rec' not in s for s in srcs):
-            problems.append(f"{head}：约束 {label} 的驱动数量变了（不能增删驱动）。")
+            problems.append(T("core.validate.inplace_source_count", v, label))
             continue
         for s in srcs:
             if s.get('SourceName', '') != s.get('_orig_name', ''):
-                problems.append(f"{head}：约束 {label} 的驱动「{s.get('_orig_name', '')}」"
-                                f"被改成了「{s.get('SourceName', '')}」（不能改名）。")
+                problems.append(T("core.validate.inplace_source_name", v, label,
+                                  s.get('_orig_name', ''), s.get('SourceName', '')))
             if s.get('ComplexMappingInfoCount', 0) != s['_rec'].get('ComplexMappingInfoCount', 0):
-                problems.append(f"{head}：约束 {label} 的 ComplexMappingInfoCount 变了。")
+                problems.append(T("core.validate.inplace_complex_count", v, label))
 
     mats = getattr(parser, 'material_cns', [])
     orig_mats = parser.header.get('MaterialConstraintInfoCount', 0)
     if len(mats) != orig_mats or any('_offset' not in m for m in mats):
-        problems.append(f"{head}：材质约束数量从 {orig_mats} 变成了 {len(mats)}。")
+        problems.append(T("core.validate.inplace_mat_count", v, orig_mats, len(mats)))
     else:
         for i, m in enumerate(mats):
             if m.get('JointHash') != m.get('_orig_joint_hash'):
-                problems.append(f"{head}：材质约束 #{i} 的骨骼被改了（不能改骨骼）。")
+                problems.append(T("core.validate.inplace_mat_bone", v, i))
 
     jxg = getattr(parser, 'joint_export_graph', None)
     had_jxg = bool(parser.header.get('JointExportGraphInfoEntry', 0))
     if (jxg is not None) != had_jxg or (jxg and jxg.get('path') != jxg.get('_orig_path')):
-        problems.append(f"{head}：JointExportGraph 路径不能修改。")
+        problems.append(T("core.validate.inplace_jxg", v))
     return problems
 
 
 def format_problems(problems, filename=''):
     """Render check_exportable() output as a single multi-line string."""
-    head = f"无法安全导出{'「' + filename + '」' if filename else ''} —— "
-    head += f"发现 {len(problems)} 处不支持的结构："
+    if filename:
+        head = T("core.validate.problems_head_named", filename, len(problems))
+    else:
+        head = T("core.validate.problems_head", len(problems))
     return "\n".join([head] + [f"  * {p}" for p in problems])

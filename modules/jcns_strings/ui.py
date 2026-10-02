@@ -1,0 +1,83 @@
+STRINGS = {
+    # --- shared bits ---
+    "ui.sep.list": {"ZH": "、", "EN": ", "},
+    "ui.sep.semicolon": {"ZH": "；", "EN": "; "},
+
+    # --- jcns_ui.py: status panel ---
+    "ui.status.import": {"ZH": "导入 JCNS", "EN": "Import JCNS"},
+    "ui.status.export": {"ZH": "导出 JCNS", "EN": "Export JCNS"},
+    "ui.status.work_collection": {"ZH": "工作集合：", "EN": "Working Collection:"},
+    "ui.status.import_first": {"ZH": "先导入 JCNS 文件，或选中它的根空物体",
+                               "EN": "Import a JCNS file first, or select its root empty"},
+    "ui.status.armature": {"ZH": "骨架：", "EN": "Armature:"},
+    "ui.status.version_incomplete": {"ZH": "版本支持不完整，导出前先备份",
+                                     "EN": "Version support is incomplete; back up before exporting"},
+
+    # --- jcns_ui.py: lists ---
+    "ui.cone.missing": {"ZH": "（不存在）", "EN": "(missing)"},
+
+    # --- jcns_ui.py: preview panel ---
+    "ui.preview.label": {"ZH": "预览", "EN": "Preview"},
+    "ui.preview.panel_desc": {"ZH": "整个界面唯一的预览入口：整个文件，或只有选中的条目。",
+                              "EN": "The only preview entry point: the whole file, or just the selected entry."},
+    "ui.preview.applied": {"ZH": "已应用 %d/%d", "EN": "Applied %d/%d"},
+    "ui.preview.set_armature": {"ZH": "先设置目标骨架", "EN": "Set the target armature first"},
+    "ui.preview.apply": {"ZH": "应用", "EN": "Apply"},
+    "ui.preview.clear": {"ZH": "清除", "EN": "Clear"},
+    "ui.preview.selected_only": {"ZH": "仅选中的条目", "EN": "Selected entry only"},
+    "ui.preview.rough": {"ZH": "%s 的预览仅供参考", "EN": "Preview of %s is approximate"},
+
+    # --- jcns_ui.py: edit panel ---
+    "ui.edit.label": {"ZH": "编辑", "EN": "Edit"},
+    "ui.edit.switch_to": {"ZH": "切到 %s", "EN": "Switch to %s"},
+    "ui.channels.none": {"ZH": "没有条目", "EN": "No entries"},
+    "ui.channels.no_source": {"ZH": "（无）", "EN": "(none)"},
+    "ui.channels.rest": {"ZH": "   静止 %s%s", "EN": "   Rest %s%s"},
+    "ui.channels.no_output": {"ZH": "   （无输出）", "EN": "   (no output)"},
+    "ui.channels.row": {"ZH": "局部 %s 轴 ← %s%s", "EN": "Local %s axis ← %s%s"},
+    "ui.channels.shared": {"ZH": "        %d 条共用此通道", "EN": "        %d entries share this channel"},
+
+    # --- jcns_ui.py: file info panel ---
+    "ui.fileinfo.label": {"ZH": "文件信息", "EN": "File Info"},
+    "ui.fileinfo.panel_desc": {"ZH": "不属于任何一条条目、只随文件带着走的数据。",
+                               "EN": "Data that belongs to no entry and travels with the file."},
+    "ui.fileinfo.object_settings": {"ZH": "ObjectSettings：%d", "EN": "ObjectSettings: %d"},
+    "ui.fileinfo.cone_table": {"ZH": "ConeDriver 表：%d", "EN": "ConeDriver table: %d"},
+    "ui.fileinfo.read_table": {"ZH": "读取骨表：%d", "EN": "Read bone table: %d"},
+    "ui.fileinfo.read_table_pending": {"ZH": "导出时按目标骨架计算", "EN": "Computed from the target armature on export"},
+
+    # --- jcns_preview.py ---
+    "ui.preview.no_preview_kind": {"ZH": "这一类没有预览", "EN": "This section has no preview"},
+    "ui.preview.bone_missing": {"ZH": "%s — 找不到骨骼「%s」", "EN": "%s — bone \"%s\" not found"},
+    "ui.preview.armature_missing_bones": {"ZH": "%s — 骨架里没有：%s", "EN": "%s — not in the armature: %s"},
+    "ui.preview.warn_suffix": {"ZH": "（%s）", "EN": " (%s)"},
+    "ui.preview.scope.entry": {"ZH": "选中的条目", "EN": "Selected Entry"},
+    "ui.preview.scope.entry_desc": {"ZH": "只处理选中的条目（Ranges 连同同一通道上的其它条目）",
+                                    "EN": "Only the selected entry (for Ranges, with the other entries on the same channel)"},
+    "ui.preview.scope.kind": {"ZH": "本分区", "EN": "This Section"},
+    "ui.preview.scope.kind_desc": {"ZH": "处理当前分区里的全部条目", "EN": "All entries in the current section"},
+    "ui.preview.scope.file": {"ZH": "整个文件", "EN": "Whole File"},
+    "ui.preview.scope.file_desc": {"ZH": "处理文件里所有能预览的条目", "EN": "All previewable entries in the file"},
+    "ui.preview.err_no_entry": {"ZH": "没有选中条目", "EN": "No entry selected"},
+    "ui.preview.err_kind_no_preview": {"ZH": "「%s」没有预览", "EN": "\"%s\" has no preview"},
+    "ui.preview.err_no_root_of": {"ZH": "找不到所属的 JCNS 根节点", "EN": "Cannot find the owning JCNS root"},
+    "ui.preview.err_no_root": {"ZH": "找不到 JCNS 根节点", "EN": "Cannot find a JCNS root"},
+    "ui.preview.err_section_no_preview": {"ZH": "这一分区没有预览", "EN": "This section has no preview"},
+    "ui.preview.prop_scope": {"ZH": "范围", "EN": "Scope"},
+    "ui.preview.prop_kind": {"ZH": "分区", "EN": "Section"},
+    "ui.preview.err_no_armature": {"ZH": "未设置目标骨架。", "EN": "No target armature set."},
+    "ui.preview.done_apply": {"ZH": "已应用 %d 个预览（%d 条）", "EN": "Applied %d previews (%d entries)"},
+    "ui.preview.done_skipped": {"ZH": "；跳过 %d 个，详见系统控制台", "EN": "; skipped %d, see the system console"},
+    "ui.preview.done_skipped_one": {"ZH": "（%s）", "EN": " (%s)"},
+    "ui.preview.done_clear": {"ZH": "已清除 %d 个预览（%d 条）", "EN": "Cleared %d previews (%d entries)"},
+    "ui.preview.op_apply_desc": {"ZH": "在骨架上应用预览", "EN": "Apply the preview on the armature"},
+    "ui.preview.op_apply_label": {"ZH": "应用预览", "EN": "Apply Preview"},
+    "ui.preview.op_apply_entry": {"ZH": "只应用选中的条目", "EN": "Apply only the selected entry"},
+    "ui.preview.op_apply_kind": {"ZH": "应用当前分区的全部条目", "EN": "Apply all entries in the current section"},
+    "ui.preview.op_apply_file": {"ZH": "应用文件里全部能预览的条目", "EN": "Apply all previewable entries in the file"},
+    "ui.preview.op_clear_desc": {"ZH": "清除预览", "EN": "Clear the preview"},
+    "ui.preview.op_clear_label": {"ZH": "清除预览", "EN": "Clear Preview"},
+    "ui.preview.op_clear_entry": {"ZH": "只清除选中的条目", "EN": "Clear only the selected entry"},
+    "ui.preview.op_clear_kind": {"ZH": "清除当前分区的全部条目", "EN": "Clear all entries in the current section"},
+    "ui.preview.op_clear_file": {"ZH": "清除文件里的全部预览", "EN": "Clear all previews in the file"},
+}

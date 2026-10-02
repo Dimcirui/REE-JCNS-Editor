@@ -14,6 +14,8 @@ it leaves out.
 import math
 from dataclasses import dataclass, field
 
+from jcns_i18n import T
+
 CON_NAME = {'Skin': "JCNS Skin", 'Aim': "JCNS Aim", 'RotExpression': "JCNS RotExpr"}
 
 
@@ -45,18 +47,18 @@ def plan_skin(object_bone, sources):
     sources: [(bone_name, weight), ...]
     """
     if not object_bone:
-        return _no("没有对象骨骼")
+        return _no(T("core.plan.skin_no_bone"))
     warnings = []
     targets = []
     for bone, w in sources:
         if not bone:
-            warnings.append("有一条驱动没填，已忽略")
+            warnings.append(T("core.plan.skin_source_empty"))
         elif bone == object_bone:
-            warnings.append("驱动里含被驱动自己，已忽略")
+            warnings.append(T("core.plan.skin_source_self"))
         else:
             targets.append((bone, float(w)))
     if not targets:
-        return _no("没有可用的驱动")
+        return _no(T("core.plan.skin_no_sources"))
     # The engine divides by the weight sum (measured, round 12), Blender's Armature
     # constraint does not.
     total = sum(w for _, w in targets)
@@ -92,29 +94,28 @@ def plan_aim(bone, target, vec1, influence, up_bone='', rotation_type=4, offset=
     type 5 drops the rest pose, so the preview differs; the up bone is not previewed.
     """
     if not bone:
-        return _no("没有被瞄准的骨骼")
+        return _no(T("core.plan.aim_no_bone"))
     if not target:
-        return _no("没有瞄准目标")
+        return _no(T("core.plan.aim_no_target"))
     if bone == target:
-        return _no("被瞄准的骨骼和瞄准目标是同一根")
+        return _no(T("core.plan.aim_same"))
     axis = aim_track_axis(vec1)
     if not axis:
-        return _no("瞄准轴 (%.2f, %.2f, %.2f) 不是坐标轴，Blender 的阻尼追踪表示不了"
-                   % tuple(vec1))
+        return _no(T("core.plan.aim_axis", *tuple(vec1)))
     warnings = []
     if rotation_type == 5:
-        warnings.append("类型 5 从父骨朝向起最短弧（丢掉静止姿态），预览从静止姿态起，会差静止姿态")
+        warnings.append(T("core.plan.aim_type5"))
     elif rotation_type != 4:
-        warnings.append("类型 %d 的引擎行为还会固定绕瞄准轴的翻滚，预览只做最短弧，翻滚会不同" % rotation_type)
+        warnings.append(T("core.plan.aim_type_other", rotation_type))
     if any(abs(c) > 1e-6 for c in offset):
-        warnings.append("旋转偏移不参与预览")
+        warnings.append(T("core.plan.aim_offset"))
     if up_bone:
-        warnings.append("辅助骨骼（up）不参与预览")
+        warnings.append(T("core.plan.aim_up"))
     infl = min(1.0, max(0.0, float(influence)))
     if infl != influence:
-        warnings.append("影响 %.2f 超出 0..1，预览按 %.0f 处理" % (influence, infl))
+        warnings.append(T("core.plan.aim_infl_range", influence, infl))
     elif abs(infl - 1.0) > 1e-6:
-        warnings.append("影响不为 1 时引擎的结果退化，预览按影响直接混合")
+        warnings.append(T("core.plan.aim_infl_degenerate"))
     return ConstraintPlan(
         True, warnings=warnings, bone=bone, name=CON_NAME['Aim'],
         con_type='DAMPED_TRACK', target=target,
@@ -128,11 +129,11 @@ def plan_rot(bone, source, coeffs):
     coefficient: a Transformation constraint mapping rotation to rotation.
     """
     if not bone:
-        return _no("没有被驱动的骨骼")
+        return _no(T("core.plan.rot_no_bone"))
     if not source:
-        return _no("没有驱动")
+        return _no(T("core.plan.rot_no_source"))
     if bone == source:
-        return _no("被驱动和驱动是同一根")
+        return _no(T("core.plan.rot_same"))
     props = {
         'map_from': 'ROTATION', 'map_to': 'ROTATION',
         'from_rotation_mode': 'AUTO', 'to_euler_order': 'AUTO',

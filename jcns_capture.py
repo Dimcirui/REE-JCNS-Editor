@@ -13,7 +13,7 @@ import bpy
 from bpy.types import Operator
 from bpy.props import EnumProperty
 
-from .modules_shim import ensure_path, get_mapping
+from .modules_shim import ensure_path, get_mapping, T
 
 ensure_path()
 import jcns_capture as core  # noqa: E402  (modules/jcns_capture.py)
@@ -22,12 +22,12 @@ import jcns_capture as core  # noqa: E402  (modules/jcns_capture.py)
 # (property, name, description); the source side reads the driving bone, the target side
 # takes the driven bone's pose.
 _FIELD_ITEMS = [
-    ('from_start', "From 起点", "读取驱动当前的值，填入起点 A 的输入"),
-    ('from_kink',  "From 折点", "读取驱动当前的值，填入折点 B 的输入"),
-    ('from_end',   "From 终点", "读取驱动当前的值，填入终点 C 的输入"),
-    ('to_start',   "To 起点",   "按被驱动当前姿态算出要写入的值，填入起点 A 的输出"),
-    ('to_kink',    "To 折点",   "按被驱动当前姿态算出要写入的值，填入折点 B 的输出"),
-    ('to_end',     "To 终点",   "按被驱动当前姿态算出要写入的值，填入终点 C 的输出"),
+    ('from_start', T("io.capture.from_start"), T("io.capture.from_start.tip")),
+    ('from_kink',  T("io.capture.from_kink"),  T("io.capture.from_kink.tip")),
+    ('from_end',   T("io.capture.from_end"),   T("io.capture.from_end.tip")),
+    ('to_start',   T("io.capture.to_start"),   T("io.capture.to_start.tip")),
+    ('to_kink',    T("io.capture.to_kink"),    T("io.capture.to_kink.tip")),
+    ('to_end',     T("io.capture.to_end"),     T("io.capture.to_end.tip")),
 ]
 _FIELD_NAME = {ident: name for ident, name, _desc in _FIELD_ITEMS}
 
@@ -100,19 +100,19 @@ def _entry(context):
 
 
 class JCNS_OT_CaptureAnchor(Operator):
-    """把骨骼当前姿态对应的值填进这个锚点"""
     bl_idname = "jcns.capture_anchor"
-    bl_label  = "从当前姿态取值"
+    bl_label  = T("io.capture.label")
+    bl_description = T("io.capture.tip")
     bl_options = {'REGISTER', 'UNDO'}
 
-    field: EnumProperty(name="锚点", items=_FIELD_ITEMS)
+    field: EnumProperty(name=T("io.capture.field_name"), items=_FIELD_ITEMS)
 
     @classmethod
     def description(cls, context, properties):
         for ident, _name, desc in _FIELD_ITEMS:
             if ident == properties.field:
-                return desc + "。先在骨架上摆好骨骼的姿态"
-        return cls.__doc__
+                return T("io.capture.tip_with_pose", desc)
+        return cls.bl_description
 
     @classmethod
     def poll(cls, context):
@@ -125,21 +125,21 @@ class JCNS_OT_CaptureAnchor(Operator):
         from .jcns_ui import _target_unit
         st = _entry(context)
         if st is None or st.arm is None:
-            self.report({'ERROR'}, "先设置目标骨架。")
+            self.report({'ERROR'}, T("io.capture.no_armature"))
             return {'CANCELLED'}
         source_side = self.field.startswith('from_')
         if source_side:
-            role, bone, axis = "驱动", st.sp.source_bone, st.sp.source_axis
+            role, bone, axis = T("io.capture.role_driver"), st.sp.source_bone, st.sp.source_axis
         else:
-            role, bone, axis = "被驱动", st.p.target_bone, st.p.target_axis
+            role, bone, axis = T("io.capture.role_driven"), st.p.target_bone, st.p.target_axis
         if not bone:
-            self.report({'ERROR'}, "还没有设置%s。" % role)
+            self.report({'ERROR'}, T("io.capture.role_not_set", role))
             return {'CANCELLED'}
         if bone not in st.arm.pose.bones:
-            self.report({'ERROR'}, "目标骨架「%s」里没有骨骼「%s」。" % (st.arm.name, bone))
+            self.report({'ERROR'}, T("io.capture.no_bone", st.arm.name, bone))
             return {'CANCELLED'}
         if axis == 'W':
-            self.report({'ERROR'}, "W 轴暂不支持取值。")
+            self.report({'ERROR'}, T("io.capture.w_axis"))
             return {'CANCELLED'}
 
         warning = ""
@@ -147,31 +147,30 @@ class JCNS_OT_CaptureAnchor(Operator):
             value = read_source(st.arm, st.sp)
             unit = get_mapping().source_unit(st.sp)
             if value is None:
-                self.report({'ERROR'}, "这种读取方式没有可取的值。")
+                self.report({'ERROR'}, T("io.capture.no_read_value"))
                 return {'CANCELLED'}
         else:
             if not core.target_capturable(_transform_int(st.p.transform_type)):
-                self.report({'ERROR'}, "变换类型「%s」没有骨骼姿态可取。" % st.p.transform_type)
+                self.report({'ERROR'}, T("io.capture.no_pose_value", st.p.transform_type))
                 return {'CANCELLED'}
             got = read_target(st.arm, st.p)
             if got is None:
-                self.report({'ERROR'}, "这个姿态下取不出值：父骨缩放为 0，或扭转角没有定义。")
+                self.report({'ERROR'}, T("io.capture.undefined"))
                 return {'CANCELLED'}
             value, error = got
             unit = _target_unit(st.p.transform_type)
             if error > 0.5:
-                warning = ("姿态不是纯绕 %s 轴的旋转，只取了绕该轴的转角，另有 %.1f° 这条约束表达不了。"
-                           % (axis, error))
+                warning = T("io.capture.warn_axis", axis, error)
             elif st.p.preview_on:
-                warning = "预览正在驱动被驱动骨骼，读到的是预览姿态；先清除预览再取值"
+                warning = T("io.capture.warn_preview")
 
         # Assigning runs the property's update, which refreshes an applied preview.
         setattr(st.sp, self.field, round(value, 5) + 0.0)
-        text = "已取 %s = %.2f%s" % (_FIELD_NAME[self.field], value, unit)
+        text = T("io.capture.captured", _FIELD_NAME[self.field], value, unit)
         if warning:
-            self.report({'WARNING'}, "%s。%s" % (text, warning))
+            self.report({'WARNING'}, T("io.capture.done_with_warning", text, warning))
         else:
-            self.report({'INFO'}, text + "。")
+            self.report({'INFO'}, T("io.capture.done", text))
         return {'FINISHED'}
 
 
@@ -223,7 +222,7 @@ def _draw_readout(layout, c, sp):
     if arm is None or arm.type != 'ARMATURE' or not sp.source_bone or sp.source_axis == 'W':
         return
     if sp.source_bone not in arm.pose.bones:
-        layout.label(text="目标骨架里没有骨骼「%s」，读不到当前值" % sp.source_bone, icon='INFO')
+        layout.label(text=T("io.capture.readout_no_bone", sp.source_bone), icon='INFO')
         return
     x = read_source(arm, sp)
     if x is None:
@@ -232,9 +231,9 @@ def _draw_readout(layout, c, sp):
     anchors = (sp.from_start, sp.from_kink, sp.from_end, sp.to_start, sp.to_kink, sp.to_end)
     y = core.mapped_output(anchors, x, m.source_two_point(sp), m.source_interpolation(sp),
                            jcns_cm.keys(sp))
-    text = "当前读到 %.2f%s → 输出 %.2f%s" % (x, m.source_unit(sp), y, _target_unit(c.p.transform_type))
+    text = T("io.capture.readout", x, m.source_unit(sp), y, _target_unit(c.p.transform_type))
     if len(c.p.sources) > 1:
-        text += "（仅本驱动，各驱动输出相加）"
+        text += T("io.capture.readout_single")
     layout.label(text=text, icon='EYEDROPPER')
 
 

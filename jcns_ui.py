@@ -22,6 +22,8 @@ import sys
 import bpy
 from bpy.types import Panel
 
+from .modules_shim import T
+
 
 # ---------------------------------------------------------------------------
 # 辅助
@@ -194,7 +196,7 @@ class JCNS_UL_ConeInfos(bpy.types.UIList):
         names = _cone_names(rp)
         row = layout.row(align=True)
         row.prop(item, "cone_index", text="")
-        label = names[item.cone_index] if item.cone_index < len(names) else "（不存在）"
+        label = names[item.cone_index] if item.cone_index < len(names) else T("ui.cone.missing")
         sub = row.row()
         sub.alert = item.cone_index >= len(names)
         sub.label(text=label, icon='CONE')
@@ -250,24 +252,26 @@ class JCNS_PT_Status(Panel):
     bl_idname   = "JCNS_PT_status"
     bl_space_type  = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category    = 'JCNS 编辑器'
+    bl_category    = T("common.category")
     bl_order    = 0
 
     def draw(self, context):
         layout = self.layout
+        from .jcns_lang import draw_language_toggle
+        draw_language_toggle(layout)
 
         row = layout.row(align=True)
-        row.operator("jcns.import_file", text="导入 JCNS", icon='IMPORT')
-        row.operator("jcns.export_file", text="导出 JCNS", icon='EXPORT')
+        row.operator("jcns.import_file", text=T("ui.status.import"), icon='IMPORT')
+        row.operator("jcns.export_file", text=T("ui.status.export"), icon='EXPORT')
 
-        _field_row(layout, "工作集合：", context.scene, "jcns_active_collection",
+        _field_row(layout, T("ui.status.work_collection"), context.scene, "jcns_active_collection",
                    icon='OUTLINER_COLLECTION')
 
         root, rp = _resolve_root(context)
         if root is None:
-            layout.label(text="先导入 JCNS 文件，或选中它的根空物体", icon='INFO')
+            layout.label(text=T("ui.status.import_first"), icon='INFO')
             return
-        _field_row(layout, "骨架：", rp, "target_armature", icon='ARMATURE_DATA')
+        _field_row(layout, T("ui.status.armature"), rp, "target_armature", icon='ARMATURE_DATA')
 
         from .modules_shim import get_schema
         from .jcns_exporter import _root_version
@@ -276,14 +280,14 @@ class JCNS_PT_Status(Panel):
         layout.label(text="%s · v%d" % (name, v) if not rp.upgraded_from
                      else "%s · v%d → v%d" % (name, rp.upgraded_from, v), icon='FILE')
         if v not in get_schema().VERIFIED_VERSIONS:
-            layout.label(text="版本支持不完整，导出前先备份", icon='ERROR')
+            layout.label(text=T("ui.status.version_incomplete"), icon='ERROR')
 
 
 class _RootPanel:
     """Mixin: the panel needs a JCNS file."""
     bl_space_type  = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category    = 'JCNS 编辑器'
+    bl_category    = T("common.category")
 
     @classmethod
     def poll(cls, context):
@@ -295,8 +299,8 @@ class _RootPanel:
 # ---------------------------------------------------------------------------
 
 class JCNS_PT_Preview(_RootPanel, Panel):
-    """整个界面唯一的预览入口：整个文件，或只有选中的条目。"""
-    bl_label    = "预览"
+    bl_description = T("ui.preview.panel_desc")
+    bl_label    = T("ui.preview.label")
     bl_idname   = "JCNS_PT_preview"
     bl_order    = 2
 
@@ -317,33 +321,33 @@ class JCNS_PT_Preview(_RootPanel, Panel):
             if b and jcns_preview.backend_of(kind.id).experimental:
                 rough.append(kind.label.split()[0])
 
-        layout.label(text="已应用 %d/%d" % (on, total),
+        layout.label(text=T("ui.preview.applied", on, total),
                      icon='CHECKMARK' if total and on == total else 'BLANK1')
         has_arm = rp.target_armature is not None
         if not has_arm:
-            layout.label(text="先设置目标骨架", icon='ERROR')
+            layout.label(text=T("ui.preview.set_armature"), icon='ERROR')
 
         col = layout.column(align=True)
         col.enabled = has_arm
         row = col.row(align=True)
-        row.operator("jcns.preview_apply", text="应用", icon='PLAY').scope = 'FILE'
-        row.operator("jcns.preview_clear", text="清除", icon='X').scope = 'FILE'
+        row.operator("jcns.preview_apply", text=T("ui.preview.apply"), icon='PLAY').scope = 'FILE'
+        row.operator("jcns.preview_clear", text=T("ui.preview.clear"), icon='X').scope = 'FILE'
 
         obj, p = get_jcns_constraint(context)
         backend = jcns_preview.backend_of(kinds.kind_of(p.constraint_type).id) if p is not None else None
         sub = col.row(align=True)
         sub.enabled = backend is not None
         split = sub.split(factor=0.45)
-        split.label(text="仅选中的条目")
+        split.label(text=T("ui.preview.selected_only"))
         pair = split.row(align=True)
-        pair.operator("jcns.preview_apply", text="应用").scope = 'ENTRY'
-        pair.operator("jcns.preview_clear", text="清除").scope = 'ENTRY'
+        pair.operator("jcns.preview_apply", text=T("ui.preview.apply")).scope = 'ENTRY'
+        pair.operator("jcns.preview_clear", text=T("ui.preview.clear")).scope = 'ENTRY'
 
         if backend is not None:
             for alert, text in backend.problems(obj):
                 _wrap_label(layout, context, text, icon='ERROR' if alert else 'INFO', alert=alert)
         if rough:
-            layout.label(text="%s 的预览仅供参考" % "、".join(rough), icon='QUESTION')
+            layout.label(text=T("ui.preview.rough", T("ui.sep.list").join(rough)), icon='QUESTION')
 
 
 # ---------------------------------------------------------------------------
@@ -423,7 +427,7 @@ def _draw_tabs(layout, rp):
 
 
 class JCNS_PT_Edit(_RootPanel, Panel):
-    bl_label    = "编辑"
+    bl_label    = T("ui.edit.label")
     bl_idname   = "JCNS_PT_edit"
     bl_order    = 3
 
@@ -450,7 +454,7 @@ class JCNS_PT_Edit(_RootPanel, Panel):
         active_kind = kinds.kind_of(p.constraint_type) if p is not None else None
         if active_kind is not None and active_kind.id != kind.id and active_kind.tab:
             layout.prop_enum(rp, "browser_kind", active_kind.id,
-                             text="切到 %s" % _short_label(active_kind), icon=active_kind.icon)
+                             text=T("ui.edit.switch_to", _short_label(active_kind)), icon=active_kind.icon)
 
         if kind.id == 'Ranges':
             layout.row().prop(rp, "browser_view", expand=True)
@@ -489,7 +493,7 @@ def _draw_channels(layout, context, root, rp):
 
     groups = group_constraints_by_channel(root)
     if not groups:
-        layout.label(text="没有条目", icon='INFO')
+        layout.label(text=T("ui.channels.none"), icon='INFO')
         return
 
     by_bone = {}
@@ -514,17 +518,17 @@ def _draw_channels(layout, context, root, rp):
             applied = any(e.jcns_cns_props.preview_on for e in members)
             icon = ('ERROR' if info['offset_at_rest']
                     else 'DRIVER' if applied else 'BLANK1')
-            srcs = "、".join(sorted({sp.source_bone + " " + sp.source_axis
-                                    for sp in sources if sp.source_bone})) or "（无）"
+            srcs = T("ui.sep.list").join(sorted({sp.source_bone + " " + sp.source_axis
+                                    for sp in sources if sp.source_bone})) or T("ui.channels.no_source")
             suffix = ""
             if info['offset_at_rest']:
-                suffix = "   静止 %s%s" % (_fmt(info['at_rest']), _target_unit(transform))
+                suffix = T("ui.channels.rest", _fmt(info['at_rest']), _target_unit(transform))
             elif info['all_inert']:
-                suffix = "   （无输出）"
-            row.label(text="局部 %s 轴 ← %s%s" % (axis, srcs, suffix), icon=icon)
+                suffix = T("ui.channels.no_output")
+            row.label(text=T("ui.channels.row", axis, srcs, suffix), icon=icon)
 
             if len(members) > 1:
-                col.label(text="        %d 条共用此通道" % len(members), icon='DOT')
+                col.label(text=T("ui.channels.shared", len(members)), icon='DOT')
             for e in members:
                 sub = col.row(align=True)
                 sub.active = (e is active)
@@ -538,8 +542,8 @@ def _draw_channels(layout, context, root, rp):
 # ---------------------------------------------------------------------------
 
 class JCNS_PT_FileInfo(_RootPanel, Panel):
-    """不属于任何一条条目、只随文件带着走的数据。"""
-    bl_label    = "文件信息"
+    bl_description = T("ui.fileinfo.panel_desc")
+    bl_label    = T("ui.fileinfo.label")
     bl_idname   = "JCNS_PT_file_info"
     bl_order    = 4
     bl_options  = {'DEFAULT_CLOSED'}
@@ -552,14 +556,14 @@ class JCNS_PT_FileInfo(_RootPanel, Panel):
             n_obj = len(json.loads(rp.object_settings_json)) if rp.object_settings_json else 0
         except ValueError:
             n_obj = 0
-        col.label(text="ObjectSettings：%d" % n_obj, icon='OBJECT_DATA')
-        col.label(text="ConeDriver 表：%d" % len(_cone_names(rp)), icon='CONE')
+        col.label(text=T("ui.fileinfo.object_settings", n_obj), icon='OBJECT_DATA')
+        col.label(text=T("ui.fileinfo.cone_table", len(_cone_names(rp))), icon='CONE')
         from . import entry_counts
         if entry_counts(root).get('RotExpression'):
             col.prop(rp, "rot_map_value")
-        col.label(text="读取骨表：%d" % len(rp.read_joint_table), icon='BONE_DATA')
+        col.label(text=T("ui.fileinfo.read_table", len(rp.read_joint_table)), icon='BONE_DATA')
         if rp.read_table_pending:
-            col.label(text="导出时按目标骨架计算", icon='INFO')
+            col.label(text=T("ui.fileinfo.read_table_pending"), icon='INFO')
         if len(rp.read_joint_table):
             col.template_list("UI_UL_list", "jcns_read_joints", rp, "read_joint_table",
                               rp, "read_joint_index", rows=min(len(rp.read_joint_table), 5))

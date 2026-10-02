@@ -51,6 +51,7 @@ Derived data:
 
 import struct
 
+from jcns_i18n import T
 from jcns_schema import ROT_EXPRESSION
 
 
@@ -162,13 +163,13 @@ def resolve_read_joint_table(records, aim_joints, meta, locked, parent=None, nam
     if not pending and (not orig or locked == read_joint_signature(records, aim_joints)):
         return orig, []
     if parent is None:
-        return orig, ["先设置目标骨架，才能算读取骨表。" if pending
-                      else "改动了 Skin 或 Aim 的骨骼，要先设置目标骨架，才能重算读取骨表。"]
+        return orig, [T("core.sections.need_armature_pending") if pending
+                      else T("core.sections.need_armature_changed")]
     table, missing = derive_read_joint_table(records, aim_joints, parent)
     if missing:
         label = lambda h: (names or {}).get(h, f"0x{h:08X}")
-        return orig, ["目标骨架里找不到这些骨骼，无法重算读取骨表：%s"
-                      % "、".join(label(h) for h in missing[:8])]
+        return orig, [T("core.sections.missing_joints",
+                        T("core.list_sep").join(label(h) for h in missing[:8]))]
     return table, []
 
 
@@ -180,7 +181,7 @@ def skin_weight_warnings(records, names=None):
         w = sum(s['weight'] for s in r['sources'])
         if r['sources'] and abs(w - 1.0) > 1e-3:
             label = (names or {}).get(r['object'], f"0x{r['object']:08X}")
-            out.append(f"Skin #{i}（{label}）权重和为 {w:.3f}")
+            out.append(T("core.sections.skin_weight_sum", i, label, w))
     return out
 
 

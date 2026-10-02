@@ -24,6 +24,7 @@ import jcns_capture as cap
 import jcns_complex
 import jcns_mapping
 import jcns_source_read as sr
+from jcns_i18n import T
 from jcns_merge import MAX_SOURCES
 
 MAX_KEYS = 3                     # more distinct keys than this become a ComplexMapping curve
@@ -42,12 +43,17 @@ REST_TOL = 1e-4                  # output at rest vs the value that leaves the b
 CM_MIN_GAP = 0.03
 
 UNITS = {'Rotation': "°", 'Translation': " cm", 'Scale': ""}
-_TARGET_NAMES = {'Rotation': "旋转", 'Translation': "平移", 'Scale': "缩放"}
 ROTATION_TYPES = (1, 4, 5, 6)    # TransformTypes whose three channels are independent
 TANGENTS = ('LINEAR', 'SMOOTH')
 
-KEY_START = "键Start"
-KEY_END = "键End"
+
+def _target_name(quantity):
+    return T({'Rotation': "sdk.label.rotation", 'Translation': "sdk.label.translation",
+              'Scale': "sdk.label.scale"}[quantity])
+
+
+def _axis_label(base, axis):
+    return T("sdk.label.axis", base, 'XYZ'[axis])
 
 
 @dataclass(frozen=True)
@@ -109,7 +115,7 @@ class Constraint:
         return drive_label(self.read_mode, self.source_axis)
 
     def target_label(self):
-        return _TARGET_NAMES[self.quantity] + 'XYZ'[self.axis]
+        return _axis_label(_target_name(self.quantity), self.axis)
 
     def evaluate(self, x):
         if self.keys:
@@ -146,10 +152,11 @@ class _Reject(Exception):
 def drive_label(read_mode, axis):
     v = sr.read_mode_value(read_mode)
     if v in (3, 4):
-        base = "扭转" if axis == 0 else "摆动"
+        base = T("sdk.label.twist" if axis == 0 else "sdk.label.swing")
     else:
-        base = {0: "位置", 1: "欧拉", 2: "缩放", 5: "旋转向量"}.get(v, "读数")
-    return base + 'XYZ'[axis]
+        base = T({0: "sdk.label.position", 1: "sdk.label.euler", 2: "sdk.label.scale",
+                  5: "sdk.label.rotation_vector"}.get(v, "sdk.label.reading"))
+    return _axis_label(base, axis)
 
 
 def euler_of(pose):
@@ -184,10 +191,10 @@ def _spread(values):
 def key_name(index, count):
     """A key's name comes from its position: first = start, last = end, the rest numbered."""
     if index == 0:
-        return KEY_START
+        return T("sdk.key.start")
     if index == count - 1:
-        return KEY_END
-    return "键%d" % index
+        return T("sdk.key.end")
+    return T("sdk.key.middle", index)
 
 
 def key_names(count):
@@ -221,7 +228,7 @@ def is_middle(index, count):
 def can_delete(index, count):
     """(ok, reason): only keys between the start and the end can go."""
     if not is_middle(index, count):
-        return False, "键Start 和键End 不能删除"
+        return False, T("sdk.keys.cannot_delete_ends")
     return True, ""
 
 
@@ -276,9 +283,9 @@ def order_warnings(entries, count, quantity):
         for i, v in entries:
             if is_middle(i, count) and not lo - tol <= v <= hi + tol:
                 outside.add(i)
-                out.append("%s 的读数 %s 不在%s（%s）和%s（%s）之间"
-                           % (names[i], _fmt(v, quantity), KEY_START, _fmt(by[0], quantity),
-                              KEY_END, _fmt(by[count - 1], quantity)))
+                out.append(T("sdk.warn.reading_outside", names[i], _fmt(v, quantity),
+                             T("sdk.key.start"), _fmt(by[0], quantity),
+                             T("sdk.key.end"), _fmt(by[count - 1], quantity)))
     rest = [(i, v) for i, v in entries if i not in outside]
     direction = 0
     if 0 in by and count - 1 in by and abs(by[count - 1] - by[0]) > tol:
@@ -288,10 +295,10 @@ def order_warnings(entries, count, quantity):
     if direction:
         for (i, a), (j, b) in zip(rest, rest[1:]):
             if (b - a) * direction < -tol:
-                out.append("%s 的读数 %s 与前面的%s（%s）顺序相反"
-                           % (names[j], _fmt(b, quantity), names[i], _fmt(a, quantity)))
+                out.append(T("sdk.warn.reading_reversed", names[j], _fmt(b, quantity),
+                             names[i], _fmt(a, quantity)))
     if out:
-        out.append("列表顺序与读数不一致，生成时按读数排序")
+        out.append(T("sdk.warn.order_mismatch"))
     return out
 
 
@@ -305,7 +312,7 @@ def _detect_drive(poses, rest, read_mode, axis, order):
     else:
         mode = sr.read_mode_value(read_mode)
         if sr.read_mode_id(mode) is None:
-            raise _Reject("读取方式 %r 不存在" % (read_mode,))
+            raise _Reject(T("sdk.err.read_mode_unknown", read_mode))
         reads = ((mode, sr.read_quantity(mode)),)
     axes = range(3) if axis is None else (axis,)
     for mode, quantity in reads:
@@ -317,9 +324,8 @@ def _detect_drive(poses, rest, read_mode, axis, order):
         if best[0] > DRIVER_MIN[quantity]:
             return Drive(mode, best[1], quantity, best[2])
     if read_mode is None and axis is None:
-        raise _Reject("驱动在各键之间没有变化")
-    what = "按所选方式读" if read_mode is not None else "读"
-    raise _Reject("%s驱动，各键之间没有变化；换一种读取方式或轴试试" % what)
+        raise _Reject(T("sdk.err.drive_flat"))
+    raise _Reject(T("sdk.err.drive_flat_mode" if read_mode is not None else "sdk.err.drive_flat_any"))
 
 
 def _detect_channels(bone, poses, rest, rotation_type, warnings):
@@ -328,14 +334,14 @@ def _detect_channels(bone, poses, rest, rotation_type, warnings):
     found = []
     for quantity, tt in (('Rotation', rotation_type), ('Translation', 0), ('Scale', 2)):
         for axis in range(3):
-            label = _TARGET_NAMES[quantity] + 'XYZ'[axis]
+            label = _axis_label(_target_name(quantity), axis)
             got = [read_channel(p, rest, tt, axis) for p in poses]
             if any(g is None for g in got):
-                warnings.append("被驱动「%s」的%s取不出值（父骨缩放为 0），已跳过" % (bone, label))
+                warnings.append(T("sdk.warn.channel_unreadable", bone, label))
                 continue
             if quantity == 'Rotation' and max(g[1] for g in got) > 0.5:
-                warnings.append("被驱动「%s」的%s有 %.1f° 表达不了的旋转"
-                                % (bone, label, max(g[1] for g in got)))
+                warnings.append(T("sdk.warn.rotation_unreachable", bone, label,
+                                  max(g[1] for g in got)))
             values = [g[0] for g in got]
             if _spread(values) > CHANNEL_MIN[quantity]:
                 found.append((bone, quantity, tt, axis, values))
@@ -357,9 +363,9 @@ def _dedupe(drive, channels, names):
             j = kept[-1]
             a, b = sorted((i, j))
             if any(abs(vals[i] - vals[j]) > CHANNEL_MIN[q] for _b, q, _tt, _a, vals in channels):
-                raise _Reject("%s 和%s 的驱动读数相同（%s），被驱动却不同，对应关系不明；"
-                              "删掉其中一个键" % (names[a], names[b], _fmt(drive.values[i], drive.quantity)))
-            notes.append("%s 和%s 的姿态相同，按一个键算" % (names[a], names[b]))
+                raise _Reject(T("sdk.err.same_reading", names[a], names[b],
+                                _fmt(drive.values[i], drive.quantity)))
+            notes.append(T("sdk.note.same_pose", names[a], names[b]))
             continue
         kept.append(i)
     return kept, notes
@@ -420,15 +426,15 @@ def _rest_warnings(plan, driver_rest, rests, drive, order):
         y = c.evaluate(x_rest)
         want = read_channel(Pose(), rests[c.driven], c.transform_type, c.axis, c.additive)[0]
         if abs(y - want) > REST_TOL:
-            off.append("%s %s 输出 %s（应为 %s）" % (c.driven, c.target_label(), _fmt(y, c.quantity),
-                                                   _fmt(want, c.quantity)))
+            off.append(T("sdk.warn.rest_output", c.driven, c.target_label(), _fmt(y, c.quantity),
+                         _fmt(want, c.quantity)))
     if not off:
         return
     if in_keys:
-        plan.warnings.append("驱动在静止姿态的那个键里，被驱动却不在静止姿态，静止时%s" % "、".join(off))
+        plan.warnings.append(T("sdk.warn.rest_off_in_keys", T("sdk.list_sep").join(off)))
     else:
-        plan.warnings.append("静止姿态不在键里（驱动静止时读 %s），静止时%s。再记一个静止姿态的键"
-                             % (_fmt(x_rest, drive.quantity), "、".join(off)))
+        plan.warnings.append(T("sdk.warn.rest_not_in_keys", _fmt(x_rest, drive.quantity),
+                               T("sdk.list_sep").join(off)))
 
 
 def plan_keys(keys, driver, driven, rests, read_mode=None, axis=None, euler_order=0,
@@ -465,31 +471,32 @@ def plan_keys(keys, driver, driven, rests, read_mode=None, axis=None, euler_orde
 def _plan(plan, keys, driver, driven, rests, read_mode, axis, order, rotation_type, tangent,
           complex_ok, complex_reason):
     if rotation_type not in ROTATION_TYPES:
-        raise _Reject("旋转目标的变换类型只能是 %s" % "、".join(map(str, ROTATION_TYPES)))
+        raise _Reject(T("sdk.err.rotation_type", T("sdk.list_sep").join(map(str, ROTATION_TYPES))))
     if tangent not in TANGENTS:
-        raise _Reject("曲线切线只能是线性或平滑")
+        raise _Reject(T("sdk.err.tangent"))
     if not driver:
-        raise _Reject("先设置驱动")
+        raise _Reject(T("sdk.err.no_driver"))
     if not driven:
-        raise _Reject("先添加被驱动")
+        raise _Reject(T("sdk.err.no_driven"))
     if driver in driven:
-        raise _Reject("「%s」既是驱动又是被驱动" % driver)
+        raise _Reject(T("sdk.err.driver_is_driven", driver))
     for b in driven:
         if driven.count(b) > 1:
-            raise _Reject("被驱动「%s」重复" % b)
+            raise _Reject(T("sdk.err.driven_duplicate", b))
     for b in [driver] + driven:
         if b not in rests:
-            raise _Reject("取不到「%s」的静止姿态" % b)
+            raise _Reject(T("sdk.err.no_rest", b))
     if len(keys) < 2:
-        raise _Reject("至少需要 2 个键（现有 %d 个）" % len(keys))
+        raise _Reject(T("sdk.err.too_few_keys", len(keys)))
 
     names = key_names(len(keys))
     kept = [i for i, k in enumerate(keys) if driver in k.poses]
     if len(kept) < len(keys):
-        plan.warnings.append("%s 没有记录驱动「%s」，已忽略"
-                             % ("、".join(names[i] for i in range(len(keys)) if i not in kept), driver))
+        plan.warnings.append(T("sdk.warn.keys_without_driver",
+                               T("sdk.list_sep").join(names[i] for i in range(len(keys)) if i not in kept),
+                               driver))
     if len(kept) < 2:
-        raise _Reject("至少需要 2 个键记录了驱动（现有 %d 个）" % len(kept))
+        raise _Reject(T("sdk.err.too_few_driver_keys", len(kept)))
 
     drive = _detect_drive([keys[i].poses[driver] for i in kept], rests[driver], read_mode, axis, order)
     plan.drive = drive
@@ -499,18 +506,18 @@ def _plan(plan, keys, driver, driven, rests, read_mode, axis, order, rotation_ty
     for b in driven:
         missing = [names[i] for i in kept if b not in keys[i].poses]
         if len(missing) == len(kept):
-            skips.append((b, "没有记录姿态"))
+            skips.append((b, T("sdk.skip.no_pose")))
         elif missing:
-            skips.append((b, "在%s 里没有记录" % "、".join(missing)))
+            skips.append((b, T("sdk.skip.missing_in", T("sdk.list_sep").join(missing))))
         else:
             found = _detect_channels(b, [keys[i].poses[b] for i in kept], rests[b], rotation_type,
                                      plan.warnings)
             if not found:
-                skips.append((b, "在各键之间没有变化"))
+                skips.append((b, T("sdk.skip.no_change")))
             channels += found
     if not channels:
-        raise _Reject(*["被驱动「%s」%s" % s for s in skips])
-    plan.warnings += ["被驱动「%s」%s，已跳过" % s for s in skips]
+        raise _Reject(*[T("sdk.err.driven_skip", *s) for s in skips])
+    plan.warnings += [T("sdk.warn.driven_skip", *s) for s in skips]
 
     pos, notes = _dedupe(drive, channels, [names[i] for i in kept])
     plan.warnings += notes
@@ -518,14 +525,13 @@ def _plan(plan, keys, driver, driven, rests, read_mode, axis, order, rotation_ty
     plan.key_count = len(pos)
     if len(pos) > MAX_KEYS:
         if not complex_ok:
-            raise _Reject("%d 个键要生成曲线，%s；最多 %d 个键"
-                          % (len(pos), complex_reason or "这个文件不能编辑它", MAX_KEYS))
+            raise _Reject(T("sdk.err.curve_not_editable", len(pos),
+                            complex_reason or T("sdk.err.curve_not_editable_default"), MAX_KEYS))
         plan.mode = 'complex'
         for a, b in zip(pos, pos[1:]):
             if drive.values[b] - drive.values[a] < CM_MIN_GAP:
-                plan.warnings.append("%s 和%s 的读数只差 %s，曲线上会读成一个台阶"
-                                     % (names[kept[a]], names[kept[b]],
-                                        _fmt(drive.values[b] - drive.values[a], drive.quantity)))
+                plan.warnings.append(T("sdk.warn.step_gap", names[kept[a]], names[kept[b]],
+                                       _fmt(drive.values[b] - drive.values[a], drive.quantity)))
     else:
         plan.mode = 'two' if len(pos) == 2 else 'three'
     for bone, quantity, tt, ch_axis, values in channels:
@@ -544,20 +550,17 @@ def _plan(plan, keys, driver, driven, rests, read_mode, axis, order, rotation_ty
     _rest_warnings(plan, rests[driver], rests, drive, order)
 
 
-_MODE_TEXT = {'two': "两点映射", 'three': "三点映射"}
-
-
 def describe_rows(plan, driver_bone):
     """[(kind, text)] for the panel: what the plan generates, or why it cannot.
     kind is 'error', 'head', 'bone' or 'line'."""
     if plan.errors:
         return [('error', t) for t in plan.errors]
-    how = ("ComplexMapping 曲线，%d 个关键帧" % plan.key_count if plan.mode == 'complex'
-           else _MODE_TEXT[plan.mode])
-    rows = [('head', "将生成 %d 条（%s）：" % (len(plan.constraints), how))]
+    how = (T("sdk.mode.complex", plan.key_count) if plan.mode == 'complex'
+           else T("sdk.mode." + plan.mode))
+    rows = [('head', T("sdk.describe.head", len(plan.constraints), how))]
     for bone in plan.bones():
         mine = [c for c in plan.constraints if c.driven == bone]
-        rows.append(('bone', "%s：%d 条" % (bone, len(mine))))
+        rows.append(('bone', T("sdk.describe.bone", bone, len(mine))))
         rows += [('line', "%s %s → %s %s" % (driver_bone, c.source_label(), bone, c.target_label()))
                  for c in mine]
     return rows
@@ -580,15 +583,15 @@ def can_append(existing, constraint, complex_ok=True):
     source also needs a file that can hold ComplexMapping.
     """
     if existing.get('target_property') or existing.get('property_hash'):
-        return False, "目标是材质或形变属性"
+        return False, T("sdk.append.property_target")
     if existing.get('cone_infos'):
-        return False, "已有约束带 ConeDriver 输入，多源表达不了"
+        return False, T("sdk.append.cone_driver")
     if existing.get('n_sources', 0) >= MAX_SOURCES:
-        return False, "已有约束的驱动已满 %d 个" % MAX_SOURCES
+        return False, T("sdk.append.sources_full", MAX_SOURCES)
     if constraint.transform_type != 2 and bool(existing.get('additive')) != bool(constraint.additive):
-        return False, "已有约束的「叠加」与新约束不同"
+        return False, T("sdk.append.additive_differs")
     if constraint.complex and not complex_ok:
-        return False, "这个文件不能编辑 ComplexMapping"
+        return False, T("sdk.append.no_complex")
     return True, ""
 
 
@@ -608,4 +611,4 @@ def main_change(pose, rest, order=0):
             shown = best[2] if quantity == 'Scale' else best[1]
             text = {'Rotation': "%.1f°", 'Translation': "%.2f cm", 'Scale': "%.3f"}[quantity] % shown
             return "%s %s" % (drive_label(mode, best[0]), text)
-    return "静止姿态"
+    return T("sdk.rest_pose")

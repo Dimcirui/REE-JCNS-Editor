@@ -25,6 +25,7 @@ import sys
 
 import jcns_flags
 import jcns_sections as X
+from jcns_i18n import T
 from jcns_parser import read_header
 from jcns_schema import file_header
 
@@ -72,13 +73,13 @@ def upgrade(parser, dst_version=102, parent=None, names=None):
     if src == dst_version:
         return parser, []
     if (src, dst_version) not in UPGRADE_STEPS:
-        raise UpgradeError(f"没有 v{src} → v{dst_version} 的升级步骤。")
+        raise UpgradeError(T("io.upgrade.no_step", src, dst_version))
     return _upgrade_29_to_102(parser, parent, names)
 
 
 def _upgrade_29_to_102(p, parent, names):
     if p.cone_drivers:
-        raise UpgradeError("v29 文件不该有 ConeDriver。")
+        raise UpgradeError(T("io.upgrade.v29_cone"))
     const = FILE_CONSTANT
 
     out = _Upgraded()
@@ -166,11 +167,11 @@ def _hash_order(f):
 
 def _read_joint_table(records, aim_joints, parent, names):
     if parent is None:
-        return [], ["升级到 v102 要重新算读取骨表，需要目标骨架。"]
+        return [], [T("io.upgrade.need_skeleton")]
     table, missing = X.derive_read_joint_table(records, aim_joints, parent)
     if missing:
         label = lambda h: (names or {}).get(h, f"0x{h:08X}")
-        return [], ["目标骨架里找不到这些骨骼，无法算读取骨表：%s" % "、".join(label(h) for h in missing[:8])]
+        return [], [T("io.upgrade.missing_bones", T("io.sep.list").join(label(h) for h in missing[:8]))]
     return table, []
 
 

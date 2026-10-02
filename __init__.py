@@ -12,6 +12,8 @@ from bpy.props import (
 )
 from bpy.types import PropertyGroup
 
+from .modules_shim import T
+
 bl_info = {
     "name": "REE JCNS Editor",
     "author": "Dimcirui",
@@ -34,10 +36,10 @@ bl_info = {
 # ---------------------------------------------------------------------------
 
 AXIS_ITEMS = [
-    ('X', "X", "骨骼局部 X 轴（或四元数 X 分量）"),
-    ('Y', "Y", "骨骼局部 Y 轴（或四元数 Y 分量）"),
-    ('Z', "Z", "骨骼局部 Z 轴（或四元数 Z 分量）"),
-    ('W', "W", "四元数 W 分量（暂不支持预览）"),
+    ('X', "X", T("props.axis.x")),
+    ('Y', "Y", T("props.axis.y")),
+    ('Z', "Z", T("props.axis.z")),
+    ('W', "W", T("props.axis.w")),
 ]
 
 # ConstraintSource_v2 bytes +24 / +25 (the .bt calls them UpdateTimingID and
@@ -69,7 +71,7 @@ def _euler_order_items():
     from .modules_shim import ensure_path
     ensure_path()
     import jcns_source_read
-    return [(name, "%d %s" % (value, name), "Blender 的 %s 顺序（%s 轴最先作用）" % (name, name[0]), value)
+    return [(name, "%d %s" % (value, name), T("props.euler.order_desc", name, name[0]), value)
             for value, name in sorted(jcns_source_read.EULER_ORDER_NAMES.items())]
 
 
@@ -78,52 +80,52 @@ _EULER_ORDER_ITEMS = _euler_order_items()
 
 # Source byte +28: how a segment of the mapping runs between its anchors.
 INTERPOLATION_ITEMS = [
-    ('LINEAR', "0 线性", "每段是直线"),
-    ('CUBIC_IN', "1 缓入", "每段先慢后快，t³"),
-    ('CUBIC_OUT', "2 缓出", "每段先快后慢，1−(1−t)³"),
-    ('SMOOTHSTEP', "3 缓入缓出", "每段按三次平滑阶跃过渡，段首段尾斜率为 0"),
+    ('LINEAR', T("props.interp.linear"), T("props.interp.linear_desc")),
+    ('CUBIC_IN', T("props.interp.cubic_in"), T("props.interp.cubic_in_desc")),
+    ('CUBIC_OUT', T("props.interp.cubic_out"), T("props.interp.cubic_out_desc")),
+    ('SMOOTHSTEP', T("props.interp.smoothstep"), T("props.interp.smoothstep_desc")),
 ]
 INTERPOLATION_TO_INT = {item[0]: i for i, item in enumerate(INTERPOLATION_ITEMS)}
 INT_TO_INTERPOLATION = {i: ident for ident, i in INTERPOLATION_TO_INT.items()}
 
 # Aim RotationType: how the roll around the aim axis is fixed.
 AIM_TYPE_ITEMS = [
-    ('WORLD_UP', "0 世界上方向", "上方向取世界 +Y，上方向向量无效"),
-    ('UP_JOINT_POSITION', "1 辅助骨位置", "上方向取自己指向辅助骨的方向"),
-    ('UP_JOINT_AXIS', "2 辅助骨轴", "上方向取辅助骨的一根局部轴，由「上方向」向量选（(0,1,0) 是 Y，(0,0,1) 是 Z）"),
-    ('UP_DIRECTION', "3 指定上方向", "上方向取「上方向」向量给出的世界方向"),
-    ('SHORTEST_ARC', "4 最短弧", "从静止姿态朝目标转最短弧，不约束翻滚"),
-    ('SHORTEST_ARC_PARENT', "5 父骨最短弧", "从父骨朝向起朝目标转最短弧，丢掉静止姿态"),
+    ('WORLD_UP', T("props.aim_type.world_up"), T("props.aim_type.world_up_desc")),
+    ('UP_JOINT_POSITION', T("props.aim_type.up_joint_position"), T("props.aim_type.up_joint_position_desc")),
+    ('UP_JOINT_AXIS', T("props.aim_type.up_joint_axis"), T("props.aim_type.up_joint_axis_desc")),
+    ('UP_DIRECTION', T("props.aim_type.up_direction"), T("props.aim_type.up_direction_desc")),
+    ('SHORTEST_ARC', T("props.aim_type.shortest_arc"), T("props.aim_type.shortest_arc_desc")),
+    ('SHORTEST_ARC_PARENT', T("props.aim_type.shortest_arc_parent"), T("props.aim_type.shortest_arc_parent_desc")),
 ]
 AIM_TYPE_TO_INT = {item[0]: i for i, item in enumerate(AIM_TYPE_ITEMS)}
 INT_TO_AIM_TYPE = {i: ident for ident, i in AIM_TYPE_TO_INT.items()}
 
 # RotExpression byte[1]: whether the result lies on the rest pose.
 ROT_REST_ITEMS = [
-    ('REPLACE', "替换", "结果不含静止姿态（字节 0）"),
-    ('ADD_REST', "叠在静止姿态上", "结果 = 静止姿态 · 值（字节 48）"),
+    ('REPLACE', T("props.rot_rest.replace"), T("props.rot_rest.replace_desc")),
+    ('ADD_REST', T("props.rot_rest.add_rest"), T("props.rot_rest.add_rest_desc")),
 ]
 ROT_REST_TO_INT = {'REPLACE': 0, 'ADD_REST': 48}
 INT_TO_ROT_REST = {0: 'REPLACE', 48: 'ADD_REST'}
 
 TRANSFORM_ITEMS = [
-    ('Translation',    "Translation",    "0：驱动骨骼位置"),
-    ('Rotation',       "Rotation",       "1：欧拉旋转，静止姿态 · Rz·Ry·Rx"),
-    ('Scale',          "Scale",          "2：驱动骨骼缩放"),
-    ('BlendShape',     "BlendShape",     "3：驱动形变权重"),
-    ('SwingTwist',     "SwingTwist",     "4：摆动·扭转旋转，X 为扭转、Y/Z 为摆动。常用于扭转骨、三角肌"),
-    ('TwistSwing',     "TwistSwing",     "5：扭转·摆动旋转，与 4 相同但先摆动后扭转"),
-    ('RotationVector', "RotationVector", "6：旋转向量，三个分量组成「转轴 × 角度」。常用于 ThighRX/RZ"),
-    ('Material_Color', "Material_Color", "7：可能驱动材质颜色参数"),
-    ('Material_4D',    "Material_4D",    "8：可能驱动材质四维参数"),
-    ('Material_3D',    "Material_3D",    "9：可能驱动材质三维参数"),
-    ('Material_2D',    "Material_2D",    "10：可能驱动材质二维参数"),
-    ('Scalar',         "Scalar",         "11：可能驱动标量参数"),
-    ('Unknown_12',     "Unknown_12",     "12：具体作用未知"),
-    ('AxisRotation',   "AxisRotation",   "13：单轴旋转，绕所写的轴；每根骨只有骨上最后一条 13/14 条目生效，常用于辅助骨、布料偏移骨"),
-    ('AxisRotation_14', "AxisRotation_14", "14：与 13 行为相同，两者的区别未知。常用于围裙、触手"),
-    ('UnkRotation_15', "UnkRotation_15", "15：具体作用未知"),
-    ('UnkRotation_16', "UnkRotation_16", "16：具体作用未知"),
+    ('Translation',    "Translation",    T("props.transform.t0")),
+    ('Rotation',       "Rotation",       T("props.transform.t1")),
+    ('Scale',          "Scale",          T("props.transform.t2")),
+    ('BlendShape',     "BlendShape",     T("props.transform.t3")),
+    ('SwingTwist',     "SwingTwist",     T("props.transform.t4")),
+    ('TwistSwing',     "TwistSwing",     T("props.transform.t5")),
+    ('RotationVector', "RotationVector", T("props.transform.t6")),
+    ('Material_Color', "Material_Color", T("props.transform.t7")),
+    ('Material_4D',    "Material_4D",    T("props.transform.t8")),
+    ('Material_3D',    "Material_3D",    T("props.transform.t9")),
+    ('Material_2D',    "Material_2D",    T("props.transform.t10")),
+    ('Scalar',         "Scalar",         T("props.transform.t11")),
+    ('Unknown_12',     "Unknown_12",     T("props.transform.t12")),
+    ('AxisRotation',   "AxisRotation",   T("props.transform.t13")),
+    ('AxisRotation_14', "AxisRotation_14", T("props.transform.t14")),
+    ('UnkRotation_15', "UnkRotation_15", T("props.transform.t15")),
+    ('UnkRotation_16', "UnkRotation_16", T("props.transform.t16")),
 ]
 
 AXIS_TO_INT = {'X': 0, 'Y': 1, 'Z': 2, 'W': 3}
@@ -310,7 +312,7 @@ class JCNSCMKey(PropertyGroup):
     to_y:   FloatProperty(name="To Y",   default=0.0)
     from_z: FloatProperty(name="From Z", default=0.0)
     to_z:   FloatProperty(name="To Z",   default=0.0)
-    flag:   IntProperty(name="Flag", description="具体作用未知，改动不影响曲线。常见值为 0、2、5、8",
+    flag:   IntProperty(name="Flag", description=T("props.cm_key.flag_desc"),
                         default=0, min=0)
 
 
@@ -320,8 +322,8 @@ class JCNSConeInfo(PropertyGroup):
     RE9 v35: Rest is (0,0,0,0), or (0,0,0,1) on scale targets; Value is what the
     target takes for that cone (bt: AngleDeg, but scale targets hold factors).
     """
-    cone_index: IntProperty(name="ConeDriver", description="ConeDriver 表里的序号", default=0, min=0)
-    value: FloatProperty(name="输出值", description="这个锥形对应的目标值：角度，缩放目标时为倍数", default=0.0)
+    cone_index: IntProperty(name="ConeDriver", description=T("props.cone.index_desc"), default=0, min=0)
+    value: FloatProperty(name=T("props.cone.value"), description=T("props.cone.value_desc"), default=0.0)
     rest: FloatVectorProperty(name="Rest", size=4, default=(0.0, 0.0, 0.0, 0.0))
     unk_byte0: IntProperty(name="+20", default=0, min=0, max=255)
     unk_byte3: IntProperty(name="+23", default=0, min=0, max=255)
@@ -329,20 +331,20 @@ class JCNSConeInfo(PropertyGroup):
 
 class JCNSIntItem(PropertyGroup):
     """One integer of a stored list."""
-    value: IntProperty(name="值", default=0)
+    value: IntProperty(name=T("props.int_item.value"), default=0)
 
 
 class JCNSHashItem(PropertyGroup):
     """A uint32 hash, held as a signed int, with the name it resolved to."""
-    hash: IntProperty(name="哈希", description="按有符号整数显示", default=0)
-    name: StringProperty(name="名称", default="")
+    hash: IntProperty(name=T("props.hash_item.hash"), description=T("props.hash_item.hash_desc"), default=0)
+    name: StringProperty(name=T("props.hash_item.name"), default="")
 
 
 class JCNSWeightedSource(PropertyGroup):
     """One source bone of a SkinConstraint record."""
-    bone: StringProperty(name="骨骼", default="", update=_refresh_preview,
+    bone: StringProperty(name=T("props.weighted.bone"), default="", update=_refresh_preview,
                          search=lambda self, context, text: _search_bone_names(context, text))
-    weight: FloatProperty(name="权重", default=1.0, precision=4, update=_refresh_preview_values)
+    weight: FloatProperty(name=T("props.weighted.weight"), default=1.0, precision=4, update=_refresh_preview_values)
 
 
 class JCNSSourceProperties(PropertyGroup):
@@ -350,16 +352,16 @@ class JCNSSourceProperties(PropertyGroup):
 
     source_bone: StringProperty(
         update=_refresh_preview,
-        name="驱动",
-        description="被读取的驱动骨骼，可输入以搜索本文件哈希表里的骨骼名",
+        name=T("props.common.driver"),
+        description=T("props.source.bone_desc"),
         default="",
         search=_search_source_bone,
         search_options={'SUGGESTION'},
     )
     source_axis: EnumProperty(
         update=_refresh_preview,
-        name="驱动局部轴向",
-        description="读取驱动的哪个局部轴，在骨骼自身的局部坐标系里，不是全局坐标系",
+        name=T("props.source.axis"),
+        description=T("props.source.axis_desc"),
         items=AXIS_ITEMS,
         default='X',
     )
@@ -367,90 +369,90 @@ class JCNSSourceProperties(PropertyGroup):
     # --- Three-point piecewise mapping ---
     from_start: FloatProperty(
         update=_refresh_preview_values,
-        name="From 起点", description="起点 A 的输入，即驱动的读数，单位随读取方式：度、厘米或倍数",
+        name=T("props.source.from_start"), description=T("props.source.from_start_desc"),
         default=0.0, precision=2, step=10,
     )
     from_kink: FloatProperty(
         update=_refresh_preview_values,
-        name="From 折点", description="折点 B 的输入，两段在这里分界；不启用折点时忽略，落在起点与终点之外时整个驱动失效",
+        name=T("props.source.from_kink"), description=T("props.source.from_kink_desc"),
         default=0.0, precision=2, step=10,
     )
     from_end: FloatProperty(
         update=_refresh_preview_values,
-        name="From 终点", description="终点 C 的输入",
+        name=T("props.source.from_end"), description=T("props.source.from_end_desc"),
         default=0.0, precision=2, step=10,
     )
     to_start: FloatProperty(
         update=_refresh_preview_values,
-        name="To 起点", description="起点 A 的输出，单位随变换类型：度、厘米或倍数",
+        name=T("props.source.to_start"), description=T("props.source.to_start_desc"),
         default=0.0, precision=2, step=10,
     )
     to_kink: FloatProperty(
         update=_refresh_preview_values,
-        name="To 折点", description="折点 B 的输出，不启用折点时忽略",
+        name=T("props.source.to_kink"), description=T("props.source.to_kink_desc"),
         default=0.0, precision=2, step=10,
     )
     to_end: FloatProperty(
         update=_refresh_preview_values,
-        name="To 终点", description="终点 C 的输出",
+        name=T("props.source.to_end"), description=T("props.source.to_end_desc"),
         default=0.0, precision=2, step=10,
     )
 
     # --- Reference frame (+56, stored as "ref_frame") ---
     # Not the bone's rest pose (the engine takes that from the skeleton): the frame
     # the swing-twist and rotation-vector reads decompose in, f^-1 * q * f.
-    ref_frame_x: FloatProperty(name="参考系 X", default=0.0, precision=5,
+    ref_frame_x: FloatProperty(name=T("props.source.ref_frame_x"), default=0.0, precision=5,
                                update=_refresh_preview)
-    ref_frame_y: FloatProperty(name="参考系 Y", default=0.0, precision=5,
+    ref_frame_y: FloatProperty(name=T("props.source.ref_frame_y"), default=0.0, precision=5,
                                update=_refresh_preview)
-    ref_frame_z: FloatProperty(name="参考系 Z", default=0.0, precision=5,
+    ref_frame_z: FloatProperty(name=T("props.source.ref_frame_z"), default=0.0, precision=5,
                                update=_refresh_preview)
-    ref_frame_w: FloatProperty(name="参考系 W", default=1.0, precision=5,
+    ref_frame_w: FloatProperty(name=T("props.source.ref_frame_w"), default=1.0, precision=5,
                                update=_refresh_preview)
 
     # --- Raw bytes ---
     # +24 and +25 default to 3, the most common value.
     three_point: BoolProperty(
         update=_refresh_preview_values,
-        name="启用折点",
-        description="关：起点到终点一条直线；开：经过折点的两段折线（曲线模式位1），折点落在起点与终点之外时输出恒为 0",
+        name=T("props.source.three_point"),
+        description=T("props.source.three_point_desc"),
         default=True,
     )
     curve_mode_extra: IntProperty(
-        name="曲线模式其余位",
-        description="曲线模式去掉位1 的其余位：位0 不起作用，位2 及以上只出现在材质目标上，含义未知",
+        name=T("props.source.curve_mode_extra"),
+        description=T("props.source.curve_mode_extra_desc"),
         default=1, min=0, max=253,
     )
     read_mode: EnumProperty(
         update=_refresh_preview,
-        name="读取方式 (+25)",
-        description="从驱动读什么：相对父骨的完整变换（含静止姿态和静止偏移），决定取位置、缩放，还是旋转的哪一种分解",
+        name=T("props.source.read_mode"),
+        description=T("props.source.read_mode_desc"),
         items=_READ_MODE_ITEMS,
         default=_READ_MODE_DEFAULT,
     )
     euler_order: EnumProperty(
         update=_refresh_preview,
-        name="欧拉顺序 (+27)",
-        description="读取方式为「欧拉角」时的分解顺序，通常跟着驱动骨走：大腿、手多为 YZX，手指为 ZXY，翅膀为 ZYX，其余为 XYZ",
+        name=T("props.source.euler_order"),
+        description=T("props.source.euler_order_desc"),
         items=_EULER_ORDER_ITEMS,
         default='XYZ',
     )
     complex_mapping_info_count: IntProperty(
-        name="曲线关键点数", description="曲线的关键点数，导出时按曲线重算",
+        name=T("props.source.cm_count"), description=T("props.source.cm_count_desc"),
         default=0, min=0, max=65535,
     )
     unknown_uint16_22: IntProperty(
-        name="未知 UInt16 (+22)", description="具体作用未知。通常为 0",
+        name=T("props.source.unknown_uint16_22"), description=T("props.common.unknown_usually_0"),
         default=0, min=0, max=65535,
     )
     interpolation: EnumProperty(
         update=_refresh_preview_values,
-        name="插值",
-        description="每段映射的过渡方式（+28）：0 线性，3 缓入缓出，1 和 2 极少见",
+        name=T("props.source.interpolation"),
+        description=T("props.source.interpolation_desc"),
         items=INTERPOLATION_ITEMS, default='LINEAR',
     )
     complex_mapping_flag: IntProperty(
-        name="曲线标记 (+29)", description="有曲线时为 1，导出时自动设置；材质目标上可能为 2",
+        name=T("props.source.cm_flag"), description=T("props.source.cm_flag_desc"),
         default=0, min=0, max=255,
     )
     # ComplexMapping: the curve is an F-Curve on the constraint Empty, on the custom
@@ -477,16 +479,16 @@ class JCNSConstraintProperties(PropertyGroup):
     # --- Identity ---
     target_bone: StringProperty(
         update=_refresh_preview,
-        name="被驱动",
-        description="被驱动的骨骼，可输入以搜索本文件哈希表里的骨骼名",
+        name=T("props.cns.target_bone"),
+        description=T("props.cns.target_bone_desc"),
         default="",
         search=_search_target_bone,
         search_options={'SUGGESTION'},
     )
     transform_type: EnumProperty(
         update=_refresh_preview,
-        name="变换类型",
-        description="约束驱动的是旋转、平移还是缩放等",
+        name=T("props.cns.transform_type"),
+        description=T("props.cns.transform_type_desc"),
         items=TRANSFORM_ITEMS,
         default='Rotation',
     )
@@ -494,53 +496,51 @@ class JCNSConstraintProperties(PropertyGroup):
     # --- Axis (editable — exported back to file) ---
     target_axis: EnumProperty(
         update=_refresh_preview,
-        name="被驱动局部轴向",
-        description="驱动被驱动的哪个局部轴，在骨骼自身的局部坐标系里，不是全局坐标系",
+        name=T("props.cns.target_axis"),
+        description=T("props.cns.target_axis_desc"),
         items=AXIS_ITEMS,
         default='X',
     )
 
     # --- ConstraintInfo fields (editable, exported) ---
     additive: BoolProperty(
-        name="叠加",
-        description="Flags 位0。开：值叠加在静止姿态上；关：替换所写的轴（旋转、平移），对缩放不起作用",
+        name=T("props.cns.additive"),
+        description=T("props.cns.additive_desc"),
         default=True, update=_update_additive,
     )
     flags_other: IntProperty(
-        name="其余标志位",
-        description="Flags 去掉位0 的其余位：位4 目标是骨骼、位5 目标是旋转（v36/v102 导出时按变换类型重算），"
-                    "位2、位3 只出现在形变和材质目标上，含义未知",
+        name=T("props.cns.flags_other"),
+        description=T("props.cns.flags_other_desc"),
         default=0x30, min=0, max=254,
     )
-    reserved_vec4_x: FloatProperty(name="Vec4 X", default=0.0, precision=5, description="固定为 0，请勿修改")
-    reserved_vec4_y: FloatProperty(name="Vec4 Y", default=0.0, precision=5, description="固定为 0，请勿修改")
-    reserved_vec4_z: FloatProperty(name="Vec4 Z", default=0.0, precision=5, description="固定为 0，请勿修改")
-    reserved_vec4_w: FloatProperty(name="Vec4 W", default=1.0, precision=5, description="固定为 1，请勿修改")
+    reserved_vec4_x: FloatProperty(name="Vec4 X", default=0.0, precision=5, description=T("props.cns.vec4_zero_desc"))
+    reserved_vec4_y: FloatProperty(name="Vec4 Y", default=0.0, precision=5, description=T("props.cns.vec4_zero_desc"))
+    reserved_vec4_z: FloatProperty(name="Vec4 Z", default=0.0, precision=5, description=T("props.cns.vec4_zero_desc"))
+    reserved_vec4_w: FloatProperty(name="Vec4 W", default=1.0, precision=5, description=T("props.cns.vec4_one_desc"))
     unknown_float2_x: FloatProperty(name="Float2 X", default=0.0, precision=5,
-                                   description="具体作用未知。通常为 0")
+                                   description=T("props.common.unknown_usually_0"))
     unknown_float2_y: FloatProperty(name="Float2 Y", default=0.0, precision=5,
-                                   description="具体作用未知。通常为 0")
+                                   description=T("props.common.unknown_usually_0"))
     unknown_byte_72: IntProperty(
-        name="未知字节 (+72)", description="具体作用未知。通常为 0（约 99%）",
+        name=T("props.cns.unknown_byte_72"), description=T("props.cns.unknown_byte_72_desc"),
         default=0, min=0, max=255,
     )
     # Material / RSZ property targets (TransformType 7-11) name a property on the target.
     target_property: StringProperty(
-        name="目标属性",
-        description="被驱动的属性名，如材质参数名。只有材质、标量类变换用到，骨骼目标留空",
+        name=T("props.cns.target_property"),
+        description=T("props.cns.target_property_desc"),
         default="",
     )
     # The two hashes below are overrides in a signed IntProperty (a uint32 above 2**31
     # is stored as its two's-complement negative); 0 derives the hash from the name.
     property_hash: IntProperty(
-        name="属性哈希覆盖",
-        description="按有符号整数显示，0 表示用目标属性名的哈希，只有属性名对不上哈希时才需要填",
+        name=T("props.cns.property_hash"),
+        description=T("props.cns.property_hash_desc"),
         default=0,
     )
     object_hash: IntProperty(
-        name="目标哈希覆盖",
-        description="只用于按哈希指定的目标（形变、材质、标量、命名输出），按有符号整数显示，"
-                    "0 表示用目标名的哈希，只有名字对不上哈希时才需要填",
+        name=T("props.cns.object_hash"),
+        description=T("props.cns.object_hash_desc"),
         default=0,
     )
     # ConeDriverInfo[]: the cones this constraint reads (RE9 uses them heavily)
@@ -549,30 +549,30 @@ class JCNSConstraintProperties(PropertyGroup):
     # +77 is the joint-group count (jcns_writer.tail_group_counts derives it); +74 and +75
     # are unknown, and +75 defaults to its most common value.
     unknown_byte_74: IntProperty(name="+74", default=0, min=0, max=255,
-                                 description="具体作用未知。通常为 0（约 99%），跟着被驱动骨走")
+                                 description=T("props.cns.unknown_byte_74_desc"))
     unknown_byte_75: IntProperty(name="+75", default=2, min=0, max=255,
-                                 description="具体作用未知。通常为 2（约 69%），同一文件里同一变换类型一般只用一个值")
+                                 description=T("props.cns.unknown_byte_75_desc"))
     group_count: IntProperty(
-        name="关节组计数",
-        description="紧跟在这条后面、与它同目标同变换同 Flags 的连续条目数（组首填 N，组员填 0），导出时自动校验",
+        name=T("props.cns.group_count"),
+        description=T("props.cns.group_count_desc"),
         default=0, min=0, max=255)
-    reserved_tail: IntVectorProperty(name="保留字节 +76 / +78 / +79", size=3, default=(0, 0, 0), min=0, max=255,
-                                     description="固定为 0")
+    reserved_tail: IntVectorProperty(name=T("props.cns.reserved_tail"), size=3, default=(0, 0, 0), min=0, max=255,
+                                     description=T("props.cns.reserved_tail_desc"))
 
     # --- Material constraint-specific fields (populated at import, editable) ---
     mat_name_hash: StringProperty(
         name="MaterialNameHash",
-        description="材质名的哈希，十六进制，例如 0x1A2B3C4D",
+        description=T("props.cns.mat_name_hash_desc"),
         default="0x00000000",
     )
     mat_property_hash: StringProperty(
         name="MaterialPropertyHash",
-        description="材质属性名的哈希，十六进制",
+        description=T("props.cns.mat_property_hash_desc"),
         default="0x00000000",
     )
     mat_transform_type_raw: IntProperty(
         name="TransformationID",
-        description="材质约束驱动的参数类型",
+        description=T("props.cns.mat_transform_type_desc"),
         default=0, min=0, max=255,
     )
     mat_tail_0: IntProperty(name="MatTail[0]", default=0, min=0, max=255)
@@ -581,8 +581,8 @@ class JCNSConstraintProperties(PropertyGroup):
 
     # --- JointExportGraph path (Type 5 empties only) ---
     jxg_path: StringProperty(
-        name="路径",
-        description="导出图（JointExportGraph）的路径",
+        name=T("props.cns.jxg_path"),
+        description=T("props.cns.jxg_path_desc"),
         default="",
     )
 
@@ -590,38 +590,38 @@ class JCNSConstraintProperties(PropertyGroup):
     skin_sources: CollectionProperty(type=JCNSWeightedSource)
     active_skin_source_index: IntProperty(default=0)
     skin_tail: IntVectorProperty(
-        name="尾部 2 字节", size=2, default=(0, 0), min=0, max=255,
-        description="记录尾部第 2、3 字节：v102 固定为 0，RE9（v35）逐条不同，新建条目取本文件最常见的值")
+        name=T("props.cns.skin_tail"), size=2, default=(0, 0), min=0, max=255,
+        description=T("props.cns.skin_tail_desc"))
 
     # --- Aim (target_bone is the aimed joint) ---
-    aim_target_bone: StringProperty(name="瞄准目标", default="", update=_refresh_preview,
+    aim_target_bone: StringProperty(name=T("props.cns.aim_target_bone"), default="", update=_refresh_preview,
                                     search=_search_target_bone)
-    aim_up_bone: StringProperty(name="辅助骨骼", description="辅助骨骼（AimVectorPointJoint），留空表示不使用",
+    aim_up_bone: StringProperty(name=T("props.cns.aim_up_bone"), description=T("props.cns.aim_up_bone_desc"),
                                 default="", update=_refresh_preview, search=_search_target_bone)
-    aim_influence: FloatProperty(name="影响", default=1.0, update=_refresh_preview_values)
-    aim_offset: FloatVectorProperty(name="旋转偏移", size=3, default=(0.0, 0.0, 0.0), subtype='EULER',
-                                    description="XYZ 欧拉角（弧度），右乘在瞄准结果后面，让本地瞄准轴偏离目标；只有类型 2 用到",
+    aim_influence: FloatProperty(name=T("props.cns.aim_influence"), default=1.0, update=_refresh_preview_values)
+    aim_offset: FloatVectorProperty(name=T("props.cns.aim_offset"), size=3, default=(0.0, 0.0, 0.0), subtype='EULER',
+                                    description=T("props.cns.aim_offset_desc"),
                                     update=_refresh_preview)
-    aim_axis: FloatVectorProperty(name="瞄准轴", size=3, default=(1.0, 0.0, 0.0),
-                                  description="被驱动自己的局部轴，指向瞄准目标",
+    aim_axis: FloatVectorProperty(name=T("props.cns.aim_axis"), size=3, default=(1.0, 0.0, 0.0),
+                                  description=T("props.cns.aim_axis_desc"),
                                   update=_refresh_preview_values)
-    aim_up_axis: FloatVectorProperty(name="上方向轴", size=3, default=(0.0, 1.0, 0.0),
-                                     description="被驱动自己的局部轴，与上方向对齐")
-    aim_up_dir: FloatVectorProperty(name="上方向", size=3, default=(0.0, 1.0, 0.0),
-                                    description="类型 3 下是世界里的上方向；类型 2 下选辅助骨的哪根局部轴；类型 0 无效")
-    aim_type: EnumProperty(name="类型", items=AIM_TYPE_ITEMS, default='WORLD_UP',
+    aim_up_axis: FloatVectorProperty(name=T("props.cns.aim_up_axis"), size=3, default=(0.0, 1.0, 0.0),
+                                     description=T("props.cns.aim_up_axis_desc"))
+    aim_up_dir: FloatVectorProperty(name=T("props.cns.aim_up_dir"), size=3, default=(0.0, 1.0, 0.0),
+                                    description=T("props.cns.aim_up_dir_desc"))
+    aim_type: EnumProperty(name=T("props.cns.aim_type"), items=AIM_TYPE_ITEMS, default='WORLD_UP',
                            update=_refresh_preview)
-    aim_bytes: IntVectorProperty(name="字节 +57..59", size=3, default=(1, 0, 5), min=0, max=255)
+    aim_bytes: IntVectorProperty(name=T("props.cns.aim_bytes"), size=3, default=(1, 0, 5), min=0, max=255)
 
     # --- RotExpression (target_bone is the driven joint) ---
-    rot_source_bone: StringProperty(name="驱动", default="", update=_refresh_preview,
+    rot_source_bone: StringProperty(name=T("props.common.driver"), default="", update=_refresh_preview,
                                     search=_search_target_bone)
     rot_rotation: FloatVectorProperty(name="Rotation", size=4, default=(0.0, 0.0, 0.0, 1.0))
     rot_scale: FloatVectorProperty(name="Scale", size=4, default=(0.0, 0.0, 0.0, 1.0))
-    rot_rest_mode: EnumProperty(name="静止姿态", items=ROT_REST_ITEMS, default='REPLACE')
-    rot_unknown_bytes: IntVectorProperty(name="未知字节 0 / 2 / 3", size=3, default=(0, 0, 0), min=0, max=255)
-    rot_gains: FloatVectorProperty(name="系数", size=3, default=(1.0, 1.0, 1.0),
-                                   description="每轴的系数。(1,1,1) 是精确拷贝；其他值小角度时每轴相乘，大角度偏离线性",
+    rot_rest_mode: EnumProperty(name=T("props.cns.rot_rest_mode"), items=ROT_REST_ITEMS, default='REPLACE')
+    rot_unknown_bytes: IntVectorProperty(name=T("props.cns.rot_unknown_bytes"), size=3, default=(0, 0, 0), min=0, max=255)
+    rot_gains: FloatVectorProperty(name=T("props.cns.rot_gains"), size=3, default=(1.0, 1.0, 1.0),
+                                   description=T("props.cns.rot_gains_desc"),
                                    update=_refresh_preview_values)
 
     # --- Section type (set at import, read-only in UI) ---
@@ -633,8 +633,8 @@ class JCNSConstraintProperties(PropertyGroup):
 
     # --- Driver state (runtime, not exported) ---
     preview_on: BoolProperty(
-        name="已应用预览",
-        description="此条目是否已在骨架上应用预览",
+        name=T("props.cns.preview_on"),
+        description=T("props.cns.preview_on_desc"),
         default=False,
     )
     # The pose bone currently carrying this entry's preview constraint, so a
@@ -755,7 +755,7 @@ class JCNSRootProperties(PropertyGroup):
     """On the root Empty of a JCNS collection (one root plus N entry Empties)."""
     # Constraint baking (jcns_sdk_ops.py)
     sdk_driver_bone: StringProperty(
-        name="驱动", description="烘焙约束里被读取的骨骼",
+        name=T("props.common.driver"), description=T("props.root.sdk_driver_bone_desc"),
         default="", search=search_bones, search_options={'SUGGESTION'},
     )
     sdk_driven_bones: CollectionProperty(type=JCNSSDKBone)
@@ -763,14 +763,14 @@ class JCNSRootProperties(PropertyGroup):
     sdk_keys: CollectionProperty(type=JCNSSDKKey)
     sdk_key_index: IntProperty(default=0)
     source_filepath: StringProperty(
-        name="源文件",
-        description="原始 .jcns 文件的绝对路径",
+        name=T("props.root.source_filepath"),
+        description=T("props.root.source_filepath_desc"),
         subtype='FILE_PATH',
         default="",
     )
     target_armature: PointerProperty(
-        name="目标骨架",
-        description="约束要作用到的骨架",
+        name=T("props.root.target_armature"),
+        description=T("props.root.target_armature_desc"),
         type=bpy.types.Object,
         poll=_armature_poll,
     )
@@ -783,14 +783,14 @@ class JCNSRootProperties(PropertyGroup):
     # (the order the engine runs them in) and the hash list with its redundant entries.
     section_order: CollectionProperty(type=JCNSIntItem)
     header_unknown_bytes: IntVectorProperty(
-        name="文件头未知字节", size=2, default=(0, 0), min=0, max=255,
-        description="文件头里 SectionCount 之后的两个标志字节，取值 0 或 1，具体作用未知")
+        name=T("props.root.header_unknown_bytes"), size=2, default=(0, 0), min=0, max=255,
+        description=T("props.root.header_unknown_bytes_desc"))
     hash_list: CollectionProperty(type=JCNSHashItem)
     # Combining is fixed engine behaviour, so there is no setting for it: sources
     # in one constraint are summed; of several constraints on one channel the
     # last in file order wins.
     source_version: IntProperty(
-        name="JCNS 版本",
+        name=T("props.root.source_version"),
         description="Version number of the imported file (the .jcns.<N> suffix); 0 = imported by an older add-on",
         default=0,
     )
@@ -800,17 +800,17 @@ class JCNSRootProperties(PropertyGroup):
     sections_cached: BoolProperty(default=False)
     # Browser state (UI only)
     browser_kind: EnumProperty(
-        name="分区", description="在列表里显示哪一类条目",
+        name=T("props.root.browser_kind"), description=T("props.root.browser_kind_desc"),
         items=_browser_kind_items(), default='Ranges',
     )
     browser_view: EnumProperty(
-        name="视图", description="Ranges 条目按条目排列，或按被驱动的骨骼分组",
-        items=[('ENTRY', "按条目", "按文件顺序列出条目"),
-               ('BONE', "按骨骼", "按被驱动的骨骼分组，列出每个通道和上面的条目")],
+        name=T("props.root.browser_view"), description=T("props.root.browser_view_desc"),
+        items=[('ENTRY', T("props.root.view_entry"), T("props.root.view_entry_desc")),
+               ('BONE', T("props.root.view_bone"), T("props.root.view_bone_desc"))],
         default='ENTRY',
     )
     entry_index: IntProperty(
-        name="条目", description="列表里当前条目的序号；读写的是当前活动物体",
+        name=T("props.root.entry_index"), description=T("props.root.entry_index_desc"),
         get=_entry_index_get, set=_entry_index_set,
     )
     file_constant: IntProperty(default=5)
@@ -825,18 +825,18 @@ class JCNSRootProperties(PropertyGroup):
     read_table_pending: BoolProperty(default=False)
     # The RotExpressionMap value shared by every RotExpression entry.
     rot_map_value: IntProperty(
-        name="RotExpr 映射值", default=0, min=0, max=255,
-        description="每条 RotExpr 条目共用的映射常量，新增条目沿用；具体作用未知")
+        name=T("props.root.rot_map_value"), default=0, min=0, max=255,
+        description=T("props.root.rot_map_value_desc"))
     object_settings_json: StringProperty(default="")
     # ConeDriver table (v35+), cached so a rebuild can re-emit it
     cone_drivers_json: StringProperty(default="")
     # Read only when source_version is 0 (see jcns_exporter._root_version).
     detected_game: EnumProperty(
-        name="游戏",
+        name=T("props.root.detected_game"),
         description="Game this JCNS file belongs to (detected at import)",
         items=[
-            ('MHW_WILDS', "怪物猎人荒野 (v102)", "Monster Hunter Wilds TU4 之后"),
-            ('RE9',       "生化危机9 / PRAGMATA (v35)", "Resident Evil 9 / PRAGMATA"),
+            ('MHW_WILDS', T("props.root.game_wilds"), T("props.root.game_wilds_desc")),
+            ('RE9',       T("props.root.game_re9"), "Resident Evil 9 / PRAGMATA"),
         ],
         default='MHW_WILDS',
     )
@@ -1017,6 +1017,7 @@ def constraint_name_from_props(idx, props):
 # Registration
 # ---------------------------------------------------------------------------
 
+from . import jcns_lang
 from . import jcns_operators
 from . import jcns_importer
 from . import jcns_exporter
@@ -1058,11 +1059,12 @@ def register():
     bpy.types.Object.jcns_cns_props  = PointerProperty(type=JCNSConstraintProperties)
     bpy.types.Scene.jcns_active_collection = PointerProperty(
         type=bpy.types.Collection,
-        name="工作集合",
-        description="导出等操作默认作用的 JCNS 集合。留空则改用当前选中的物体",
+        name=T("props.scene.active_collection"),
+        description=T("props.scene.active_collection_desc"),
         poll=_poll_jcns_collection,
     )
 
+    jcns_lang.register()
     jcns_operators.register()
     jcns_preview.register()
     jcns_capture.register()
@@ -1088,6 +1090,7 @@ def unregister():
     jcns_capture.unregister()
     jcns_preview.unregister()
     jcns_operators.unregister()
+    jcns_lang.unregister()
 
     del bpy.types.Scene.jcns_active_collection
     del bpy.types.Object.jcns_cns_props
