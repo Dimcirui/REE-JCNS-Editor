@@ -97,18 +97,38 @@ def _sources_for_driver(cns_props):
 _REST_VALUE = {'Translation': 0.0, 'Rotation': 0.0, 'Scale': 1.0}
 
 
-def _previewable(members):
-    """The live entry of a channel reads a source bone.  ConeDriver values are not
-    evaluated, so a cone-only channel gets no driver and stays at rest; writing it
-    as a source-less replace would wipe the bone's rest rotation."""
-    return any(sp.source_bone for sp in members[-1].jcns_cns_props.sources)
+def _missing_sources(members, armature_obj):
+    """Source bones of a channel's live entry that the armature does not have."""
+    if armature_obj is None:
+        return []
+    return [sp.source_bone for sp in members[-1].jcns_cns_props.sources
+            if sp.source_bone and sp.source_bone not in armature_obj.data.bones]
 
 
-def _no_driver_reason(members):
+def _previewable(members, armature_obj=None):
+    """The live entry of a channel reads source bones the armature has.
+
+    ConeDriver values are not evaluated, so a cone-only channel gets no driver and
+    stays at rest; writing it as a source-less replace would wipe the bone's rest
+    rotation.  A missing source bone would feed the driver nothing."""
+    if not any(sp.source_bone for sp in members[-1].jcns_cns_props.sources):
+        return False
+    return not _missing_sources(members, armature_obj)
+
+
+def _no_driver_reason(members, armature_obj=None):
     p = members[-1].jcns_cns_props
+    missing = _missing_sources(members, armature_obj)
+    if missing:
+        return T("ops.driver.source_missing", T("ui.sep.list").join(missing))
     if len(p.cone_infos) and not any(sp.source_bone for sp in p.sources):
         return T("ops.driver.cone_only")
     return T("ops.driver.none")
+
+
+def _armature_of(root_obj):
+    rp = getattr(root_obj, 'jcns_root_props', None)
+    return rp.target_armature if rp is not None else None
 
 
 # The preview drives rotation_euler, so it switches the bone to XYZ; the mode it
@@ -397,7 +417,7 @@ def translation_channels(root_obj, bone):
     return {AXIS_TO_INT[axis]: members
             for (b, transform, axis), members in group_constraints_by_channel(root_obj).items()
             if b == bone and transform == 'Translation' and axis != 'W'
-            and _previewable(members)}
+            and _previewable(members, _armature_of(root_obj))}
 
 
 def register_translation_group(armature_obj, root_obj, bone, chans):
@@ -469,7 +489,8 @@ def _rotation_channels(root_obj, bone):
             a = AXIS_TO_INT.get(axis, 0)
             if a not in out or order.get(members[-1].name, -1) > order.get(out[a][-1].name, -1):
                 out[a] = members
-    return {a: m for a, m in out.items() if _previewable(m)}
+    arm = _armature_of(root_obj)
+    return {a: m for a, m in out.items() if _previewable(m, arm)}
 
 
 def _needs_group(armature_obj, bone, chans):
@@ -735,8 +756,8 @@ def _apply_channel(armature_obj, root_props, members):
     winner = members[-1]
     root_obj, _ = get_jcns_root_from_constraint(winner)
 
-    if not _previewable(members):
-        return False, _no_driver_reason(members), "%s(%s)" % (bone or '???', axis)
+    if not _previewable(members, armature_obj):
+        return False, _no_driver_reason(members, armature_obj), "%s(%s)" % (bone or '???', axis)
 
     entry = _DRIVABLE.get(transform)
     if entry is not None and entry[0] == 'location' and bone and root_obj is not None:
@@ -766,7 +787,7 @@ def _apply_channel(armature_obj, root_props, members):
         label += T("ops.driver.label_last_wins", len(members))
 
     if not sources:
-        return False, _no_driver_reason(members), label
+        return False, _no_driver_reason(members, armature_obj), label
     if axis == 'W' or any(s['axis_name'] == 'W' for s in sources):
         return False, T("ops.driver.w_unsupported"), label
     if not bone:

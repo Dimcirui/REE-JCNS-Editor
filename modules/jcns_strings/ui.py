@@ -27,6 +27,14 @@ STRINGS = {
     "ui.preview.clear": {"ZH": "清除", "EN": "Clear"},
     "ui.preview.selected_only": {"ZH": "仅选中的条目", "EN": "Selected entry only"},
     "ui.preview.rough": {"ZH": "%s 的预览仅供参考", "EN": "Preview of %s is approximate"},
+    "ui.preview.skeleton_gap": {"ZH": "目标骨架缺 %d 根条目用到的骨骼（%s），预览会错位；场景里其他骨架有",
+                                "EN": "The target armature lacks %d bones the entries use (%s), so the preview will be off; other armatures in the scene have them"},
+    "ui.preview.complete": {"ZH": "补全骨架", "EN": "Complete Armature"},
+    "ui.preview.complete_desc": {"ZH": "从场景里同一角色的其他骨架补上缺的骨骼和中间父骨，静止姿态不变",
+                                 "EN": "Add the missing bones and intermediate parents from the character's other armatures in the scene; the rest pose is unchanged"},
+    "ui.preview.complete_done": {"ZH": "补了 %d 根骨，改了 %d 根骨的父骨", "EN": "Added %d bones, reparented %d"},
+    "ui.preview.complete_nothing": {"ZH": "场景里没有能补全这副骨架的骨架", "EN": "No armature in the scene can complete this one"},
+    "ui.preview.complete_clear_first": {"ZH": "先清除预览", "EN": "Clear the preview first"},
 
     # --- jcns_ui.py: edit panel ---
     "ui.edit.label": {"ZH": "编辑", "EN": "Edit"},

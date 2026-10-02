@@ -327,6 +327,13 @@ class JCNS_PT_Preview(_RootPanel, Panel):
         has_arm = rp.target_armature is not None
         if not has_arm:
             layout.label(text=T("ui.preview.set_armature"), icon='ERROR')
+        else:
+            missing = jcns_preview.fillable_gaps(root, rp.target_armature)
+            if missing:
+                shown = T("ui.sep.list").join(missing[:3]) + ("…" if len(missing) > 3 else "")
+                _wrap_label(layout, context, T("ui.preview.skeleton_gap", len(missing), shown),
+                            icon='ERROR', alert=True)
+                layout.operator("jcns.complete_skeleton", icon='BONE_DATA')
 
         col = layout.column(align=True)
         col.enabled = has_arm

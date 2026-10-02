@@ -372,7 +372,192 @@ class JCNS_OT_PreviewClear(_PreviewOperator):
         return self._run(context, 'clear')
 
 
-_classes = [JCNS_OT_PreviewApply, JCNS_OT_PreviewClear]
+# ---------------------------------------------------------------------------
+# Completing the target armature
+# ---------------------------------------------------------------------------
+#
+# A mesh stores only the bones it skins to, and the importer hangs a bone whose
+# parent is missing on the nearest ancestor it has.  RE9's body mesh lacks
+# L_Arm_Upper / L_Arm_Lower, so L_Elbow_Down sits under L_Arm_Clavicle: its
+# parent-relative rest is then not the engine's, and a replacing translation
+# moves it by the whole forearm.  The character's other meshes (e.g. the jacket)
+# carry those bones; their armatures fill the gaps.
+
+_MATCH_TOL = 1e-4      # metres: shared bones must sit at the same place to be one skeleton
+
+
+def referenced_bones(root):
+    """Every target and source bone the root's entries name."""
+    from . import get_constraint_empties
+    out = set()
+    for e in get_constraint_empties(root):
+        p = e.jcns_cns_props
+        if p.target_bone:
+            out.add(p.target_bone)
+        out.update(sp.source_bone for sp in p.sources if sp.source_bone)
+    return out
+
+
+def _world_bone(obj, b):
+    return obj.matrix_world @ b.matrix_local
+
+
+def skeleton_donors(arm):
+    """Other armatures in the scene that are the same skeleton as `arm`: every
+    bone they share sits at the same world position."""
+    out = []
+    for o in bpy.context.scene.objects:
+        if o.type != 'ARMATURE' or o is arm:
+            continue
+        shared = [n for n in o.data.bones.keys() if n in arm.data.bones]
+        if shared and all(
+                (_world_bone(o, o.data.bones[n]).translation
+                 - _world_bone(arm, arm.data.bones[n]).translation).length < _MATCH_TOL
+                for n in shared):
+            out.append(o)
+    return out
+
+
+_gap_cache = {}
+
+
+def fillable_gaps(root, arm):
+    """Bones the entries name that `arm` lacks and another armature of the same
+    skeleton in the scene has, sorted.  Cached on the scene's armatures, for the panel."""
+    arms = tuple(sorted((o.name, len(o.data.bones)) for o in bpy.context.scene.objects
+                        if o.type == 'ARMATURE'))
+    key = (root.name, arm.name, arms)
+    if key not in _gap_cache:
+        missing = referenced_bones(root) - set(arm.data.bones.keys())
+        have = set()
+        if missing:
+            for o in skeleton_donors(arm):
+                have.update(n for n in missing if n in o.data.bones)
+        _gap_cache.clear()
+        _gap_cache[key] = sorted(have)
+    return _gap_cache[key]
+
+
+def skeleton_plan(arm, donors, wanted):
+    """-> (add {bone: (donor, parent)}, reparent {bone: parent}).
+
+    Each bone's parent comes from the armature where its chain is longest.  Bones
+    are added for the missing `wanted` bones and for every missing ancestor of a
+    bone that is kept; an existing bone is only moved under bones inserted above
+    its current parent, never to an unrelated one.
+    """
+    def depth(b):
+        d = 0
+        while b.parent is not None:
+            d, b = d + 1, b.parent
+        return d
+
+    best = {}                                   # bone -> (depth, armature, parent)
+    for o in [arm] + donors:
+        for b in o.data.bones:
+            d = depth(b)
+            if b.name not in best or d > best[b.name][0]:
+                best[b.name] = (d, o, b.parent.name if b.parent else None)
+
+    def chain(name):
+        out, p = [], best[name][2]
+        while p is not None:
+            out.append(p)
+            p = best[p][2] if p in best else None
+        return out
+
+    have = set(arm.data.bones.keys())
+    add = {}
+    for name in have | {n for n in wanted if n in best}:
+        if name not in have and name not in add:
+            add[name] = (best[name][1], best[name][2])
+        for p in chain(name):
+            if p in have:
+                break
+            if p not in add and p in best:
+                add[p] = (best[p][1], best[p][2])
+
+    reparent = {}
+    for name in have:
+        want = best[name][2]
+        cur = arm.data.bones[name].parent
+        if want is None or (cur is not None and cur.name == want):
+            continue
+        if cur is None or cur.name in chain(name):
+            reparent[name] = want
+    return add, reparent
+
+
+def complete_skeleton(arm, donors, wanted):
+    """Add and reparent bones per skeleton_plan.  Needs the armature active in
+    Object mode.  -> (added, reparented)"""
+    add, reparent = skeleton_plan(arm, donors, wanted)
+    if not add and not reparent:
+        return 0, 0
+    inv = arm.matrix_world.inverted()
+    bpy.ops.object.mode_set(mode='EDIT')
+    try:
+        eb = arm.data.edit_bones
+        for name, (donor, _parent) in add.items():
+            b = donor.data.bones[name]
+            e = eb.new(name)
+            e.length = b.length
+            e.matrix = inv @ _world_bone(donor, b)
+            e.length = b.length                 # the matrix setter keeps head and roll only
+            e.use_deform = False                # no vertex group on this mesh
+        for name, (_donor, parent) in add.items():
+            eb[name].parent = eb.get(parent) if parent else None
+        for name, parent in reparent.items():
+            eb[name].use_connect = False
+            eb[name].parent = eb[parent]
+    finally:
+        bpy.ops.object.mode_set(mode='OBJECT')
+    for name, (donor, _parent) in add.items():
+        for k, v in donor.data.bones[name].items():
+            arm.data.bones[name][k] = v
+    return len(add), len(reparent)
+
+
+class JCNS_OT_CompleteSkeleton(Operator):
+    bl_idname = "jcns.complete_skeleton"
+    bl_label  = T("ui.preview.complete")
+    bl_description = T("ui.preview.complete_desc")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        from . import get_export_root
+        _root, rp = get_export_root(context)
+        return rp is not None and rp.target_armature is not None
+
+    def execute(self, context):
+        from . import get_export_root
+        root, rp = get_export_root(context)
+        arm = rp.target_armature
+        if any(preview_counts(root, k.id)[0] for k in previewable_kinds()):
+            self.report({'WARNING'}, T("ui.preview.complete_clear_first"))
+            return {'CANCELLED'}
+        donors = skeleton_donors(arm)
+        if not donors:
+            self.report({'WARNING'}, T("ui.preview.complete_nothing"))
+            return {'CANCELLED'}
+
+        prev_active, prev_mode = context.view_layer.objects.active, context.mode
+        if prev_mode != 'OBJECT':
+            bpy.ops.object.mode_set(mode='OBJECT')
+        context.view_layer.objects.active = arm
+        try:
+            added, moved = complete_skeleton(arm, donors, referenced_bones(root))
+        finally:
+            context.view_layer.objects.active = prev_active
+        if not added and not moved:
+            self.report({'WARNING'}, T("ui.preview.complete_nothing"))
+            return {'CANCELLED'}
+        self.report({'INFO'}, T("ui.preview.complete_done", added, moved))
+        return {'FINISHED'}
+
+
+_classes = [JCNS_OT_PreviewApply, JCNS_OT_PreviewClear, JCNS_OT_CompleteSkeleton]
 
 
 def register():

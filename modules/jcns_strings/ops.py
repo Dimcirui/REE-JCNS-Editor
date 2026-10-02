@@ -339,6 +339,10 @@ STRINGS = {
         "ZH": "，同通道 %d 条中最后一条生效",
         "EN": ", the last of %d entries on this channel is live",
     },
+    "ops.driver.source_missing": {
+        "ZH": "源骨骼不在骨架里：%s",
+        "EN": "Source bones not in the armature: %s",
+    },
     "ops.driver.cone_only": {
         "ZH": "只由 ConeDriver 驱动，暂不预览，骨骼保持静止姿态",
         "EN": "Driven only by ConeDrivers, which are not previewed yet; the bone stays at rest",
