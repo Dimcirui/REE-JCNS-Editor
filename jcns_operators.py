@@ -683,7 +683,7 @@ def refresh_applied_driver(obj):
 
     # Called on a root: re-apply every previewed channel.
     rp = getattr(obj, 'jcns_root_props', None)
-    if rp is not None and rp.source_filepath:
+    if rp is not None and (rp.source_filepath or rp.source_version):
         if rp.target_armature is None:
             return False
         done = 0

@@ -846,13 +846,18 @@ class JCNSRootProperties(PropertyGroup):
 # Helpers: classify active object
 # ---------------------------------------------------------------------------
 
+def is_jcns_root_props(props):
+    """A root Empty has a source path, or (a file made in Blender, not saved yet) a version."""
+    return bool(props and (props.source_filepath or props.source_version))
+
+
 def get_jcns_root(context):
     """Return (obj, jcns_root_props) if active object is a JCNS root Empty, else (None, None)."""
     obj = context.active_object
     if obj is None:
         return None, None
     props = getattr(obj, 'jcns_root_props', None)
-    if props and props.source_filepath:
+    if is_jcns_root_props(props):
         return obj, props
     return None, None
 
@@ -873,7 +878,7 @@ def get_jcns_root_from_constraint(constraint_empty):
     parent = constraint_empty.parent
     if parent is not None:
         root_props = getattr(parent, 'jcns_root_props', None)
-        if root_props and root_props.source_filepath:
+        if is_jcns_root_props(root_props):
             return parent, root_props
 
     # Fallback: flat collection search (legacy imports without parent-child hierarchy)
@@ -882,7 +887,7 @@ def get_jcns_root_from_constraint(constraint_empty):
             if obj == constraint_empty:
                 continue
             root_props = getattr(obj, 'jcns_root_props', None)
-            if root_props and root_props.source_filepath:
+            if is_jcns_root_props(root_props):
                 return obj, root_props
     return None, None
 
@@ -893,7 +898,7 @@ def get_jcns_root_from_collection(collection):
         return None, None
     for obj in collection.objects:
         root_props = getattr(obj, 'jcns_root_props', None)
-        if root_props and root_props.source_filepath:
+        if is_jcns_root_props(root_props):
             return obj, root_props
     return None, None
 

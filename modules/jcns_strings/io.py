@@ -324,4 +324,14 @@ STRINGS = {
         "ZH": "目标骨架里找不到这些骨骼，无法算读取骨表：%s",
         "EN": "These bones are not in the target armature, so the ReadJointTable cannot be derived: %s",
     },
+    "io.new.label": {"ZH": "新建 JCNS", "EN": "New JCNS"},
+    "io.new.tip": {
+        "ZH": "新建一个空的 JCNS 集合，版本为所选游戏的最新版；之后可新增条目再导出",
+        "EN": "Create an empty JCNS collection in the newest version of the chosen game; add entries, then export",
+    },
+    "io.new.game": {"ZH": "游戏", "EN": "Game"},
+    "io.new.game_wilds": {"ZH": "怪物猎人荒野 (v102)", "EN": "Monster Hunter Wilds (v102)"},
+    "io.new.game_requiem": {"ZH": "Resident Evil Requiem (v35)", "EN": "Resident Evil Requiem (v35)"},
+    "io.new.done": {"ZH": "已新建「%s」（v%d）。", "EN": "Created “%s” (v%d)."},
+    "io.export.done_new": {"ZH": "已导出「%s」。", "EN": "Exported “%s”."},
 }

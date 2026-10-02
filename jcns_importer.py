@@ -11,7 +11,7 @@ import os
 import sys
 import bpy
 from bpy.props import StringProperty, BoolProperty, EnumProperty
-from bpy.types import Operator
+from bpy.types import Menu, Operator
 from bpy_extras.io_utils import ImportHelper
 
 from .modules_shim import get_schema, ensure_path, T
@@ -495,6 +495,84 @@ class JCNS_OT_ImportFile(Operator, ImportHelper):
 
 
 # ---------------------------------------------------------------------------
+# New (empty) file
+# ---------------------------------------------------------------------------
+
+# (detected_game id, JCNS version, string key of its name)
+NEW_FILE_GAMES = (
+    ('MHW_WILDS', 102, "io.new.game_wilds"),
+    ('RE9', 35, "io.new.game_requiem"),
+)
+_NEW_NAME = {'MHW_WILDS': "wilds", 'RE9': "requiem"}
+
+
+def do_new(context, game, armature_obj=None):
+    """An empty JCNS collection with its root Empty, in the newest version of `game`.
+    Nothing is read from a file: the export builds the file header from the root."""
+    version = {g: v for g, v, _ in NEW_FILE_GAMES}[game]
+    coll = bpy.data.collections.new(f"JCNS_new_{_NEW_NAME[game]}")
+    coll.color_tag = 'COLOR_04'   # green, like an import
+    context.scene.collection.children.link(coll)
+
+    root = bpy.data.objects.new(coll.name, None)
+    root.empty_display_type = 'PLAIN_AXES'
+    root.empty_display_size = 0.2
+    root.show_in_front = True
+    coll.objects.link(root)
+
+    rp = root.jcns_root_props
+    from . import jcns_sdk_ops
+    jcns_sdk_ops.ensure_keys(rp)
+    if armature_obj:
+        rp.target_armature = armature_obj
+    rp.source_version = version
+    rp.detected_game = game
+    rp.sections_cached = True
+    return root
+
+
+def _armature_for_new(context):
+    """The active armature, else the scene's only one."""
+    obj = context.active_object
+    if obj is not None and obj.type == 'ARMATURE':
+        return obj
+    armatures = [o for o in context.scene.objects if o.type == 'ARMATURE']
+    return armatures[0] if len(armatures) == 1 else None
+
+
+class JCNS_OT_NewFile(Operator):
+    bl_idname = "jcns.new_file"
+    bl_label  = T("io.new.label")
+    bl_description = T("io.new.tip")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    game: EnumProperty(
+        name=T("io.new.game"),
+        items=[(g, T(key), "") for g, _, key in NEW_FILE_GAMES],
+        default='MHW_WILDS',
+        options={'HIDDEN'},
+    )
+
+    def execute(self, context):
+        root = do_new(context, self.game, _armature_for_new(context))
+        bpy.ops.object.select_all(action='DESELECT')
+        root.select_set(True)
+        context.view_layer.objects.active = root
+        context.scene.jcns_active_collection = root.users_collection[0]
+        self.report({'INFO'}, T("io.new.done", root.name, root.jcns_root_props.source_version))
+        return {'FINISHED'}
+
+
+class JCNS_MT_new_file(Menu):
+    bl_idname = "JCNS_MT_new_file"
+    bl_label  = T("io.new.label")
+
+    def draw(self, context):
+        for game, _, key in NEW_FILE_GAMES:
+            self.layout.operator(JCNS_OT_NewFile.bl_idname, text=T(key)).game = game
+
+
+# ---------------------------------------------------------------------------
 # Drag-and-drop file handler (Blender 4.1+)
 # ---------------------------------------------------------------------------
 
@@ -521,7 +599,7 @@ def _menu_import(self, context):
 # Registration
 # ---------------------------------------------------------------------------
 
-_classes = [JCNS_OT_ImportFile]
+_classes = [JCNS_OT_ImportFile, JCNS_OT_NewFile, JCNS_MT_new_file]
 
 
 def register():

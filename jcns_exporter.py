@@ -451,9 +451,11 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
         return obj is not None
 
     def invoke(self, context, event):
-        _, rp = _get_active_root(context)
+        root, rp = _get_active_root(context)
         if rp:
             self.filename_ext = f".jcns.{_root_version(rp)}"
+            if not rp.source_filepath:
+                self.filepath = root.name
 
             if rp.source_filepath:
                 path = bpy.path.abspath(rp.source_filepath)
@@ -486,6 +488,7 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
             return {'CANCELLED'}
 
         source_path = bpy.path.abspath(root_props.source_filepath)
+        is_new = not root_props.source_filepath      # made with New JCNS, never saved
         # An upgraded file is exported from Blender's data: its source is an older version.
         upgraded = bool(root_props.upgraded_from)
         source_exists = os.path.isfile(source_path) and not upgraded
@@ -509,7 +512,7 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
             if not root_props.source_version:
                 self.report({'ERROR'}, T("io.export.source_missing_old", source_path))
                 return {'CANCELLED'}
-            if not upgraded:
+            if not upgraded and not is_new:
                 self.report({'WARNING'}, T("io.export.source_missing_rebuild"))
             parser = _build_stub_parser(root_props)
 
@@ -586,6 +589,8 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
         basename = os.path.basename(out_path)
         if upgraded:
             self.report({'INFO'}, T("io.export.done_upgraded", basename, root_props.upgraded_from, parser.version))
+        elif is_new:
+            self.report({'INFO'}, T("io.export.done_new", basename))
         elif md5_before is None:
             self.report({'INFO'}, T("io.export.done_no_source", basename))
         elif md5_before == md5_after:

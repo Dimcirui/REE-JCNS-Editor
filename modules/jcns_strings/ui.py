@@ -4,11 +4,12 @@ STRINGS = {
     "ui.sep.semicolon": {"ZH": "；", "EN": "; "},
 
     # --- jcns_ui.py: status panel ---
+    "ui.status.new": {"ZH": "新建 JCNS", "EN": "New JCNS"},
     "ui.status.import": {"ZH": "导入 JCNS", "EN": "Import JCNS"},
     "ui.status.export": {"ZH": "导出 JCNS", "EN": "Export JCNS"},
     "ui.status.work_collection": {"ZH": "工作集合：", "EN": "Working Collection:"},
-    "ui.status.import_first": {"ZH": "先导入 JCNS 文件，或选中它的根空物体",
-                               "EN": "Import a JCNS file first, or select its root empty"},
+    "ui.status.import_first": {"ZH": "先新建或导入 JCNS 文件，或选中它的根空物体",
+                               "EN": "Create or import a JCNS file first, or select its root empty"},
     "ui.status.armature": {"ZH": "骨架：", "EN": "Armature:"},
     "ui.status.version_incomplete": {"ZH": "版本支持不完整，导出前先备份",
                                      "EN": "Version support is incomplete; back up before exporting"},

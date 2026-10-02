@@ -219,7 +219,7 @@ def rebuild_all():
     rebuilt = 0
     for obj in bpy.data.objects:
         rp = getattr(obj, 'jcns_root_props', None)
-        if not rp or not rp.source_filepath or rp.target_armature is None:
+        if not rp or not (rp.source_filepath or rp.source_version) or rp.target_armature is None:
             continue
         arm = rp.target_armature
         grouped = replacing_bones(arm, obj)
