@@ -620,11 +620,27 @@ class JCNSWriter:
                 patch['SkinConstraintSourceTableEntry'] = SKIN_INFO_START
             if read_joints:
                 patch['ReadJointTableEntry'] = READ_JOINT_START
+        # A v102 file with nothing in it is the header alone: every table offset is 0 except
+        # the end-of-Section-0 marker, which sits at the file's end.
+        is_empty = (version == 102 and not (N or N_CONE or N_AIM or N_ROT or N_MAT or N_SKIN
+                                            or jxg is not None or new_hash_list or N_OBJSET or sec_table))
+        if is_empty:
+            patch = dict.fromkeys(list(patch) + [
+                'AimConstraintTableEntry', 'MaterialConstraintInfoEntry', 'JointExportGraphInfoEntry',
+                'RotExpressionInfoEntry', 'RotExpressionMapEntry', 'RotExpressionSourceHashIndicesEntry',
+                'RotExpressionHashIndicesEntry', 'SkinConstraintTableEntry',
+                'SkinConstraintSourceTableEntry', 'ReadJointTableEntry'], 0)
+            patch['ConeDriverTableEntry'] = patch['ObjectSettingEntry'] = CONE_START
         HEADER.pack_into(header, hdr['DataEntry'], patch, version)
 
         # ── Phase 10: assemble ──────────────────────────────────────────
         out = bytearray()
         out.extend(header)                             # Tags + DataInfo header
+        if is_empty:
+            with open(self.filepath, 'wb') as f:
+                f.write(out)
+            print(f'[JCNS] Written {len(out)} bytes → {self.filepath} (empty)')
+            return True
         out.extend(cone_blob)                          # ConeDriver[] + names
         _pad_to(out, CNS_INFO_START)
         out.extend(cns_info_blob)                      # ConstraintInfo[]
