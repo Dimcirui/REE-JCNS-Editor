@@ -635,14 +635,14 @@ class JCNS_PT_Ed_Material(_EditorMain, Panel):
         _field_row(col, T("editors.mat.name"), c.p, "mat_name", icon='MATERIAL')
         _field_row(col, T("editors.mat.property"), c.p, "mat_property", icon='PROPERTIES')
         _field_row(col, T("editors.mat.apply_mode"), c.p, "mat_apply_mode")
-        _wrap_label(c.body, context, T("editors.mat.untested"), icon='QUESTION')
-
-
-class JCNS_PT_Ed_Material_Raw(_Editor, _Sub, Panel):
         from . import material_mismatch
         why = material_mismatch(c.p, c.rp)
         if why:
             _wrap_label(c.body, context, why, icon='ERROR', alert=True)
+        _wrap_label(c.body, context, T("editors.mat.untested"), icon='QUESTION')
+
+
+class JCNS_PT_Ed_Material_Raw(_Editor, _Sub, Panel):
     bl_label  = T("editors.panel.raw_fields")
     bl_idname = "JCNS_PT_ed_material_raw"
     bl_parent_id = "JCNS_PT_ed_material"
