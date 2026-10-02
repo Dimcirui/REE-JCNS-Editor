@@ -105,7 +105,7 @@ def do_import(filepath, context, armature_obj=None):
 
     _ensure_modules_path()
     try:
-        from jcns_parser import JCNSParser
+        from jcns_parser import JCNSParser, write_mode
         parser = JCNSParser(filepath)
         constraints = parser.parse()
     except Exception as exc:
@@ -164,6 +164,7 @@ def do_import(filepath, context, armature_obj=None):
     root.jcns_root_props.source_version = parser.version
     root.jcns_root_props.upgraded_from = upgraded_from
     root.jcns_root_props.read_table_pending = read_table_pending
+    root.jcns_root_props.rebuild_blocked = write_mode(parser.version) == 'rebuild' and parser.write_mode == 'inplace'
 
     # What an export without the source file needs besides the entries.
     root.jcns_root_props.header_unknown_bytes = (parser.header.get('HeaderUnknownByte1', 0),
@@ -285,7 +286,8 @@ def do_import(filepath, context, armature_obj=None):
     # names this file's Ranges spell out, then the bundled dictionary, else show the
     # raw hash (the exporter reads a "0x1234ABCD" name back as that hash).
     import json
-    from jcns_sections import skin_editable, read_joint_signature, aim_editable, rot_editable
+    from jcns_sections import (skin_editable, read_joint_signature, aim_editable, rot_editable,
+                               cone_drivers_to_json)
     from jcns_names import name_of
     from . import section_empty_name
     names = {}
@@ -363,12 +365,7 @@ def do_import(filepath, context, armature_obj=None):
     if not rot_meta['map_uniform']:
         print("[JCNS] RotExpressionMap holds different values, using the first (%d)" % rot_meta['map_value'])
 
-    rp.cone_drivers_json = json.dumps([{
-        'Name': cd['Name'], 'Direction': list(cd['Direction']), 'Matrix': list(cd['Matrix']),
-        'JointHash': cd['JointHash'], 'ParentJointHash': cd['ParentJointHash'],
-        'SymmetryJointHash': cd['SymmetryJointHash'], 'AngleRad': cd['AngleRad'],
-        'UnknownUInt32': cd['UnknownUInt32'], 'Tail': cd['Tail'].hex()}
-        for cd in getattr(parser, 'cone_drivers', [])]) if getattr(parser, 'cone_drivers', []) else ''
+    rp.cone_drivers_json = cone_drivers_to_json(parser.cone_drivers) if getattr(parser, 'cone_drivers', []) else ''
     rp.object_settings_json = json.dumps([
         {'UnkBytes': o['UnkBytes'].hex(), 'UnknownDWORD': o['UnknownDWORD'],
          'ObjectNameHash': o['ObjectNameHash']} for o in parser.object_settings])

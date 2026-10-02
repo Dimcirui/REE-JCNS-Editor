@@ -7,7 +7,7 @@ from jcns_schema import (
     HEADER, CONSTRAINT_INFO, SOURCE_V2, AIM, AIM_TARGET, MATERIAL,
     COMPLEX_MAPPING, OBJECT_SETTING, SKIN, SKIN_SOURCE, SKIN_SOURCE_INFO,
     CONE_DRIVER, CONE_DRIVER_INFO, source_struct, transform_axis_key,
-    reconcile_section_table,
+    reconcile_section_table, cone_struct, neutral_to_pre35,
 )
 from jcns_parser import header_field_offset
 
@@ -63,8 +63,12 @@ class JCNSWriter:
             sys.path.insert(0, hash_dir)
         from mmh3.pymmh3 import hashUTF16  # noqa: F401 (runtime import)
 
+        version = struct.unpack_from('<I', orig, 0)[0]
+
         # ── Phase 1: build new hash list ────────────────────────────────
-        if clean_hashes:
+        # Only v35+ has the global hash list; older files name every bone by raw hash, which
+        # each record then carries itself.
+        if clean_hashes or version < 35:
             new_hash_list = []
         else:
             new_hash_list = list(p.hash_list)
@@ -75,6 +79,8 @@ class JCNSWriter:
             The empty name is a real name: it stores murmur("") = 0x81F16F39.
             """
             h = hashUTF16(name) & 0xFFFFFFFF
+            if version < 35:
+                return h, 0
             for i, v in enumerate(new_hash_list):
                 if v == h:
                     return h, i
@@ -84,6 +90,8 @@ class JCNSWriter:
 
         def _get_or_add_hash(h):
             """Return index for a raw hash value (used for non-Range sections)."""
+            if version < 35:
+                return 0
             for i, v in enumerate(new_hash_list):
                 if v == h:
                     return i
@@ -112,7 +120,7 @@ class JCNSWriter:
         # Rebuild hashes for all source and target bones (Range constraints)
         for c in p.constraints:
             for s in c.get('sources', []):
-                _, s['SourceHashIndex'] = _get_or_add(s.get('SourceName', ''))
+                s['SourceHash'], s['SourceHashIndex'] = _get_or_add(s.get('SourceName', ''))
 
             # Only bone targets go into the hash table; BlendShape/property targets
             # use direct ObjectHash (TgtIdx=0xFFFFFFFF) and must not pollute the list.
@@ -168,7 +176,6 @@ class JCNSWriter:
         # ── Phase 2: layout constants ───────────────────────────────────
         N = len(p.constraints)
 
-        version = struct.unpack_from('<I', orig, 0)[0]
         hdr = p.header
         if not hdr.get('DataEntry'):
             # A parser-like object without a parsed header (the cached-header stub,
@@ -191,27 +198,41 @@ class JCNSWriter:
         CONE_START = HEADER_END
         cone_blob = bytearray()
         if N_CONE:
-            names_at = CONE_START + N_CONE * CONE_DRIVER.size(version)
+            layout = cone_struct(version)
+            names_at = CONE_START + N_CONE * layout.size(version)
             name_blob = bytearray()
-            recs = []
-            for cd in cones:
+
+            def _cone_string(text):
                 # names are 8-aligned
                 name_blob.extend(b'\x00' * (_align(names_at + len(name_blob), 8) - (names_at + len(name_blob))))
-                name_off = names_at + len(name_blob)
-                name_blob.extend(cd['Name'].encode('utf-16le') + b'\x00\x00')
+                off = names_at + len(name_blob)
+                name_blob.extend(text.encode('utf-16le') + b'\x00\x00')
+                return off
+
+            recs = []
+            for cd in cones:
                 sym = cd.get('SymmetryJointHash')
-                rec = {k: v for k, v in cd.items() if CONE_DRIVER.has(k, version)}
+                rec = {k: v for k, v in cd.items() if layout.has(k, version)}
                 rec.update({
-                    'Name_Offset': name_off,
+                    'Name_Offset': _cone_string(cd['Name']),
                     'NameHash': hashUTF16(cd['Name']) & 0xFFFFFFFF,
-                    'JointHashIndex': _get_or_add_hash(cd['JointHash']),
-                    'ParentJointHashIndex': _get_or_add_hash(cd['ParentJointHash']),
-                    'SymmetryJointHashIndex': -1 if sym is None else _get_or_add_hash(sym),
                     'Tail': bytes(cd.get('Tail', b'\x06\x06' + bytes(6))),
                 })
+                if version >= 35:
+                    rec.update({
+                        'JointHashIndex': _get_or_add_hash(cd['JointHash']),
+                        'ParentJointHashIndex': _get_or_add_hash(cd['ParentJointHash']),
+                        'SymmetryJointHashIndex': -1 if sym is None else _get_or_add_hash(sym),
+                    })
+                else:
+                    rec.update({
+                        'JointName_Offset': _cone_string(cd['JointName']),
+                        'ParentJointName_Offset': _cone_string(cd['ParentJointName']),
+                        'JointHash': cd['JointHash'], 'ParentJointHash': cd['ParentJointHash'],
+                    })
                 recs.append(rec)
             for rec in recs:
-                cone_blob.extend(CONE_DRIVER.pack(rec, version))
+                cone_blob.extend(layout.pack(rec, version))
             cone_blob.extend(name_blob)
         CNS_INFO_START = _align(CONE_START + len(cone_blob), 16)
 
@@ -228,7 +249,8 @@ class JCNSWriter:
             cone_info_blob.extend(b'\x00' * (_align(pos, 16) - pos))
             cone_info_at.append(CONE_INFO_START + len(cone_info_blob))
             for ci in infos:
-                if not 0 <= ci['ConeDriverIndex'] < N_CONE:
+                # Index 255 is a reference to no cone, which v22 files carry.
+                if not (0 <= ci['ConeDriverIndex'] < N_CONE or (version < 35 and ci['ConeDriverIndex'] == 255)):
                     raise ValueError(T("core.writer.cone_index", c.get('ObjectName', ''),
                                        ci['ConeDriverIndex'], N_CONE))
                 cone_info_blob.extend(CONE_DRIVER_INFO.pack(ci, version))
@@ -353,12 +375,13 @@ class JCNSWriter:
                 dep_order.append(tgt_h)
             bucket = dep_sources[tgt_h]
             for s in c.get('sources', []):
-                src_idx = s.get('SourceHashIndex', 0)
-                src_h = new_hash_list[src_idx] if src_idx < len(new_hash_list) else 0
+                src_h = s['SourceHash']
                 if src_h not in bucket:
                     bucket.append(src_h)
             # A cone-driven constraint depends on each cone's joint.
             for ci in c.get('ConeDriverInfo') or []:
+                if ci['ConeDriverIndex'] >= N_CONE:
+                    continue
                 h = cones[ci['ConeDriverIndex']]['JointHash']
                 if h not in bucket:
                     bucket.append(h)
@@ -407,7 +430,8 @@ class JCNSWriter:
             (2, bool(getattr(p, 'skin_constraints', []))), (3, bool(getattr(p, 'aim_constraints', []))),
             (4, bool(getattr(p, 'material_cns', []))),
             (5, getattr(p, 'joint_export_graph', None) is not None)) if has}
-        sec_table       = reconcile_section_table(orig_table, present)
+        # Before v29 the table is a fixed list the file does not count.
+        sec_table       = reconcile_section_table(orig_table, present) if version >= 29 else orig_table
         section_blob    = bytearray(struct.pack('<%dI' % len(sec_table), *sec_table))
 
         # ── Phase 7: build HashTable ────────────────────────────────────
@@ -449,6 +473,8 @@ class JCNSWriter:
             if len(tail) >= 4:
                 tail[3] = group_counts[i]
             rec['TailBytes'] = bytes(tail)
+            if version < 35:
+                rec.update(neutral_to_pre35(rec))
             cns_info_blob.extend(CONSTRAINT_INFO.pack(rec, version))
 
         # ── Phase 8b: build RotExpression section ───────────────────────

@@ -7,7 +7,7 @@ import jcns_schema as S
 from jcns_schema import (
     HEADER, CONSTRAINT_INFO, AIM, AIM_TARGET, MATERIAL, ROT_EXPRESSION,
     COMPLEX_MAPPING, OBJECT_SETTING, SKIN, SKIN_SOURCE, SKIN_SOURCE_INFO,
-    CONE_DRIVER, CONE_DRIVER_INFO,
+    CONE_DRIVER, CONE_DRIVER_INFO, cone_struct, pre35_to_neutral, pre35_lossy,
     SUPPORTED_VERSIONS, VERSION_GAMES, source_struct, transform_axis_key,
     check_header_layout,
 )
@@ -15,11 +15,26 @@ from jcns_schema import (
 # Versions the writer can rebuild from scratch (add / delete / rename).  Every
 # other version is written back in place: each record is re-packed at its
 # original offset, so values can change but the file's structure cannot.
-FULL_REBUILD_VERSIONS = frozenset({35, 102})
+FULL_REBUILD_VERSIONS = frozenset({22, 35, 36, 102})
+
+# Versions whose ConeDriver table is read (v35+ layout, and v22's older one).
+CONE_DRIVER_VERSIONS = frozenset({22})
 
 
-def write_mode(version):
-    return 'rebuild' if version in FULL_REBUILD_VERSIONS else 'inplace'
+# Header counts of the sections the pre-v35 rebuild does not write: their layouts before v35 are
+# not verified, so a file that has one is written in place.
+_UNWRITTEN_BEFORE_35 = ('AimConstraintCount', 'RotExpressionInfoCount', 'SkinConstraintCount',
+                        'MaterialConstraintInfoCount')
+
+
+def write_mode(version, header=None, lossless=True):
+    """'rebuild' or 'inplace'.  Before v35 the file itself decides too: pass its header and
+    whether the neutral constraint form holds all its bytes."""
+    if version not in FULL_REBUILD_VERSIONS:
+        return 'inplace'
+    if version < 35 and (not lossless or any((header or {}).get(k, 0) for k in _UNWRITTEN_BEFORE_35)):
+        return 'inplace'
+    return 'rebuild'
 
 
 def _hash_utf16(name):
@@ -218,6 +233,7 @@ class JCNSParser:
         self.header = {}
         self.hash_list = []
         self.constraints = []
+        self._lossy = False
 
     @property
     def version(self):
@@ -225,7 +241,7 @@ class JCNSParser:
 
     @property
     def write_mode(self):
-        return write_mode(self.version)
+        return write_mode(self.version, self.header, not self._lossy)
 
     def _read_wstring(self, data, offset):
         """Read a null-terminated UTF-16LE string from data at offset."""
@@ -279,21 +295,27 @@ class JCNSParser:
         return list(struct.unpack_from(f'<{n}I', data, off))
 
     def _parse_cone_drivers(self, data):
-        """Section 0 ConeDriver table (v35 layout only; older ones stay in place)."""
+        """Section 0 ConeDriver table (v35 layout, and v22's; other versions stay in place)."""
         self.cone_drivers = []
         n = self.header.get('ConeDriverCount', 0)
         base = self.header.get('ConeDriverTableEntry', 0)
-        if not n or not base or self.version < 35:
+        if not n or not base or not (self.version >= 35 or self.version in CONE_DRIVER_VERSIONS):
             return
-        size = CONE_DRIVER.size(self.version)
+        layout = cone_struct(self.version)
+        size = layout.size(self.version)
         for i in range(n):
-            rec = CONE_DRIVER.read(data, base + i * size, self.version)
+            rec = layout.read(data, base + i * size, self.version)
             cd = dict(rec)
             cd['Name'] = self._read_wstring(data, rec['Name_Offset'])
-            cd['JointHash'] = self._hash_at(rec['JointHashIndex'])
-            cd['ParentJointHash'] = self._hash_at(rec['ParentJointHashIndex'])
-            cd['SymmetryJointHash'] = (self._hash_at(rec['SymmetryJointHashIndex'])
-                                       if rec['SymmetryJointHashIndex'] >= 0 else None)
+            if self.version >= 35:
+                cd['JointHash'] = self._hash_at(rec['JointHashIndex'])
+                cd['ParentJointHash'] = self._hash_at(rec['ParentJointHashIndex'])
+                cd['SymmetryJointHash'] = (self._hash_at(rec['SymmetryJointHashIndex'])
+                                           if rec['SymmetryJointHashIndex'] >= 0 else None)
+            else:
+                cd['JointName'] = self._read_wstring(data, rec['JointName_Offset'])
+                cd['ParentJointName'] = self._read_wstring(data, rec['ParentJointName_Offset'])
+                cd['SymmetryJointHash'] = None
             self.cone_drivers.append(cd)
         print(f"Parsed {n} ConeDriver(s)")
 
@@ -359,7 +381,16 @@ class JCNSParser:
                     if s_off + src_size > len(data):
                         break                     # truncated file; jcns_validate reports it
                     c['sources'].append(self._parse_source(data, s_off, src_struct))
+            if 21 <= v < 35 and self.write_mode == 'rebuild':
+                # held as the v35+ record; the raw keys stay for jcns_validate
+                c['_pre35_lossy'] = pre35_lossy(rec)
+                c.update(pre35_to_neutral(rec))
             self.constraints.append(c)
+
+        if any(c.get('_pre35_lossy') for c in self.constraints):
+            # a byte the v35+ record cannot hold: this file is written in place instead
+            self._lossy = True
+            return self._parse_constraints(data)
 
         for i, c in enumerate(self.constraints):
             ta = self.AXIS_NAMES[min(c['target_axis'], 3)]

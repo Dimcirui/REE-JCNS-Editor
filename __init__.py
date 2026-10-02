@@ -707,12 +707,11 @@ def file_state(rp):
     """The kinds module's FileState for a root's properties."""
     from .modules_shim import get_kinds, ensure_path
     ensure_path()
-    from jcns_parser import write_mode
-    from .jcns_exporter import _root_version
+    from .jcns_exporter import _root_version, root_write_mode
     v = _root_version(rp)
     return get_kinds().FileState(
         version=v,
-        rebuild=write_mode(v) == 'rebuild',
+        rebuild=root_write_mode(rp) == 'rebuild',
         sections_cached=bool(rp.sections_cached),
         has_armature=rp.target_armature is not None,
         has_read_table=bool(rp.read_joint_signature_json) or rp.read_table_pending,
@@ -823,6 +822,9 @@ class JCNSRootProperties(PropertyGroup):
     upgraded_from: IntProperty(default=0)
     # The upgraded version has a ReadJointTable the source never had: derived on export.
     read_table_pending: BoolProperty(default=False)
+    # The version is rebuilt, but this file has a section or byte the rebuild does not carry, so it
+    # is written in place (see jcns_parser.write_mode).
+    rebuild_blocked: BoolProperty(default=False)
     # The RotExpressionMap value shared by every RotExpression entry.
     rot_map_value: IntProperty(
         name=T("props.root.rot_map_value"), default=0, min=0, max=255,

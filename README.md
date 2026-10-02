@@ -19,11 +19,11 @@ place: every value can change, the file's structure cannot.
 | JCNS version | Game | Export |
 | --- | --- | --- |
 | 102 | Monster Hunter Wilds (post-TU4) | ✅ Full rebuild |
-| 36 | Onimusha: Way of the Sword | ✏️ In place |
+| 36 | Onimusha: Way of the Sword | ✅ Full rebuild |
 | 35 | Resident Evil Requiem / PRAGMATA / MH Stories 3 | ✅ Full rebuild |
 | 29 | Monster Hunter Wilds (pre-TU4) | ⬆️ Imported as v102 |
 | 24 | Dragon's Dogma 2 | ✏️ In place |
-| 22 | RE4 / Street Fighter 6 | ✏️ In place |
+| 22 | RE4 / Street Fighter 6 | ✅ Full rebuild ³ |
 | 21 | Monster Hunter Rise | ✏️ In place |
 | 19 | RE2 / RE3 / RE7 ray-tracing updates | ✏️ In place |
 | 16 | RE Village | ✏️ In place |
@@ -31,6 +31,8 @@ place: every value can change, the file's structure cannot.
 | 11 | RE2 / Devil May Cry 5 | ✏️ In place |
 
 **Full rebuild**: the whole file is regenerated.
+³ v22 rebuilds Ranges, ConeDrivers and ObjectSettings. A file that has Aim, RotExpression, Skin or Material
+sections is written in place instead.
 **Imported as v102**: an older file of a game that has a newer version is upgraded
 on import and exported as that newer version. A file with Skin sections needs the
 target armature to derive its ReadJointTable; export asks for it.
@@ -42,7 +44,7 @@ and all hashes and names.
 
 ## Supported Sections
 
-| ID | Section | Full rebuild (v102, v35) | In place |
+| ID | Section | Full rebuild (v102, v36, v35, v22) | In place |
 | --- | --- | --- | --- |
 | 0 | Range constraints and sources | ✅ Fully editable | ✏️ Values ² |
 | 0 | ComplexMapping (keyframed curves) | ✅ Edited as F-Curves in the Graph Editor, previewed | Kept |

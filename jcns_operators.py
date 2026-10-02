@@ -1450,9 +1450,8 @@ def _rebuild_root(context):
         return None, None
     from .modules_shim import ensure_path
     ensure_path()
-    from jcns_parser import write_mode
-    from .jcns_exporter import _root_version
-    return (root, rp) if write_mode(_root_version(rp)) == 'rebuild' else (None, None)
+    from .jcns_exporter import root_write_mode
+    return (root, rp) if root_write_mode(rp) == 'rebuild' else (None, None)
 
 
 class JCNS_OT_AddSectionEntry(Operator):

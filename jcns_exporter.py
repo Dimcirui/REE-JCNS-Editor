@@ -66,7 +66,7 @@ def _build_stub_parser(root_props):
     parser.filepath = root_props.source_filepath
     parser.header = read_header(orig, check_layout=False)
     parser.version = version
-    parser.write_mode = write_mode(version)
+    parser.write_mode = root_write_mode(root_props)
     parser.is_stub = True
     parser.aim_constraints    = []
     parser.object_settings    = []
@@ -154,14 +154,14 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
     # ConeDrivers are not editable; re-emitted from the import cache.
     n_cone = parser.header.get('ConeDriverCount', 0)
     if root_props.cone_drivers_json:
-        parser.cone_drivers = [dict(cd, Direction=tuple(cd['Direction']), Matrix=tuple(cd['Matrix']),
-                                    Tail=bytes.fromhex(cd['Tail']))
-                               for cd in json.loads(root_props.cone_drivers_json)]
+        parser.cone_drivers = X.cone_drivers_from_json(root_props.cone_drivers_json)
     elif n_cone:
         return [T("io.export.cone_not_cached", n_cone)]
     n = len(parser.cone_drivers)
     for o in get_constraint_empties(root_obj):
-        bad = [k.cone_index for k in o.jcns_cns_props.cone_infos if k.cone_index >= n]
+        # before v35 index 255 is a reference to no cone, which shipped files carry
+        bad = [k.cone_index for k in o.jcns_cns_props.cone_infos
+               if k.cone_index >= n and not (parser.version < 35 and k.cone_index == 255)]
         if bad:
             return [T("io.export.cone_bad_index", o.name, bad[0], n)]
 
@@ -271,6 +271,13 @@ def _name_to_hash(name):
         sys.path.insert(0, hashing_dir)
     from mmh3.pymmh3 import hashUTF16
     return hashUTF16(name) & 0xFFFFFFFF
+
+
+def root_write_mode(rp):
+    """'rebuild' or 'inplace' for a root: its version's mode, unless the file itself blocks the rebuild."""
+    _ensure_modules_path()
+    from jcns_parser import write_mode
+    return 'inplace' if rp.rebuild_blocked else write_mode(_root_version(rp))
 
 
 def _root_version(rp):

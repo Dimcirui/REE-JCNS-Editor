@@ -148,6 +148,11 @@ def capabilities(kind_id, st):
             msg = T("core.kinds.inplace_locked", v)
             return _caps(False, False, False, False, msg,
                          edit=msg, add=msg, remove=msg, move=msg)
+        if v < 35:
+            # the rebuild writes no section but Ranges before v35; a file that has one is not rebuilt
+            msg = T("core.kinds.no_section_before_35", v)
+            return _caps(False, False, False, False, msg,
+                         edit=msg, add=msg, remove=msg, move=msg)
         if not st.sections_cached:
             msg = T("core.kinds.old_import")
             return _caps(False, False, False, False, msg,

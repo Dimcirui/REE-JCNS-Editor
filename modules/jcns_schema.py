@@ -306,6 +306,37 @@ def transform_axis_key(version):
     return 'TransformAxis_v35' if version >= 35 else 'TransformAxis_pre35'
 
 
+# ── ConstraintInfo before v35 <-> the neutral record ──────────────────────
+# The editor holds every version as the v35+ record.  Before v35 the same bytes sit elsewhere:
+#   Flags              <- the first byte block's first byte
+#   UnknownByte72      <- its third byte (the +72 byte itself is always 0)
+#   TailBytes[0:2]     <- the +4 pair of the byte block
+#   TailBytes[3]       <- the +73 byte (how many following entries join this one's joint group)
+#   TailBytes[2,4,5]   <- the tail's own bytes 2, 4, 5 (its bytes 0, 1, 3 are always 0)
+# Anything else is not carried: pre35_lossy() names it so the importer can refuse such a file.
+
+def pre35_to_neutral(rec):
+    """Neutral keys for a record read with a version before 35 (the raw keys stay)."""
+    tail = bytearray(bytes(rec['UnkBytes_Pre35_4']) + bytes(rec['TailBytes'])[2:])
+    tail[3] = rec['UnkByte_Pre35_73']
+    return {'Flags': rec['UnkByte_Pre35_0'], 'UnknownByte72': rec['UnkByte_Pre35_2'],
+            'TailBytes': bytes(tail)}
+
+
+def pre35_lossy(rec):
+    """True when the record holds a byte the neutral form cannot carry."""
+    tail = bytes(rec['TailBytes'])
+    return bool(rec['UnknownByte72'] or tail[0] or tail[1] or tail[3])
+
+
+def neutral_to_pre35(rec):
+    """The version-before-35 fields for a neutral record."""
+    tail = bytes(rec.get('TailBytes') or bytes(6))
+    return {'UnkByte_Pre35_0': rec.get('Flags', 0), 'UnkByte_Pre35_2': rec.get('UnknownByte72', 0),
+            'UnkBytes_Pre35_4': tail[0:2], 'UnkByte_Pre35_73': tail[3],
+            'UnknownByte72': 0, 'TailBytes': bytes([0, 0, tail[2], 0, tail[4], tail[5]])}
+
+
 # ── ConstraintSource ───────────────────────────────────────────────────────
 # v2 (v13+): 72 bytes; +16 is a hash-table index from v35, a raw hash before.
 # v1 (v11/v12): 64 bytes; the ranges come before the byte block.  The byte block
@@ -377,6 +408,30 @@ CONE_DRIVER = Struct('ConeDriver', [
     F('UnknownUInt32',          'I'),
     F('Tail',                   '8s'),
 ])
+
+# Before v35 a ConeDriver names its joints by string and raw hash, not by hash-list index.
+# v13-v23 carry a Translation vec4, v24+ the Matrix plus a symmetry joint.
+CONE_DRIVER_V1 = Struct('ConeDriver_v1', [
+    F('Name_Offset',            'Q'),
+    F('JointName_Offset',       'Q'),
+    F('ParentJointName_Offset', 'Q'),
+    F('SymmetryJointName_Offset', 'Q', since(24)),
+    F('Direction',              '4f'),
+    F('Translation',            '4f', between(13, 24)),
+    F('Matrix',                 '12f', since(24)),
+    F('NameHash',               'I'),
+    F('JointHash',              'I'),
+    F('ParentJointHash',        'I'),
+    F('SymmetryJointHash',      'I', since(24)),
+    F('AngleRad',               'f'),
+    F('UnknownUInt32',          'I', since(24)),
+    F('Tail',                   '8s'),
+])
+
+
+def cone_struct(version):
+    return CONE_DRIVER if version >= 35 else CONE_DRIVER_V1
+
 
 # ConstraintInfo.ConeDriverInfoOffset -> ConeDriverInfo[ConeDriverInfoCount].
 # Rest is (0,0,0,0), or (0,0,0,1) on scale targets whose neutral value is 1;

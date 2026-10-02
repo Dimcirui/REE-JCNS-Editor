@@ -56,6 +56,9 @@ STRINGS = {
     "core.kinds.inplace_locked": {
         "ZH": "v%s 只能就地回写，已锁定",
         "EN": "v%s is write-in-place only; locked"},
+    "core.kinds.no_section_before_35": {
+        "ZH": "v%s 的这个分区不能新建",
+        "EN": "This section cannot be created in v%s"},
     "core.kinds.old_import": {
         "ZH": "旧版插件导入，重新导入后可编辑",
         "EN": "Imported by an older add-on version; re-import to edit"},
