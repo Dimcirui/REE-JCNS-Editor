@@ -68,14 +68,14 @@ def sigma_from_frames(left_cols, right_cols, tol=1e-3):
 
 # Outputs with neutral value 1.0 (scale factors, blend weights): never negated.
 UNSIGNED_OUTPUT_TYPES = frozenset({
-    'Scale', 'BlendShape', 'Scalar',
-    'Material_Color', 'Material_4D', 'Material_3D', 'Material_2D',
+    'Scale', 'Deform', 'ComponentProperty',
+    'Material', 'MaterialF4', 'MaterialPosF4', 'MaterialRotF4',
 })
 
-def is_angular_output(transform_type, flags=None):
+def is_angular_output(transform_element, flags=None):
     """Whether the driven quantity is a rotation; flags bit 5 is the fallback
     for unknown transform types."""
-    return _is_angular_by_type(transform_type, flags)
+    return _is_angular_by_type(transform_element, flags)
 
 
 def _signed(sigma, quantity):
@@ -86,7 +86,7 @@ def _signed(sigma, quantity):
 
 
 def signs_for(source_axis, target_axis, flags, src_sigma=None, tgt_sigma=None,
-              transform_type='Rotation', mirror_in=True, mirror_out=True,
+              transform_element='Rot', mirror_in=True, mirror_out=True,
               source_quantity='Rotation'):
     """(in_sign, out_sign) for one source of one constraint.
 
@@ -120,9 +120,9 @@ def signs_for(source_axis, target_axis, flags, src_sigma=None, tgt_sigma=None,
     ts = (tgt_sigma or SIGMA_DEFAULT).get(target_axis)
     if ts is None:
         return None, None
-    if transform_type in UNSIGNED_OUTPUT_TYPES:
+    if transform_element in UNSIGNED_OUTPUT_TYPES:
         return ss, +1
-    if is_angular_output(transform_type, flags):
+    if is_angular_output(transform_element, flags):
         return ss, ts
     return ss, -ts
 
@@ -147,7 +147,7 @@ def mirror_triples(from_triple, to_triple, in_sign, out_sign):
 
 
 def mirror_source(source, source_axis, target_axis, flags,
-                  src_sigma=None, tgt_sigma=None, transform_type='Rotation',
+                  src_sigma=None, tgt_sigma=None, transform_element='Rot',
                   mirror_in=True, mirror_out=True):
     """Mirror one source mapping. Returns (dict_of_anchors, in_sign, out_sign),
     or (None, None, None) when a sign is unusable; see signs_for()."""
@@ -157,7 +157,7 @@ def mirror_source(source, source_axis, target_axis, flags,
         return float(getattr(source, name, 0.0))
 
     in_sign, out_sign = signs_for(source_axis, target_axis, flags,
-                                  src_sigma, tgt_sigma, transform_type,
+                                  src_sigma, tgt_sigma, transform_element,
                                   mirror_in, mirror_out,
                                   _source_quantity_of(source))
     if in_sign is None:
@@ -236,11 +236,11 @@ def side_of(name, flip_name):
     return None
 
 
-def constraint_signature(target_bone, transform_type, target_axis, sources):
+def constraint_signature(target_bone, transform_element, target_axis, sources):
     """Identity used to decide whether a mirrored counterpart already exists.
 
     Includes the source bones because one bone axis can carry several
     constraints.
     """
-    return (target_bone, transform_type, target_axis,
+    return (target_bone, transform_element, target_axis,
             tuple((s[0], s[1]) for s in sources))

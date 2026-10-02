@@ -105,7 +105,7 @@ def check(dst):
         back = q.parse()
     assert len(back) == FIRST_OUT + len(ENTRIES)
     assert [c['TailBytes'][3] for c in back] == [0] * len(back)
-    assert list(q.aim_constraints) == [] and not q.skin_constraints and not q.rot_expressions
+    assert list(q.aim_constraints) == [] and not q.multi_constraints and not q.rot_expressions
     for i, (c, (bone, tt, flags, axis, pf2, src)) in enumerate(zip(back[FIRST_OUT:], ENTRIES)):
         s = c['sources'][0]
         assert (c['ObjectName'], c['TransformElement'], c['AttrFlags'], 'XYZ'[c['target_axis']]) == \

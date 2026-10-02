@@ -20,39 +20,39 @@ ANGULAR_BIT = 5
 
 # transform type -> (drives a bone, quantity is angular)
 TRANSFORM_FLAGS = {
-    'Translation':    (True,  False),
-    'Rotation':       (True,  True),
+    'Trans':    (True,  False),
+    'Rot':       (True,  True),
     'Scale':          (True,  False),
-    'BlendShape':     (False, False),
-    'SwingTwist':      (True,  True),
-    'TwistSwing':   (True,  True),
-    'RotationVector':      (True,  True),
-    'Material_Color': (False, False),
-    'Material_4D':    (False, False),
-    'Material_3D':    (False, False),
-    'Material_2D':    (False, False),
-    'Scalar':         (False, False),
-    'Unknown_12':     (False, False),
-    'AxisRotation': (True,  True),
-    'AxisRotation_14': (True,  True),
+    'Deform':     (False, False),
+    'RotRPY':      (True,  True),
+    'RotPYR':   (True,  True),
+    'ExpMap':      (True,  True),
+    'Material': (False, False),
+    'MaterialF4':    (False, False),
+    'MaterialPosF4':    (False, False),
+    'MaterialRotF4':    (False, False),
+    'ComponentProperty':         (False, False),
+    'UserValue':     (False, False),
+    'Rot2': (True,  True),
+    'RotRPY2': (True,  True),
     # Assumed to follow their siblings; not seen in shipped files.
-    'UnkRotation_15': (True,  True),
-    'UnkRotation_16': (True,  True),
+    'RotPYR2': (True,  True),
+    'ExpMap2': (True,  True),
 }
 
 
-def expected_bits(transform_type):
+def expected_bits(transform_element):
     """(is_joint, is_angular) for a transform type, or None if unknown."""
-    return TRANSFORM_FLAGS.get(transform_type)
+    return TRANSFORM_FLAGS.get(transform_element)
 
 
-def is_angular(transform_type, flags=None):
+def is_angular(transform_element, flags=None):
     """Whether the driven quantity is a rotation.
 
     The transform type wins, since that is what the user edits; bit 5 of
     `flags` is the fallback for unknown types.
     """
-    known = TRANSFORM_FLAGS.get(transform_type)
+    known = TRANSFORM_FLAGS.get(transform_element)
     if known is not None:
         return known[1]
     if flags is not None:
@@ -60,12 +60,12 @@ def is_angular(transform_type, flags=None):
     return False
 
 
-def apply_derived_bits(flags, transform_type):
+def apply_derived_bits(flags, transform_element):
     """`flags` with bits 4 and 5 rewritten to match the transform type.
 
     Other bits are preserved; an unknown transform type leaves the flags alone.
     """
-    known = TRANSFORM_FLAGS.get(transform_type)
+    known = TRANSFORM_FLAGS.get(transform_element)
     if known is None:
         return int(flags) & 0xFF
     joint, angular = known

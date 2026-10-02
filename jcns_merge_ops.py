@@ -33,10 +33,10 @@ def _describe(empty, with_sources=True):
         'target_bone': p.target_bone,
         'target_property': p.target_property,
         'property_hash': p.property_hash,
-        'transform_type': p.transform_type,
+        'transform_element': p.transform_element,
         'target_axis': p.target_axis,
-        'additive': bool(p.additive),
-        'flags_other': p.flags_other,
+        'base_pose': bool(p.base_pose),
+        'attr_flags_other': p.attr_flags_other,
         'reserved_vec4': (p.reserved_vec4_x, p.reserved_vec4_y, p.reserved_vec4_z, p.reserved_vec4_w),
         'unknown_float2': (p.unknown_float2_x, p.unknown_float2_y),
         'unknown_byte_72': p.unknown_byte_72,
@@ -44,7 +44,7 @@ def _describe(empty, with_sources=True):
         'unknown_byte_75': p.unknown_byte_75,
         'reserved_tail': tuple(p.reserved_tail),
         'group_count': p.group_count,
-        'cone_infos': len(p.cone_infos),
+        'cone_drivers': len(p.cone_drivers),
         'sources': [],
     }
     if with_sources:
@@ -70,7 +70,7 @@ def _collect(root, rp):
 def _caps_reason(rp):
     """'' when this file lets entries be added and removed, else why not."""
     from .jcns_operators import _caps_for
-    caps = _caps_for(rp, 'Ranges')
+    caps = _caps_for(rp, 'Outputs')
     if caps.can_add and caps.can_remove:
         return ''
     return caps.reason('remove') or caps.reason('add') or T("io.merge.no_add_remove")
@@ -152,7 +152,7 @@ def _carry_out(context, root, rp, ordered, entries, plans):
     _renumber_in_order(get_constraint_empties(root))
 
     arm = rp.target_armature
-    backend = jcns_preview.backend_of('Ranges')
+    backend = jcns_preview.backend_of('Outputs')
     if arm is not None and backend is not None:
         for keeper, on in zip(keepers, was_on):
             if not on:
@@ -178,7 +178,7 @@ def _activate(context, empty):
 def _active_ranges_entry(context):
     from . import get_jcns_constraint, get_jcns_root_from_constraint
     obj, p = get_jcns_constraint(context)
-    if obj is None or p.constraint_type not in ('Ranges', ''):
+    if obj is None or p.constraint_type not in ('Outputs', ''):
         return None, None, None
     root, rp = get_jcns_root_from_constraint(obj)
     return obj, root, rp

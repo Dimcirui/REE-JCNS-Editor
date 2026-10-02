@@ -1,7 +1,7 @@
 """
 jcns_preview_plan.py
 --------------------
-Turn a Skin / Aim / RotExpression entry into a description of the native Blender
+Turn a Multi / Aim / RotExpression entry into a description of the native Blender
 pose-bone constraint that previews it (the counterpart of the Ranges driver).
 
 Pure data in, pure data out: jcns_preview.ConstraintBackend only creates the
@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 
 from jcns_i18n import T
 
-CON_NAME = {'Skin': "JCNS Skin", 'Aim': "JCNS Aim", 'RotExpression': "JCNS RotExpr"}
+CON_NAME = {'Multi': "JCNS Multi", 'Aim': "JCNS Aim", 'RotExpression': "JCNS RotExpr"}
 
 
 @dataclass
@@ -36,9 +36,9 @@ def _no(reason):
     return ConstraintPlan(False, reason)
 
 
-# ── Skin ────────────────────────────────────────────────────────────────────
+# ── Multi ────────────────────────────────────────────────────────────────────
 
-def plan_skin(object_bone, sources):
+def plan_multi(object_bone, sources):
     """Pin `object_bone` to the skin: an Armature constraint that blends the
     source bones' deformation by weight, which is what a skinned vertex does.
     Position matches the engine (linear blend, weights divided by their sum); the
@@ -47,25 +47,25 @@ def plan_skin(object_bone, sources):
     sources: [(bone_name, weight), ...]
     """
     if not object_bone:
-        return _no(T("core.plan.skin_no_bone"))
+        return _no(T("core.plan.multi_no_bone"))
     warnings = []
     targets = []
     for bone, w in sources:
         if not bone:
-            warnings.append(T("core.plan.skin_source_empty"))
+            warnings.append(T("core.plan.multi_source_empty"))
         elif bone == object_bone:
-            warnings.append(T("core.plan.skin_source_self"))
+            warnings.append(T("core.plan.multi_source_self"))
         else:
             targets.append((bone, float(w)))
     if not targets:
-        return _no(T("core.plan.skin_no_sources"))
+        return _no(T("core.plan.multi_no_sources"))
     # The engine divides by the weight sum (measured, round 12), Blender's Armature
     # constraint does not.
     total = sum(w for _, w in targets)
     if total > 0:
         targets = [(b, w / total) for b, w in targets]
     return ConstraintPlan(
-        True, warnings=warnings, bone=object_bone, name=CON_NAME['Skin'],
+        True, warnings=warnings, bone=object_bone, name=CON_NAME['Multi'],
         con_type='ARMATURE', targets=tuple(targets),
         props={'use_deform_preserve_volume': False, 'use_bone_envelopes': False})
 
@@ -86,7 +86,7 @@ def aim_track_axis(vec):
     return ''
 
 
-def plan_aim(bone, target, vec1, influence, up_bone='', rotation_type=4, offset=(0.0, 0.0, 0.0)):
+def plan_aim(bone, target, vec1, influence, up_bone='', world_up_type=4, offset=(0.0, 0.0, 0.0)):
     """Aim `bone` at `target`: a Damped Track along the record's aim axis (Vec1).
 
     Damped Track is the shortest-arc turn from the rest pose, which is what
@@ -103,10 +103,10 @@ def plan_aim(bone, target, vec1, influence, up_bone='', rotation_type=4, offset=
     if not axis:
         return _no(T("core.plan.aim_axis", *tuple(vec1)))
     warnings = []
-    if rotation_type == 5:
-        warnings.append(T("core.plan.aim_type5"))
-    elif rotation_type != 4:
-        warnings.append(T("core.plan.aim_type_other", rotation_type))
+    if world_up_type == 5:
+        warnings.append(T("core.plan.world_up_type5"))
+    elif world_up_type != 4:
+        warnings.append(T("core.plan.world_up_type_other", world_up_type))
     if any(abs(c) > 1e-6 for c in offset):
         warnings.append(T("core.plan.aim_offset"))
     if up_bone:

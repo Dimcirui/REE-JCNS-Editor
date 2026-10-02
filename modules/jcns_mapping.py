@@ -35,27 +35,27 @@ Degenerate anchors:
                  a kink strictly outside [start, end] kills the source: flat 0.
 """
 
-from jcns_source_read import read_quantity, read_mode_value, euler_order_value  # noqa: F401
+from jcns_source_read import read_quantity, input_type_value, rot_order_value  # noqa: F401
 
 
-# +25 (InputType), see jcns_source_read.READ_MODES: 0 reads position, 2 scale,
+# +25 (InputType), see jcns_source_read.INPUT_TYPES: 0 reads position, 2 scale,
 # the rest are four decompositions of the rotation.
 
 
-def source_quantity(read_mode):
+def source_quantity(input_type):
     """'Translation', 'Rotation' or 'Scale' for a +25 InputType (value or
     identifier; None -> Rotation)."""
-    if read_mode is None:
+    if input_type is None:
         return 'Rotation'
-    return read_quantity(read_mode)
+    return read_quantity(input_type)
 
 
 def source_quantity_of(source):
     """source_quantity() of a parser dict or a JCNSSourceProperties instance."""
     if isinstance(source, dict):
-        v = source.get('InputType', source.get('read_mode'))
+        v = source.get('InputType', source.get('input_type'))
     else:
-        v = getattr(source, 'read_mode', None)
+        v = getattr(source, 'input_type', None)
     return source_quantity(v)
 
 
@@ -95,15 +95,15 @@ CM_PER_UNIT = 100.0
 
 # Driver targets by transform type: which quantity the output is.
 _TARGET_QUANTITY = {
-    'Translation': 'Translation', 'Scale': 'Scale',
-    'Rotation': 'Rotation', 'AxisRotation': 'Rotation', 'AxisRotation_14': 'Rotation',
-    'SwingTwist': 'Rotation', 'TwistSwing': 'Rotation', 'RotationVector': 'Rotation',
+    'Trans': 'Translation', 'Scale': 'Scale',
+    'Rot': 'Rotation', 'Rot2': 'Rotation', 'RotRPY2': 'Rotation',
+    'RotRPY': 'Rotation', 'RotPYR': 'Rotation', 'ExpMap': 'Rotation',
 }
 
 
-def target_quantity(transform_type):
+def target_quantity(transform_element):
     """'Translation', 'Rotation', 'Scale' or None for a target transform type."""
-    return _TARGET_QUANTITY.get(transform_type)
+    return _TARGET_QUANTITY.get(transform_element)
 
 
 def quantity_unit(quantity):
@@ -137,26 +137,26 @@ def driver_anchors(values, source_quantity, target_quantity):
             + _to_driver_units((ts, tk, te), target_quantity))
 
 
-def is_two_point(curve_mode):
+def is_two_point(attr_flags):
     """Does this +24 AttrFlags value select the two-point curve?
 
     Matches the known values 0 and 1 rather than testing bit 1, since 4 and 5
     are unknown.
     """
-    return curve_mode in (0, 1)
+    return attr_flags in (0, 1)
 
 
-def curve_mode_value(source):
-    """The AttrFlags byte of a source: the parser dict's `AttrFlags` / `curve_mode`, or the
-    Blender PropertyGroup's `three_point` (bit 1) plus `curve_mode_extra` (the other bits)."""
+def attr_flags_value(source):
+    """The AttrFlags byte of a source: the parser dict's `AttrFlags` / `attr_flags`, or the
+    Blender PropertyGroup's `mid_point` (bit 1) plus `attr_flags_other` (the other bits)."""
     if isinstance(source, dict):
-        return source.get('AttrFlags', source.get('curve_mode', 3))
-    return (int(source.curve_mode_extra) & ~2) | (2 if source.three_point else 0)
+        return source.get('AttrFlags', source.get('attr_flags', 3))
+    return (int(source.attr_flags_other) & ~2) | (2 if source.mid_point else 0)
 
 
 def source_two_point(source):
     """Does this source use the two-point curve?"""
-    return is_two_point(curve_mode_value(source))
+    return is_two_point(attr_flags_value(source))
 
 
 # Source byte +28, how a segment runs between its anchors (measured, rounds 15 and 16; the
@@ -166,7 +166,7 @@ EASING = {
     2: lambda t: 1.0 - (1.0 - t) ** 3,
     3: lambda t: t * t * (3.0 - 2.0 * t),
 }
-_INTERPOLATION_IDS = {'LINEAR': 0, 'CUBIC_IN': 1, 'CUBIC_OUT': 2, 'SMOOTHSTEP': 3}
+_INTERPOLATION_IDS = {'LINEAR': 0, 'SLOW': 1, 'FAST': 2, 'SMOOTH': 3}
 
 
 def source_interpolation(source):

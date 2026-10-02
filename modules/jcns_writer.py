@@ -152,11 +152,11 @@ class JCNSWriter:
             if 0 <= old_idx < len(p.hash_list):
                 mc['JointHashIndex'] = _get_or_add_hash(p.hash_list[old_idx])
 
-        # SkinConstraint: the object and every source-info entry index the global
+        # MultiConstraint: the object and every source-info entry index the global
         # hash list (carried over verbatim otherwise — see Phase 8f).
-        for sk in getattr(p, 'skin_constraints', []):
+        for sk in getattr(p, 'multi_constraints', []):
             sk['ObjectHashIndex'] = _get_or_add_hash(sk['ObjectHash'])
-        for si in getattr(p, 'skin_source_infos', []):
+        for si in getattr(p, 'multi_source_infos', []):
             si['SourceHashIndex'] = _get_or_add_hash(si['SourceHash'])
 
         def _dep_key(c, tgt_h):
@@ -237,26 +237,26 @@ class JCNSWriter:
         CNS_INFO_START = _align(CONE_START + len(cone_blob), 16)
 
         # ── Phase 2c: every constraint's ConeDriver[] ───────────────
-        cone_info_blob = bytearray()
-        cone_info_at = []
+        cone_driver_blob = bytearray()
+        cone_driver_at = []
         CONE_INFO_START = CNS_INFO_START + CNS_INFO_SIZE
         for c in p.constraints:
             infos = c.get('ConeDriver') or []
             if not infos:
-                cone_info_at.append(0)
+                cone_driver_at.append(0)
                 continue
-            pos = CONE_INFO_START + len(cone_info_blob)
-            cone_info_blob.extend(b'\x00' * (_align(pos, 16) - pos))
-            cone_info_at.append(CONE_INFO_START + len(cone_info_blob))
+            pos = CONE_INFO_START + len(cone_driver_blob)
+            cone_driver_blob.extend(b'\x00' * (_align(pos, 16) - pos))
+            cone_driver_at.append(CONE_INFO_START + len(cone_driver_blob))
             for ci in infos:
                 # Index 255 is a reference to no cone, which v22 files carry.
                 if not (0 <= ci['ConeInputIndex'] < N_CONE or (version < 35 and ci['ConeInputIndex'] == 255)):
-                    raise ValueError(T("core.writer.cone_index", c.get('ObjectName', ''),
+                    raise ValueError(T("core.writer.cone_input_index", c.get('ObjectName', ''),
                                        ci['ConeInputIndex'], N_CONE))
-                cone_info_blob.extend(CONE_DRIVER.pack(ci, version))
+                cone_driver_blob.extend(CONE_DRIVER.pack(ci, version))
 
         # JointDriver_v2 section starts after that, 16-aligned.
-        raw_src_start = CONE_INFO_START + len(cone_info_blob)
+        raw_src_start = CONE_INFO_START + len(cone_driver_blob)
         SRC_START = _align(raw_src_start, 16)
 
         # ── Phase 3: build JointDriver_v2 blobs ───────────────────
@@ -427,7 +427,7 @@ class JCNSWriter:
         orig_table      = list(orig_table)
         present = {sid for sid, has in (
             (0, bool(p.constraints)), (1, bool(getattr(p, 'rot_expressions', []))),
-            (2, bool(getattr(p, 'skin_constraints', []))), (3, bool(getattr(p, 'aim_constraints', []))),
+            (2, bool(getattr(p, 'multi_constraints', []))), (3, bool(getattr(p, 'aim_constraints', []))),
             (4, bool(getattr(p, 'material_cns', []))),
             (5, getattr(p, 'joint_export_graph', None) is not None)) if has}
         # Before v29 the table is a fixed list the file does not count.
@@ -460,7 +460,7 @@ class JCNSWriter:
                 'ObjectNameOffset': tgt_name_off,
                 'ObjectHashIndex':      tgt_idx,
                 'ObjectHash':           tgt_h,
-                'ConeDriverOffset': cone_info_at[i],
+                'ConeDriverOffset': cone_driver_at[i],
                 'ConeDriverCount':  len(c.get('ConeDriver') or []),
                 'PropertyOffset':       (tgt_name_to_offset[c['PropertyName']]
                                          if c.get('PropertyName') else 0),
@@ -558,17 +558,17 @@ class JCNSWriter:
                 aim_blob.extend(AIM_TARGET.pack({'TargetHashIndex': ac['TargetHashIndex'],
                                                  'Body': ac['target_body']}, version))
 
-        # ── Phase 8f: build SkinConstraint section ──────────────────────
+        # ── Phase 8f: build MultiConstraint section ──────────────────────
         # Four tables, all carried over as parsed: the records, their weighted
         # source lists, the shared source-info table, and (v36+) the raw-hash
         # ReadJointTable.  Only the hash-list indices were remapped.
-        skins = getattr(p, 'skin_constraints', [])
-        skin_infos = getattr(p, 'skin_source_infos', [])
+        multis = getattr(p, 'multi_constraints', [])
+        multi_infos = getattr(p, 'multi_source_infos', [])
         read_joints = getattr(p, 'read_joint_table', [])
-        N_SKIN = len(skins)
-        SKIN_START = SKIN_INFO_START = READ_JOINT_START = 0
-        skin_blob = bytearray()
-        if N_SKIN:
+        N_MULTI = len(multis)
+        MULTI_START = MULTI_INFO_START = READ_JOINT_START = 0
+        multi_blob = bytearray()
+        if N_MULTI:
             if N_AIM > 0:
                 _prev_end = AIM_SECTION_START + len(aim_blob)
             elif jxg is not None:
@@ -579,25 +579,25 @@ class JCNSWriter:
                 _prev_end = ROT_INFO_START + len(rot_blob)
             else:
                 _prev_end = HASH_TABLE_START + len(hash_blob)
-            SKIN_START = _align(_prev_end, 16)
-            lists_at = SKIN_START + N_SKIN * MULTI.size(version)
+            MULTI_START = _align(_prev_end, 16)
+            lists_at = MULTI_START + N_MULTI * MULTI.size(version)
             lists = bytearray()
             recs = bytearray()
-            for sk in skins:
+            for sk in multis:
                 recs.extend(MULTI.pack(dict(sk, SourceListOffset=lists_at + len(lists),
                                            SourceCount=len(sk['sources'])), version))
                 for src in sk['sources']:
                     lists.extend(MULTI_SOURCE.pack(src, version))
-            skin_blob.extend(recs + lists)
-            if skin_infos:
-                SKIN_INFO_START = _align(SKIN_START + len(skin_blob), 16)
-                skin_blob.extend(b'\x00' * (SKIN_INFO_START - SKIN_START - len(skin_blob)))
-                for si in skin_infos:
-                    skin_blob.extend(MULTI_SOURCE_INFO.pack(si, version))
+            multi_blob.extend(recs + lists)
+            if multi_infos:
+                MULTI_INFO_START = _align(MULTI_START + len(multi_blob), 16)
+                multi_blob.extend(b'\x00' * (MULTI_INFO_START - MULTI_START - len(multi_blob)))
+                for si in multi_infos:
+                    multi_blob.extend(MULTI_SOURCE_INFO.pack(si, version))
             if read_joints:
-                READ_JOINT_START = _align(SKIN_START + len(skin_blob), 16)
-                skin_blob.extend(b'\x00' * (READ_JOINT_START - SKIN_START - len(skin_blob)))
-                skin_blob.extend(struct.pack(f'<{len(read_joints)}I', *read_joints))
+                READ_JOINT_START = _align(MULTI_START + len(multi_blob), 16)
+                multi_blob.extend(b'\x00' * (READ_JOINT_START - MULTI_START - len(multi_blob)))
+                multi_blob.extend(struct.pack(f'<{len(read_joints)}I', *read_joints))
 
         # ── Phase 9: patch header ───────────────────────────────────────
         header = bytearray(orig[:HEADER_END])
@@ -637,18 +637,18 @@ class JCNSWriter:
             patch['MaterialConstraintInfoEntry'] = MAT_START
         if jxg is not None:
             patch['JointExprGraphInfoEntry'] = JXG_START
-        patch['MultiConstraintCount'] = N_SKIN
-        patch['MultiConstraintSourceCount'] = len(skin_infos) if N_SKIN else 0
-        patch['ReadJointTableItemCount'] = len(read_joints) if N_SKIN else 0
-        if N_SKIN:
-            patch['MultiConstraintTableEntry'] = SKIN_START
-            if skin_infos:
-                patch['MultiConstraintSourceTableEntry'] = SKIN_INFO_START
+        patch['MultiConstraintCount'] = N_MULTI
+        patch['MultiConstraintSourceCount'] = len(multi_infos) if N_MULTI else 0
+        patch['ReadJointTableItemCount'] = len(read_joints) if N_MULTI else 0
+        if N_MULTI:
+            patch['MultiConstraintTableEntry'] = MULTI_START
+            if multi_infos:
+                patch['MultiConstraintSourceTableEntry'] = MULTI_INFO_START
             if read_joints:
                 patch['ReadJointTableEntry'] = READ_JOINT_START
         # A v102 file with nothing in it is the header alone: every table offset is 0 except
         # the end-of-Section-0 marker, which sits at the file's end.
-        is_empty = (version == 102 and not (N or N_CONE or N_AIM or N_ROT or N_MAT or N_SKIN
+        is_empty = (version == 102 and not (N or N_CONE or N_AIM or N_ROT or N_MAT or N_MULTI
                                             or jxg is not None or new_hash_list or N_OBJSET or sec_table))
         if is_empty:
             patch = dict.fromkeys(list(patch) + [
@@ -670,7 +670,7 @@ class JCNSWriter:
         out.extend(cone_blob)                          # ConeInput[] + names
         _pad_to(out, CNS_INFO_START)
         out.extend(cns_info_blob)                      # OutputData[]
-        out.extend(cone_info_blob)                     # ConeDriver[] per constraint
+        out.extend(cone_driver_blob)                     # ConeDriver[] per constraint
         _pad_to(out, SRC_START)
         out.extend(src_blob)                           # Source_v2 + source WStrings
         out.extend(tgt_pool_blob)                      # Target WString pool
@@ -697,16 +697,16 @@ class JCNSWriter:
         if N_AIM > 0:
             _pad_to(out, AIM_SECTION_START)
             out.extend(aim_blob)                       # Aim section
-        if N_SKIN:
-            _pad_to(out, SKIN_START)
-            out.extend(skin_blob)                      # SkinConstraint tables
+        if N_MULTI:
+            _pad_to(out, MULTI_START)
+            out.extend(multi_blob)                      # MultiConstraint tables
 
         with open(self.filepath, 'wb') as f:
             f.write(out)
 
         print(f'[JCNS] Written {len(out)} bytes → {self.filepath}')
         parts = [f'Cns={N}', f'Aim={N_AIM}', f'RotExpr={N_ROT}', f'Mat={N_MAT}',
-                 f'Skin={N_SKIN}', f'ObjSet={N_OBJSET}',
+                 f'Multi={N_MULTI}', f'ObjSet={N_OBJSET}',
                  f'JXG={1 if jxg else 0}', f'Dep={M}', f'Hash={len(new_hash_list)}']
         print(f'  {", ".join(parts)}')
         print(f'  SecTbl=0x{SEC_TABLE_START:X} DepTbl=0x{DEP_TABLE_START:X} HashTbl=0x{HASH_TABLE_START:X}')
@@ -721,7 +721,7 @@ class JCNSWriter:
         OutputData / JointDriver / MatCnsInfo record at its original
         offset.  Pointers, hashes and hash indices come from the original record,
         so the file layout is untouched and every section this editor does not
-        model (ConeDrivers, SkinConstraints, ObjectSettings, ComplexMapping ...)
+        model (ConeDrivers, MultiConstraints, ObjectSettings, ComplexMapping ...)
         survives byte for byte.  Structural edits are refused beforehand by
         jcns_validate.check_in_place_edits().
         """

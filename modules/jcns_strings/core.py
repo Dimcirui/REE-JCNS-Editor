@@ -17,8 +17,8 @@ STRINGS = {
     "core.kinds.ranges.summary": {
         "ZH": "驱动的读数经折线映射，写到被驱动的一个通道",
         "EN": "A source's reading is mapped through a polyline and written to one channel of the target"},
-    "core.kinds.skin.label": {"ZH": "Skin 蒙皮", "EN": "Skin"},
-    "core.kinds.skin.summary": {
+    "core.kinds.multi.label": {"ZH": "Skin 蒙皮", "EN": "Skin"},
+    "core.kinds.multi.summary": {
         "ZH": "按蒙皮权重把附件骨钉在变形后的皮肤上",
         "EN": "Pins an attachment bone to the deformed skin by skin weights"},
     "core.kinds.aim.label": {"ZH": "Aim 瞄准", "EN": "Aim"},
@@ -76,13 +76,13 @@ STRINGS = {
     "core.kinds.jxg_single": {"ZH": "JXG 每个文件只有一条", "EN": "A file has only one JXG entry"},
 
     # ── jcns_preview_plan ─────────────────────────────────────────────────
-    "core.plan.skin_no_bone": {"ZH": "没有对象骨骼", "EN": "No target bone"},
-    "core.plan.skin_source_empty": {
+    "core.plan.multi_no_bone": {"ZH": "没有对象骨骼", "EN": "No target bone"},
+    "core.plan.multi_source_empty": {
         "ZH": "有一条驱动没填，已忽略", "EN": "A source is empty and was ignored"},
-    "core.plan.skin_source_self": {
+    "core.plan.multi_source_self": {
         "ZH": "驱动里含被驱动自己，已忽略",
         "EN": "The sources include the target itself; ignored"},
-    "core.plan.skin_no_sources": {"ZH": "没有可用的驱动", "EN": "No usable sources"},
+    "core.plan.multi_no_sources": {"ZH": "没有可用的驱动", "EN": "No usable sources"},
     "core.plan.aim_no_bone": {"ZH": "没有被瞄准的骨骼", "EN": "No bone to aim"},
     "core.plan.aim_no_target": {"ZH": "没有瞄准目标", "EN": "No aim target"},
     "core.plan.aim_same": {
@@ -91,10 +91,10 @@ STRINGS = {
     "core.plan.aim_axis": {
         "ZH": "瞄准轴 (%.2f, %.2f, %.2f) 不是坐标轴，Blender 的阻尼追踪表示不了",
         "EN": "Aim axis (%.2f, %.2f, %.2f) is not a coordinate axis; Blender's Damped Track cannot represent it"},
-    "core.plan.aim_type5": {
+    "core.plan.world_up_type5": {
         "ZH": "类型 5 从父骨朝向起最短弧（丢掉静止姿态），预览从静止姿态起，会差静止姿态",
         "EN": "Type 5 takes the shortest arc from the parent's orientation (rest pose dropped); the preview starts from the rest pose, so it differs by the rest pose"},
-    "core.plan.aim_type_other": {
+    "core.plan.world_up_type_other": {
         "ZH": "类型 %d 的引擎行为还会固定绕瞄准轴的翻滚，预览只做最短弧，翻滚会不同",
         "EN": "Type %d also fixes the roll around the aim axis in the engine; the preview only does the shortest arc, so the roll differs"},
     "core.plan.aim_offset": {"ZH": "旋转偏移不参与预览", "EN": "The rotation offset is not previewed"},
@@ -117,7 +117,7 @@ STRINGS = {
     "core.validate.truncated_sources": {
         "ZH": "%d 条约束声明的驱动数量超过文件实际内容：%s。该文件本身已损坏（SourceCount 超出可用数据），导出会丢失缺失的驱动。",
         "EN": "%d constraints declare more sources than the file contains: %s. The file itself is damaged (SourceCount exceeds the available data); exporting would drop the missing sources."},
-    "core.validate.unread_cone_info": {
+    "core.validate.unread_cone_driver": {
         "ZH": "%d 条约束的 ConeDriverInfo 数量与读到的数据不符，重建会丢掉它们。",
         "EN": "%d constraints have a ConeDriverInfo count that does not match the data read; a rebuild would drop them."},
     "core.validate.cone_count": {
@@ -167,7 +167,7 @@ STRINGS = {
     "core.sections.missing_joints": {
         "ZH": "目标骨架里找不到这些骨骼，无法重算读取骨表：%s",
         "EN": "These bones are not in the target armature, so the ReadJointTable cannot be re-derived: %s"},
-    "core.sections.skin_weight_sum": {
+    "core.sections.multi_weight_sum": {
         "ZH": "Skin #%d（%s）权重和为 %.3f",
         "EN": "Skin #%d (%s): weights sum to %.3f"},
 
@@ -178,7 +178,7 @@ STRINGS = {
     "core.parser.not_jcns": {
         "ZH": "不是 JCNS 文件（缺少 'jcns' 魔数）",
         "EN": "Not a JCNS file (missing the 'jcns' magic)"},
-    "core.writer.cone_index": {
+    "core.writer.cone_input_index": {
         "ZH": "约束「%s」引用了第 %d 个 ConeDriver，但文件里只有 %d 个。",
         "EN": "Constraint \"%s\" refers to ConeDriver #%d, but the file has only %d."},
     "core.writer.complex_count": {
@@ -192,28 +192,28 @@ STRINGS = {
         "EN": "v%s header layout does not match the file: the header end computed from the template is 0x%X, but ConeDriverTableEntry points to 0x%X"},
 
     # ── jcns_source_read: ReadMode table (property / enum text) ──────────
-    "core.read_mode.0.name": {"ZH": "位置", "EN": "Position"},
-    "core.read_mode.0.desc": {
+    "core.input_type.0.name": {"ZH": "位置", "EN": "Position"},
+    "core.input_type.0.desc": {
         "ZH": "相对父骨的位置分量（厘米），含静止偏移；多用于面部滑杆骨和武器部件（约 10%）",
         "EN": "Position component relative to the parent bone (centimetres), rest offset included; mostly used by face slider bones and weapon parts (about 10%)"},
-    "core.read_mode.1.name": {"ZH": "欧拉角", "EN": "Euler"},
-    "core.read_mode.1.desc": {
+    "core.input_type.1.name": {"ZH": "欧拉角", "EN": "Euler"},
+    "core.input_type.1.desc": {
         "ZH": "相对父骨完整旋转（含静止姿态）的欧拉分量，分解顺序由 +27 欧拉顺序决定（约 6%）",
         "EN": "Euler component of the full rotation relative to the parent bone (rest pose included); the decomposition order comes from the +27 Euler order (about 6%)"},
-    "core.read_mode.2.name": {"ZH": "缩放", "EN": "Scale"},
-    "core.read_mode.2.desc": {
+    "core.input_type.2.name": {"ZH": "缩放", "EN": "Scale"},
+    "core.input_type.2.desc": {
         "ZH": "缩放分量，静止时等于骨骼的静止缩放（通常为 1）（约 5%）",
         "EN": "Scale component; at rest it equals the bone's rest scale (usually 1) (about 5%)"},
-    "core.read_mode.3.name": {"ZH": "摆动·扭转", "EN": "Swing·Twist"},
-    "core.read_mode.3.desc": {
+    "core.input_type.3.name": {"ZH": "摆动·扭转", "EN": "Swing·Twist"},
+    "core.input_type.3.desc": {
         "ZH": "绕 X 的摆动-扭转分解，q = 摆动·扭转：X 取扭转角，Y/Z 取摆动，含静止姿态；最常用（约 77%）",
         "EN": "Swing-twist decomposition about X, q = swing·twist: X is the twist angle, Y/Z are the swing, rest pose included; the most common (about 77%)"},
-    "core.read_mode.4.name": {"ZH": "扭转·摆动", "EN": "Twist·Swing"},
-    "core.read_mode.4.desc": {
+    "core.input_type.4.name": {"ZH": "扭转·摆动", "EN": "Twist·Swing"},
+    "core.input_type.4.desc": {
         "ZH": "同摆动·扭转，但 q = 扭转·摆动（先摆动）：X 与前者相同，Y/Z 不同（约 1%）",
         "EN": "Same as swing·twist, but q = twist·swing (swing applied first): X equals the former, Y/Z differ (about 1%)"},
-    "core.read_mode.5.name": {"ZH": "旋转向量", "EN": "Rotation vector"},
-    "core.read_mode.5.desc": {
+    "core.input_type.5.name": {"ZH": "旋转向量", "EN": "Rotation vector"},
+    "core.input_type.5.desc": {
         "ZH": "旋转向量（转轴×角度）的分量，含静止姿态；常用于读大腿、驱动 ThighTwist 一类（约 2%）",
         "EN": "Component of the rotation vector (axis×angle), rest pose included; often used to read the thigh and drive ThighTwist and the like (about 2%)"},
 

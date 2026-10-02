@@ -124,17 +124,17 @@ def _draw_raw_group(layout, title, icon, rows):
     return box
 
 
-def _skin_table_locked(rp):
+def _multi_table_locked(rp):
     """A shipped ReadJointTable can only be re-derived with the skeleton."""
     return bool(rp and (rp.read_joint_signature_json or rp.read_table_pending) and rp.target_armature is None)
 
 
-def _target_unit(transform_type):
+def _target_unit(transform_element):
     """Suffix for a constraint's output values: ° for angles, cm for positions."""
     from .modules_shim import get_flags
-    if get_flags().is_angular(transform_type):
+    if get_flags().is_angular(transform_element):
         return "°"
-    return " cm" if transform_type == 'Translation' else ""
+    return " cm" if transform_element == 'Trans' else ""
 
 
 class JCNS_UL_Sources(bpy.types.UIList):
@@ -155,13 +155,13 @@ class JCNS_UL_Sources(bpy.types.UIList):
             row.label(text="", icon='IPO_BEZIER')
         elif info['offset_at_rest']:
             row.label(text="%s%s" % (_fmt(info['at_rest']),
-                                     _target_unit(getattr(data, 'transform_type', ''))),
+                                     _target_unit(getattr(data, 'transform_element', ''))),
                       icon='ERROR')
 
 
-class JCNS_UL_SkinSources(bpy.types.UIList):
-    """Skin 条目的驱动与权重。"""
-    bl_idname = "JCNS_UL_skin_sources"
+class JCNS_UL_MultiSources(bpy.types.UIList):
+    """Multi 条目的驱动与权重。"""
+    bl_idname = "JCNS_UL_multi_sources"
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_prop, index):
         row = layout.row(align=True)
@@ -174,7 +174,7 @@ _CONE_NAME_CACHE = {}
 
 def _cone_names(rp):
     """ConeInput names of a root, from its import cache (parsed once per string)."""
-    raw = rp.cone_drivers_json if rp else ''
+    raw = rp.cone_inputs_json if rp else ''
     if not raw:
         return []
     hit = _CONE_NAME_CACHE.get(raw)
@@ -186,19 +186,19 @@ def _cone_names(rp):
     return hit
 
 
-class JCNS_UL_ConeInfos(bpy.types.UIList):
+class JCNS_UL_ConeDrivers(bpy.types.UIList):
     """ConeDriver：这条约束读取的锥形及其输出值。"""
-    bl_idname = "JCNS_UL_cone_infos"
+    bl_idname = "JCNS_UL_cone_drivers"
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_prop, index):
         from . import get_jcns_root_from_constraint
         _, rp = get_jcns_root_from_constraint(context.active_object)
         names = _cone_names(rp)
         row = layout.row(align=True)
-        row.prop(item, "cone_index", text="")
-        label = names[item.cone_index] if item.cone_index < len(names) else T("ui.cone.missing")
+        row.prop(item, "cone_input_index", text="")
+        label = names[item.cone_input_index] if item.cone_input_index < len(names) else T("ui.cone.missing")
         sub = row.row()
-        sub.alert = item.cone_index >= len(names)
+        sub.alert = item.cone_input_index >= len(names)
         sub.label(text=label, icon='CONE')
         row.prop(item, "value", text="")
 
@@ -396,7 +396,7 @@ class JCNS_UL_Entries(bpy.types.UIList):
             keyed.append((entry_sort_key(o), i))
         keyed.sort()
 
-        if kind_id == 'Ranges':
+        if kind_id == 'Outputs':
             for members in group_constraints_by_channel(root).values():
                 for e in members[:-1]:
                     _SHADOWED.add(e.name)
@@ -422,7 +422,7 @@ class JCNS_UL_Entries(bpy.types.UIList):
 
 
 def _short_label(kind):
-    """"Skin 蒙皮" -> "Skin"; labels without a latin name stay whole."""
+    """"Multi 蒙皮" -> "Multi"; labels without a latin name stay whole."""
     head = kind.label.split()[0]
     return head if head.isascii() else kind.label
 
@@ -464,7 +464,7 @@ class JCNS_PT_Edit(_RootPanel, Panel):
             layout.prop_enum(rp, "browser_kind", active_kind.id,
                              text=T("ui.edit.switch_to", _short_label(active_kind)), icon=active_kind.icon)
 
-        if kind.id == 'Ranges':
+        if kind.id == 'Outputs':
             layout.row().prop(rp, "browser_view", expand=True)
             if rp.browser_view == 'BONE':
                 _draw_channels(layout, context, root, rp)
@@ -479,7 +479,7 @@ class JCNS_PT_Edit(_RootPanel, Panel):
         if kind.addable:
             sub = side.column(align=True)
             sub.enabled = caps.can_add
-            if kind.id == 'Ranges':
+            if kind.id == 'Outputs':
                 sub.operator("jcns.add_constraint", text="", icon='ADD')
             else:
                 sub.operator("jcns.add_section_entry", text="", icon='ADD').kind = kind.id
@@ -583,8 +583,8 @@ class JCNS_PT_FileInfo(_RootPanel, Panel):
 
 _classes = [
     JCNS_UL_Sources,
-    JCNS_UL_SkinSources,
-    JCNS_UL_ConeInfos,
+    JCNS_UL_MultiSources,
+    JCNS_UL_ConeDrivers,
     JCNS_UL_Entries,
     JCNS_PT_Status,
     JCNS_PT_Preview,

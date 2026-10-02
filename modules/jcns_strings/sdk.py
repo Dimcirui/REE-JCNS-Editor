@@ -216,11 +216,11 @@ STRINGS = {
         "ZH": "按记录的键生成约束：驱动的读数映射到各被驱动变化了的通道",
         "EN": "Generate constraints from the recorded keys: the driver's reading is mapped to every channel of the driven bones that changed",
     },
-    "sdk.generate.read_mode": {
+    "sdk.generate.input_type": {
         "ZH": "读取方式",
         "EN": "Read mode",
     },
-    "sdk.generate.read_mode_desc": {
+    "sdk.generate.input_type_desc": {
         "ZH": "从驱动读什么。自动时按各键之间的变化选取",
         "EN": "What to read from the driver; Auto picks by the change between keys",
     },
@@ -404,7 +404,7 @@ STRINGS = {
     },
 
     # ---- modules/jcns_sdk.py: planning ----
-    "sdk.err.read_mode_unknown": {
+    "sdk.err.input_type_unknown": {
         "ZH": "读取方式 %r 不存在",
         "EN": "Read mode %r does not exist",
     },
@@ -556,7 +556,7 @@ STRINGS = {
         "ZH": "已有约束的驱动已满 %d 个",
         "EN": "The existing constraint already has %d drivers",
     },
-    "sdk.append.additive_differs": {
+    "sdk.append.base_pose_differs": {
         "ZH": "已有约束的「叠加」与新约束不同",
         "EN": "The existing constraint's \"Additive\" differs from the new constraint's",
     },

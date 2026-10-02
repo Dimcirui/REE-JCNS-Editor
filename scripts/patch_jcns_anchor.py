@@ -47,11 +47,11 @@ def list_constraints(parser):
                   f"to=({s.get('to_start')}, {s.get('to_kink')}, {s.get('to_end')})")
 
 
-def find_source(parser, source_bone, target_axis, transform_type):
+def find_source(parser, source_bone, target_axis, transform_element):
     target_axis_idx = AXIS_NAMES.index(target_axis.upper()) if target_axis else None
     matches = []
     for c in parser.constraints:
-        if transform_type is not None and c.get('TransformElement') != transform_type:
+        if transform_element is not None and c.get('TransformElement') != transform_element:
             continue
         if target_axis_idx is not None and c.get('target_axis') != target_axis_idx:
             continue
@@ -95,7 +95,7 @@ def main():
     if not (args.source_bone and args.target_axis and args.field and args.value is not None):
         ap.error('--source-bone, --target-axis, --field and --value are all required unless --list is given')
 
-    matches = find_source(parser, args.source_bone, args.target_axis, args.transform_type)
+    matches = find_source(parser, args.source_bone, args.target_axis, args.transform_element)
     if not matches:
         print('No matching source found. Run with --list to see what exists.')
         sys.exit(1)

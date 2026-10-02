@@ -30,29 +30,29 @@ import math
 from jcns_i18n import T
 
 # (value, identifier, name, quantity, description)
-READ_MODES = (
-    (0, 'POSITION', T("core.read_mode.0.name"), 'Translation', T("core.read_mode.0.desc")),
-    (1, 'EULER', T("core.read_mode.1.name"), 'Rotation', T("core.read_mode.1.desc")),
-    (2, 'SCALE', T("core.read_mode.2.name"), 'Scale', T("core.read_mode.2.desc")),
-    (3, 'SWING_TWIST', T("core.read_mode.3.name"), 'Rotation', T("core.read_mode.3.desc")),
-    (4, 'TWIST_SWING', T("core.read_mode.4.name"), 'Rotation', T("core.read_mode.4.desc")),
-    (5, 'ROTATION_VECTOR', T("core.read_mode.5.name"), 'Rotation', T("core.read_mode.5.desc")),
+INPUT_TYPES = (
+    (0, 'TRANS', T("core.input_type.0.name"), 'Translation', T("core.input_type.0.desc")),
+    (1, 'ROT', T("core.input_type.1.name"), 'Rotation', T("core.input_type.1.desc")),
+    (2, 'SCALE', T("core.input_type.2.name"), 'Scale', T("core.input_type.2.desc")),
+    (3, 'ROT_RPY', T("core.input_type.3.name"), 'Rotation', T("core.input_type.3.desc")),
+    (4, 'ROT_PYR', T("core.input_type.4.name"), 'Rotation', T("core.input_type.4.desc")),
+    (5, 'EXP_MAP', T("core.input_type.5.name"), 'Rotation', T("core.input_type.5.desc")),
 )
-_BY_VALUE = {m[0]: m for m in READ_MODES}
-_BY_ID = {m[1]: m for m in READ_MODES}
-DEFAULT_READ_MODE = 3
+_BY_VALUE = {m[0]: m for m in INPUT_TYPES}
+_BY_ID = {m[1]: m for m in INPUT_TYPES}
+DEFAULT_INPUT_TYPE = 3
 
 ROTATION_MODES = {1: 'euler', 3: 'swing_twist', 4: 'twist_swing', 5: 'rotvec'}
 
 
-def read_mode_value(mode):
+def input_type_value(mode):
     """A InputType as its byte value, from the value itself or its identifier."""
     if isinstance(mode, str):
-        return _BY_ID[mode][0] if mode in _BY_ID else DEFAULT_READ_MODE
+        return _BY_ID[mode][0] if mode in _BY_ID else DEFAULT_INPUT_TYPE
     return int(mode)
 
 
-def read_mode_id(value):
+def input_type_id(value):
     """The identifier of a InputType byte; None for a value outside 0-5."""
     m = _BY_VALUE.get(int(value))
     return m[1] if m else None
@@ -60,7 +60,7 @@ def read_mode_id(value):
 
 def read_quantity(mode):
     """'Translation', 'Rotation' or 'Scale' for a InputType (value or identifier)."""
-    m = _BY_VALUE.get(read_mode_value(mode))
+    m = _BY_VALUE.get(input_type_value(mode))
     return m[3] if m else 'Rotation'
 
 
@@ -96,15 +96,15 @@ def pose_rotation(rest, euler):
 
 
 # +27 RotOrder -> (i, j, k) with R = R_i * R_j * R_k (k applied first)
-EULER_ORDERS = {0: (2, 1, 0), 1: (0, 2, 1), 2: (1, 0, 2), 3: (0, 1, 2)}
+ROT_ORDERS = {0: (2, 1, 0), 1: (0, 2, 1), 2: (1, 0, 2), 3: (0, 1, 2)}
 # The same orders as Blender names them (first-applied axis first)
-EULER_ORDER_NAMES = {0: 'XYZ', 1: 'YZX', 2: 'ZXY', 3: 'ZYX'}
+ROT_ORDER_NAMES = {0: 'XYZ', 1: 'YZX', 2: 'ZXY', 3: 'ZYX'}
 
 
-def euler_order_value(order):
+def rot_order_value(order):
     """A +27 RotOrder as its byte value, from the value or its Blender name."""
     if isinstance(order, str):
-        for value, name in EULER_ORDER_NAMES.items():
+        for value, name in ROT_ORDER_NAMES.items():
             if name == order:
                 return value
         return 0
@@ -120,7 +120,7 @@ def _matrix(q):
 
 def _euler(q, order):
     """Euler angles (x, y, z) of q for one +27 order."""
-    i, j, k = EULER_ORDERS.get(order, EULER_ORDERS[0])
+    i, j, k = ROT_ORDERS.get(order, ROT_ORDERS[0])
     m = _matrix(q)
     s = 1.0 if (j - i) % 3 == 1 else -1.0         # +1 for a cyclic order
     angles = [0.0, 0.0, 0.0]
@@ -266,7 +266,7 @@ def rest_input(mode, axis, rest, offset_cm, order=0, frame=None, scale=None):
     rotation (w, x, y, z), `offset_cm` its rest offset from the parent; `order` and
     `frame` as for rotation(); `scale` its rest scale (default 1).
     """
-    value = read_mode_value(mode)
+    value = input_type_value(mode)
     q = read_quantity(value)
     if q == 'Scale':
         return float(scale[axis]) if scale is not None else 1.0
@@ -327,28 +327,28 @@ def _target_rules():
     }
 
 
-def target_rule(transform_type, additive):
+def target_rule(transform_element, base_pose):
     """Lines saying how the engine applies an entry of this TransformElement, with
-    AttrFlags bit0 = `additive`.  -> [(text, measured), ...]"""
-    rules = _target_rules().get(int(transform_type))
+    AttrFlags bit0 = `base_pose`.  -> [(text, measured), ...]"""
+    rules = _target_rules().get(int(transform_element))
     if rules is None:
         return [(T("core.rule.unknown_target"), False)]
-    return list(rules.get(None) or rules[bool(additive)])
+    return list(rules.get(None) or rules[bool(base_pose)])
 
 
-def read_rule(read_mode, euler_order=0, frame_is_identity=True):
+def read_rule(input_type, rot_order=0, frame_is_identity=True):
     """Lines saying what the engine reads off the source bone.  -> [(text, measured)]"""
-    v = read_mode_value(read_mode)
+    v = input_type_value(input_type)
     base = {
         0: T("core.rule.read_0"),
-        1: T("core.rule.read_1", EULER_ORDER_NAMES.get(int(euler_order), 'XYZ')),
+        1: T("core.rule.read_1", ROT_ORDER_NAMES.get(int(rot_order), 'XYZ')),
         2: T("core.rule.read_2"),
         3: T("core.rule.read_3"),
         4: T("core.rule.read_4"),
         5: T("core.rule.read_5"),
     }.get(v)
     if base is None:
-        return [(T("core.rule.read_unknown", read_mode), False)]
+        return [(T("core.rule.read_unknown", input_type), False)]
     lines = [(base, True)]
     if v in (3, 4, 5) and not frame_is_identity:
         lines.append((T("core.rule.read_frame"), True))

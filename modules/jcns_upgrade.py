@@ -14,9 +14,9 @@ v29 -> v102 differences, measured on the shipped pairs of the same file:
                   The old +2 byte becomes UnknownByte72; the +4 pair and the +73 byte
                   (the joint-group count) move into the tail.  A non-bone target is
                   named by raw hash (index 0xFFFFFFFF).
-  Skin / Aim / RotExpression  hold the same data; v102 stores hash-table indices where
+  Multi / Aim / RotExpression  hold the same data; v102 stores hash-table indices where
                   v29 stores raw hashes, and the file constant shows up in
-                  the Skin tail, the Aim bytes and the source-info u32.
+                  the Multi tail, the Aim bytes and the source-info u32.
   ReadJointTable  new in v36; derived from the skeleton (jcns_sections).
 """
 
@@ -40,11 +40,11 @@ class UpgradeError(ValueError):
 
 UPGRADE_STEPS = {(29, 102)}
 
-# v102 repeats one byte in the Skin tail, the Skin source-info u32 and the Aim bytes; it is 5 in
+# v102 repeats one byte in the Multi tail, the Multi source-info u32 and the Aim bytes; it is 5 in
 # every shipped file.
 FILE_CONSTANT = 5
 
-_EMPTY_SECTIONS = ('aim_constraints', 'object_settings', 'skin_constraints', 'skin_source_infos',
+_EMPTY_SECTIONS = ('aim_constraints', 'object_settings', 'multi_constraints', 'multi_source_infos',
                    'read_joint_table', 'cone_inputs', 'rot_expressions', 'material_cns')
 
 
@@ -105,15 +105,15 @@ def _upgrade_29_to_102(p, parent, names):
                                  'raw_body': m['raw_body']})
 
     problems = []
-    if p.skin_constraints:
-        records, meta = X.skin_editable(p)
+    if p.multi_constraints:
+        records, meta = X.multi_editable(p)
         meta['constant'] = const
         for r in records:
             r['tail'] = bytes(r['tail'])
         aim_joints = [a['joint'] for a in X.aim_editable(p)]
         table, problems = _read_joint_table(records, aim_joints, parent, names)
         meta['read_joint_table'] = table
-        out.skin_constraints, out.skin_source_infos = X.skin_parser_form(records, meta)
+        out.multi_constraints, out.multi_source_infos = X.multi_parser_form(records, meta)
         out.read_joint_table = table
 
     if p.aim_constraints:
@@ -134,7 +134,7 @@ def _upgrade_29_to_102(p, parent, names):
 
 def _hash_order(f):
     """The hash list in the order the game's own tool fills it: each Range target then its
-    sources, RotExpression source then joint, each Skin object then its sources, each Aim
+    sources, RotExpression source then joint, each Multi object then its sources, each Aim
     joint, up joint, target, and the Material joints last."""
     order = []
 
@@ -150,8 +150,8 @@ def _hash_order(f):
     for r in f.rot_expressions:
         add(r['SourceJointHash'])
         add(r['JointHash'])
-    infos = f.skin_source_infos
-    for sk in f.skin_constraints:
+    infos = f.multi_source_infos
+    for sk in f.multi_constraints:
         add(sk['ObjectHash'])
         for s in sk['sources']:
             add(infos[s['SourceRef']]['SourceHash'])
@@ -184,7 +184,7 @@ def _upgrade_constraint(c, const):
     d['Axis_parent'] = d['target_axis'] = c['Axis_pre35']
     d['JointDriverCount'] = len(c['sources'])
     d['UnknownByte72'] = c['UnkByte_Pre35_2']
-    name = TRANSFORM_TYPE_NAMES.get(c['TransformElement'])
+    name = TRANSFORM_ELEMENT_NAMES.get(c['TransformElement'])
     d['AttrFlags'] = jcns_flags.apply_derived_bits(c['UnkByte_Pre35_0'], name)
     # A target that is not a bone (blend shape, material, component property) is named by
     # its raw hash, not a hash-list index.
@@ -204,10 +204,10 @@ def _upgrade_source(s):
     return d
 
 
-TRANSFORM_TYPE_NAMES = {
-    0: 'Translation', 1: 'Rotation', 2: 'Scale', 3: 'BlendShape',
-    4: 'SwingTwist', 5: 'TwistSwing', 6: 'RotationVector', 7: 'Material_Color',
-    8: 'Material_4D', 9: 'Material_3D', 10: 'Material_2D', 11: 'Scalar',
-    12: 'Unknown_12', 13: 'AxisRotation', 14: 'AxisRotation_14',
-    15: 'UnkRotation_15', 16: 'UnkRotation_16',
+TRANSFORM_ELEMENT_NAMES = {
+    0: 'Trans', 1: 'Rot', 2: 'Scale', 3: 'Deform',
+    4: 'RotRPY', 5: 'RotPYR', 6: 'ExpMap', 7: 'Material',
+    8: 'MaterialF4', 9: 'MaterialPosF4', 10: 'MaterialRotF4', 11: 'ComponentProperty',
+    12: 'UserValue', 13: 'Rot2', 14: 'RotRPY2',
+    15: 'RotPYR2', 16: 'ExpMap2',
 }

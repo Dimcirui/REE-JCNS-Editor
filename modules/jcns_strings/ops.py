@@ -71,19 +71,19 @@ STRINGS = {
         "ZH": "在当前 JCNS 文件里新增一条 Skin / Aim / RotExpr 条目",
         "EN": "Add a Skin / Aim / RotExpr entry to the current JCNS file",
     },
-    "ops.desc.skin_source_add": {
+    "ops.desc.multi_source_add": {
         "ZH": "给选中的 Skin 条目加一个驱动",
         "EN": "Add a driver to the selected Skin entry",
     },
-    "ops.desc.skin_source_remove": {
+    "ops.desc.multi_source_remove": {
         "ZH": "删除选中 Skin 条目里当前的驱动",
         "EN": "Delete the current driver of the selected Skin entry",
     },
-    "ops.label.skin_normalize_weights": {
+    "ops.label.multi_normalize_weights": {
         "ZH": "权重归一化",
         "EN": "Normalize Weights",
     },
-    "ops.desc.skin_normalize_weights": {
+    "ops.desc.multi_normalize_weights": {
         "ZH": "按比例缩放选中条目的权重，使总和为 1",
         "EN": "Scale the weights of the selected entry proportionally so they sum to 1",
     },
@@ -119,19 +119,19 @@ STRINGS = {
         "ZH": "在曲线编辑器里打开当前驱动的曲线",
         "EN": "Open the current driver's curve in the Graph Editor",
     },
-    "ops.label.cone_info_add": {
+    "ops.label.cone_driver_add": {
         "ZH": "新增 ConeDriver 输入",
         "EN": "Add ConeDriver Input",
     },
-    "ops.desc.cone_info_add": {
+    "ops.desc.cone_driver_add": {
         "ZH": "给当前约束加一个它读取的锥形",
         "EN": "Add a cone for the current constraint to read",
     },
-    "ops.label.cone_info_remove": {
+    "ops.label.cone_driver_remove": {
         "ZH": "删除 ConeDriver 输入",
         "EN": "Delete ConeDriver Input",
     },
-    "ops.desc.cone_info_remove": {
+    "ops.desc.cone_driver_remove": {
         "ZH": "删除当前约束里选中的锥形",
         "EN": "Delete the selected cone of the current constraint",
     },

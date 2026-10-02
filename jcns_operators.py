@@ -40,17 +40,17 @@ _SCALE_TYPE = ['SCALE_X', 'SCALE_Y', 'SCALE_Z']
 _AXIS_NAME = ['X', 'Y', 'Z', 'W']
 
 _DRIVABLE = {
-    'Translation':     ('location',        ['LOC_X', 'LOC_Y', 'LOC_Z'],     'Translation'),
-    'Rotation':        ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     'Rotation'),
-    'Scale':           ('scale',           ['SCALE_X', 'SCALE_Y', 'SCALE_Z'], 'Scale'),
+    'Trans':   ('location',        ['LOC_X', 'LOC_Y', 'LOC_Z'],     'Translation'),
+    'Rot':     ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     'Rotation'),
+    'Scale':   ('scale',           ['SCALE_X', 'SCALE_Y', 'SCALE_Z'], 'Scale'),
     # The other rotation types drive the same Euler channels; how they compose is
     # jcns_source_read.TARGET_MODES, so a bone carrying one is previewed as a
     # group (see _needs_group).
-    'SwingTwist':      ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     'Rotation'),
-    'TwistSwing':      ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     'Rotation'),
-    'RotationVector':  ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     'Rotation'),
-    'AxisRotation':    ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     'Rotation'),
-    'AxisRotation_14': ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     'Rotation'),
+    'RotRPY':  ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     'Rotation'),
+    'RotPYR':  ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     'Rotation'),
+    'ExpMap':  ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     'Rotation'),
+    'Rot2':    ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     'Rotation'),
+    'RotRPY2': ('rotation_euler',  ['ROT_X', 'ROT_Y', 'ROT_Z'],     'Rotation'),
 }
 
 # What a driver variable reads off a SOURCE bone.  That is set by the source's
@@ -62,6 +62,9 @@ _SOURCE_VARS = {
     'Rotation':    ['ROT_X', 'ROT_Y', 'ROT_Z'],
     'Scale':       ['SCALE_X', 'SCALE_Y', 'SCALE_Z'],
 }
+
+# The pose-bone data path a quantity lives on (the key of _SOURCE_VARS).
+QUANTITY_PATH = {'Translation': 'location', 'Rotation': 'rotation_euler', 'Scale': 'scale'}
 
 
 def _sources_for_driver(cns_props):
@@ -77,15 +80,15 @@ def _sources_for_driver(cns_props):
             'from_start': sp.from_start, 'from_kink': sp.from_kink, 'from_end': sp.from_end,
             'to_start':   sp.to_start,   'to_kink':   sp.to_kink,   'to_end':   sp.to_end,
             # Curve mode byte (bit 1 = three-point); see modules.jcns_mapping.is_two_point.
-            'curve_mode': get_mapping().curve_mode_value(sp),
+            'attr_flags': get_mapping().attr_flags_value(sp),
             # Interpolation byte +28: how each segment runs between its anchors.
             'interp': get_mapping().source_interpolation(sp),
             # +25 InputType, as its byte value: how the source bone is read
             # (modules/jcns_source_read.py).
-            'read_mode': get_mapping().read_mode_value(sp.read_mode),
+            'input_type': get_mapping().input_type_value(sp.input_type),
             # +27 RotOrder and the ref_frame reference frame, both only used by
             # rotation reads (modules/jcns_source_read.py).
-            'euler_order': get_mapping().euler_order_value(sp.euler_order),
+            'rot_order': get_mapping().rot_order_value(sp.rot_order),
             'frame': (sp.ref_frame_w, sp.ref_frame_x, sp.ref_frame_y, sp.ref_frame_z),
             # ComplexMapping keys, which replace the anchors when present.
             'cm': jcns_cm.keys(sp),
@@ -121,7 +124,7 @@ def _no_driver_reason(members, armature_obj=None):
     missing = _missing_sources(members, armature_obj)
     if missing:
         return T("ops.driver.source_missing", T("ui.sep.list").join(missing))
-    if len(p.cone_infos) and not any(sp.source_bone for sp in p.sources):
+    if len(p.cone_drivers) and not any(sp.source_bone for sp in p.sources):
         return T("ops.driver.cone_only")
     return T("ops.driver.none")
 
@@ -258,8 +261,8 @@ def source_rest_input_of(sp):
     rest, off = _rest_transform(arm, sp.source_bone)
     per_cm = get_mapping()._to_driver_units((1.0,), 'Translation')[0]   # metres per cm
     sr = jcns_drivers.jcns_source_read
-    return sr.rest_input(sp.read_mode, axis, rest, tuple(v / per_cm for v in off),
-                         order=sr.euler_order_value(sp.euler_order),
+    return sr.rest_input(sp.input_type, axis, rest, tuple(v / per_cm for v in off),
+                         order=sr.rot_order_value(sp.rot_order),
                          frame=(sp.ref_frame_w, sp.ref_frame_x, sp.ref_frame_y, sp.ref_frame_z),
                          scale=mesh_rest_scale(arm.data.bones[sp.source_bone]))
 
@@ -280,15 +283,15 @@ def channel_sources(armature_obj, root_obj, owner):
     sources = [s for s in _sources_for_driver(owner.jcns_cns_props) if s['bone']]
     later = _written_from(root_obj, owner) if root_obj is not None else set()
     for s in sources:
-        sid = s.get('read_mode')
+        sid = s.get('input_type')
         q = mp.source_quantity(sid)
-        path = _DRIVABLE[q][0]
+        path = QUANTITY_PATH[q]
         axis = min(s.get('axis_idx', 0), 2)
         live = tuple(a for a in range(3) if (s['bone'], path, a) not in later)
         mode = jcns_drivers.jcns_source_read.ROTATION_MODES.get(sid)
         if q == 'Rotation' and mode:
             rest, _off = _rest_transform(armature_obj, s['bone'])
-            s['read'] = ('rot', mode, axis, rest, s['euler_order'], s['frame'], live)
+            s['read'] = ('rot', mode, axis, rest, s['rot_order'], s['frame'], live)
         elif q == 'Translation' and sid == 0:
             rest, off = _rest_transform(armature_obj, s['bone'])
             s['read'] = ('loc', axis, rest, off, live)
@@ -303,7 +306,7 @@ def channel_sources(armature_obj, root_obj, owner):
 
 
 def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
-                  sources, transform_type='Rotation'):
+                  sources, transform_element='Rot'):
     """Install (or replace) the SCRIPTED driver for one channel of one pose bone.
 
     `sources` are the channel_sources dicts of a single constraint; their outputs
@@ -318,9 +321,9 @@ def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
     if pose_bone is None:
         return False, T("ops.driver.no_driven_bone", target_bone_name)
 
-    entry = _DRIVABLE.get(transform_type)
+    entry = _DRIVABLE.get(transform_element)
     if entry is None:
-        return False, T("ops.driver.no_channel", transform_type)
+        return False, T("ops.driver.no_channel", transform_element)
     data_path, _, target_q = entry
 
     usable = [s for s in sources if s.get('bone')]
@@ -337,9 +340,9 @@ def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
     reads = [jcns_drivers.source_read(s) for s in usable]
 
     key = jcns_drivers.channel_id(armature_obj.name, target_bone_name,
-                                  transform_type, _AXIS_NAME[target_axis_idx])
+                                  transform_element, _AXIS_NAME[target_axis_idx])
     jcns_drivers.register_channel(key, maps, reads, post=target_post_factor(
-        armature_obj, target_bone_name, transform_type, target_axis_idx))
+        armature_obj, target_bone_name, transform_element, target_axis_idx))
 
     expr = _install_driver(armature_obj, target_bone_name, data_path, target_axis_idx,
                            key, usable, reads)
@@ -348,7 +351,7 @@ def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
                        "armature" % len(expr))
 
     print("[JCNS DRIVER] [%s] %d source(s) %s -> %s[%d]  expr=%s" % (
-        transform_type, len(usable), ", ".join(s['bone'] for s in usable),
+        transform_element, len(usable), ", ".join(s['bone'] for s in usable),
         target_bone_name, target_axis_idx, expr))
     return True, ""
 
@@ -396,7 +399,7 @@ def _install_driver(armature_obj, bone_name, data_path, index, key, sources, rea
                 add_var(s['bone'], _LOC_TYPE[a])
             continue
         add_var(s['bone'], _SOURCE_VARS[get_mapping().source_quantity(
-            s.get('read_mode'))][min(s.get('axis_idx', 0), 2)])
+            s.get('input_type'))][min(s.get('axis_idx', 0), 2)])
 
     expr = 'jcns_ch("%s"%s)' % (key, "".join("," + n for n in names))
     drv.expression = expr
@@ -416,7 +419,7 @@ def translation_channels(root_obj, bone):
     from . import AXIS_TO_INT, group_constraints_by_channel
     return {AXIS_TO_INT[axis]: members
             for (b, transform, axis), members in group_constraints_by_channel(root_obj).items()
-            if b == bone and transform == 'Translation' and axis != 'W'
+            if b == bone and transform == 'Trans' and axis != 'W'
             and _previewable(members, _armature_of(root_obj))}
 
 
@@ -464,7 +467,7 @@ def _apply_translation_bone(armature_obj, root_obj, bone, chans):
 
 def _replaces(members):
     """The live (last) entry of a channel writes with AttrFlags bit0 = 0."""
-    return not members[-1].jcns_cns_props.additive
+    return not members[-1].jcns_cns_props.base_pose
 
 
 def _target_mode(members):
@@ -472,7 +475,7 @@ def _target_mode(members):
     (jcns_source_read.TARGET_MODES), from its TransformElement."""
     from . import jcns_drivers
     from .jcns_exporter import _transform_int
-    tt = _transform_int(members[-1].jcns_cns_props.transform_type)
+    tt = _transform_int(members[-1].jcns_cns_props.transform_element)
     return jcns_drivers.jcns_source_read.TARGET_MODES.get(tt, 'euler')
 
 
@@ -649,7 +652,7 @@ def refresh_channel_values(obj):
     from . import jcns_drivers
 
     p = getattr(obj, 'jcns_cns_props', None)
-    if p is None or not p.is_jcns_constraint or p.constraint_type != 'Ranges':
+    if p is None or not p.is_jcns_constraint or p.constraint_type != 'Outputs':
         return False
     if not p.preview_on:
         return False
@@ -660,7 +663,7 @@ def refresh_channel_values(obj):
     if not members:
         return False
 
-    entry = _DRIVABLE.get(p.transform_type)
+    entry = _DRIVABLE.get(p.transform_element)
     if entry is None:
         return False
     target_q = entry[2]
@@ -676,7 +679,7 @@ def refresh_channel_values(obj):
         return False
 
     key = jcns_drivers.channel_id(rp.target_armature.name, p.target_bone,
-                                  p.transform_type, p.target_axis)
+                                  p.transform_element, p.target_axis)
     reads = [jcns_drivers.source_read(s) for s in sources]
     if reads != jcns_drivers.channel_reads(key):
         # The driver's variables no longer fit (a source's bone, axis or +25, or
@@ -686,7 +689,7 @@ def refresh_channel_values(obj):
     from . import AXIS_TO_INT
     jcns_drivers.register_channel(
         key, [jcns_drivers.source_map(s, target_q) for s in sources], reads,
-        post=target_post_factor(rp.target_armature, p.target_bone, p.transform_type,
+        post=target_post_factor(rp.target_armature, p.target_bone, p.transform_element,
                                 AXIS_TO_INT.get(p.target_axis, 0)))
     rp.target_armature.update_tag()
     return True
@@ -721,7 +724,7 @@ def refresh_applied_driver(obj):
         return bool(done)
 
     p = getattr(obj, 'jcns_cns_props', None)
-    if p is None or not p.is_jcns_constraint or p.constraint_type != 'Ranges':
+    if p is None or not p.is_jcns_constraint or p.constraint_type != 'Outputs':
         return False
     if not p.preview_on:
         return False
@@ -795,7 +798,7 @@ def _apply_channel(armature_obj, root_props, members):
 
     ok, err = _apply_driver(
         armature_obj, bone, AXIS_TO_INT.get(axis, 0), sources,
-        transform_type=transform,
+        transform_element=transform,
     )
     if ok:
         for empty in members:
@@ -940,9 +943,9 @@ def new_constraint_empty(root_obj):
 
     p = obj.jcns_cns_props
     p.is_jcns_constraint = True
-    p.constraint_type = 'Ranges'
+    p.constraint_type = 'Outputs'
     p.target_bone = ''
-    p.transform_type = 'Rotation'
+    p.transform_element = 'Rot'
     sp = p.sources.add()          # every new constraint starts with one source
     sp.source_bone = 'BoneName'
     return obj
@@ -958,7 +961,7 @@ class JCNS_OT_AddConstraint(Operator):
     def poll(cls, context):
         from . import get_export_root
         obj, rp = get_export_root(context)
-        return obj is not None and _caps_for(rp, 'Ranges').can_add
+        return obj is not None and _caps_for(rp, 'Outputs').can_add
 
     def execute(self, context):
         from . import get_export_root
@@ -1005,7 +1008,7 @@ class JCNS_OT_DeleteConstraint(Operator):
         bpy.data.objects.remove(cns_obj, do_unlink=True)
 
         if root_obj:
-            if kind in ('Skin', 'Aim', 'RotExpression'):
+            if kind in ('Multi', 'Aim', 'RotExpression'):
                 _renumber_sections(root_obj, kind)
             else:
                 _renumber_in_order(get_constraint_empties(root_obj))
@@ -1105,7 +1108,7 @@ class JCNS_OT_AddSource(Operator):
     def poll(cls, context):
         from . import get_jcns_constraint
         obj, props = get_jcns_constraint(context)
-        return obj is not None and props.constraint_type == 'Ranges'
+        return obj is not None and props.constraint_type == 'Outputs'
 
     def execute(self, context):
         from . import get_jcns_constraint, constraint_name_from_props
@@ -1115,8 +1118,8 @@ class JCNS_OT_AddSource(Operator):
         if len(p.sources) > 1:
             prev = p.sources[len(p.sources) - 2]
             for attr in ('source_axis', 'from_start', 'from_kink', 'from_end',
-                         'to_start', 'to_kink', 'to_end', 'three_point', 'curve_mode_extra', 'interpolation',
-                         'read_mode', 'ref_frame_w'):
+                         'to_start', 'to_kink', 'to_end', 'mid_point', 'attr_flags_other', 'interpolation',
+                         'input_type', 'ref_frame_w'):
                 setattr(sp, attr, getattr(prev, attr))
         p.active_source_index = len(p.sources) - 1
         idx = 0
@@ -1171,7 +1174,7 @@ class JCNS_OT_SwapMapToEnds(Operator):
     def poll(cls, context):
         from . import get_jcns_constraint
         obj, props = get_jcns_constraint(context)
-        return (obj is not None and props.constraint_type == 'Ranges'
+        return (obj is not None and props.constraint_type == 'Outputs'
                 and len(props.sources) > 0)
 
     def execute(self, context):
@@ -1210,7 +1213,7 @@ class JCNS_OT_MirrorConstraints(Operator):
     def poll(cls, context):
         from . import get_jcns_constraint
         obj, props = get_jcns_constraint(context)
-        return obj is not None and props.constraint_type == 'Ranges'
+        return obj is not None and props.constraint_type == 'Outputs'
 
     def draw(self, context):
         layout = self.layout
@@ -1245,7 +1248,7 @@ class JCNS_OT_MirrorConstraints(Operator):
         targets = [o for o in context.selected_objects
                    if getattr(o, 'jcns_cns_props', None)
                    and o.jcns_cns_props.is_jcns_constraint
-                   and o.jcns_cns_props.constraint_type == 'Ranges']
+                   and o.jcns_cns_props.constraint_type == 'Outputs']
         if active not in targets:
             targets.append(active)
 
@@ -1281,7 +1284,7 @@ class JCNS_OT_MirrorConstraints(Operator):
         for e in get_constraint_empties(root_obj):
             p = e.jcns_cns_props
             existing.setdefault(mirror.constraint_signature(
-                p.target_bone, p.transform_type, p.target_axis,
+                p.target_bone, p.transform_element, p.target_axis,
                 [(s.source_bone, s.source_axis) for s in p.sources]), e)
 
         coll = next(iter(root_obj.users_collection), None)
@@ -1317,7 +1320,7 @@ class JCNS_OT_MirrorConstraints(Operator):
                     src_sigma = None
                 vals, i_s, o_s = mirror.mirror_source(
                     sp, sp.source_axis, p.target_axis, flags_byte(p),
-                    src_sigma, tgt_sigma, p.transform_type,
+                    src_sigma, tgt_sigma, p.transform_element,
                     mirror_in=self.mirror_source, mirror_out=self.mirror_target)
                 if vals is None:
                     failed = T("ops.mirror.no_sign", sp.source_bone, sp.source_axis)
@@ -1337,7 +1340,7 @@ class JCNS_OT_MirrorConstraints(Operator):
                 continue
 
             sig = mirror.constraint_signature(
-                new_tgt, p.transform_type, p.target_axis,
+                new_tgt, p.transform_element, p.target_axis,
                 [(s[0], s[1]) for s in new_sources])
 
             dst = existing.get(sig)
@@ -1357,11 +1360,11 @@ class JCNS_OT_MirrorConstraints(Operator):
 
             q = dst.jcns_cns_props
             q.is_jcns_constraint = True
-            q.constraint_type = 'Ranges'
+            q.constraint_type = 'Outputs'
             q.target_bone = new_tgt
             q.target_axis = p.target_axis
-            q.transform_type = p.transform_type
-            q.additive, q.flags_other = p.additive, p.flags_other
+            q.transform_element = p.transform_element
+            q.base_pose, q.attr_flags_other = p.base_pose, p.attr_flags_other
             q.target_property, q.property_hash = p.target_property, p.property_hash
             for old in q.sources:
                 jcns_cm.remove(old)
@@ -1374,8 +1377,8 @@ class JCNS_OT_MirrorConstraints(Operator):
                     if not k.startswith('_'):
                         setattr(ns, k, v)
                 for attr in ('ref_frame_x', 'ref_frame_y', 'ref_frame_z',
-                             'ref_frame_w', 'three_point', 'curve_mode_extra', 'read_mode',
-                             'euler_order', 'unknown_uint16_22', 'interpolation', 'complex_mapping_flag'):
+                             'ref_frame_w', 'mid_point', 'attr_flags_other', 'input_type',
+                             'rot_order', 'unknown_uint16_22', 'interpolation', 'curve_type'):
                     setattr(ns, attr, getattr(orig, attr))
                 if '_frame' in vals:
                     ns.ref_frame_x, ns.ref_frame_y, ns.ref_frame_z = vals['_frame']
@@ -1413,7 +1416,7 @@ class JCNS_OT_SortAnchors(Operator):
     def poll(cls, context):
         from . import get_jcns_constraint
         obj, props = get_jcns_constraint(context)
-        return (obj is not None and props.constraint_type == 'Ranges'
+        return (obj is not None and props.constraint_type == 'Outputs'
                 and len(props.sources) > 0)
 
     def execute(self, context):
@@ -1438,7 +1441,7 @@ class JCNS_OT_SortAnchors(Operator):
 
 
 # ---------------------------------------------------------------------------
-# Operators: non-range sections (SkinConstraint / Aim / RotExpression)
+# Operators: non-range sections (MultiConstraint / Aim / RotExpression)
 # ---------------------------------------------------------------------------
 
 def _rebuild_root(context):
@@ -1460,7 +1463,7 @@ class JCNS_OT_AddSectionEntry(Operator):
     bl_description = T("ops.desc.add_section_entry")
     bl_options = {'REGISTER', 'UNDO'}
 
-    kind: EnumProperty(items=[('Skin', "SkinConstraint", ""), ('Aim', "Aim", ""),
+    kind: EnumProperty(items=[('Multi', "MultiConstraint", ""), ('Aim', "Aim", ""),
                               ('RotExpression', "RotExpression", "")])
 
     @classmethod
@@ -1479,7 +1482,7 @@ class JCNS_OT_AddSectionEntry(Operator):
             self.report({'ERROR'}, caps.reason('add') or T("ops.section.cannot_add"))
             return {'CANCELLED'}
         idx = len(section_empties(root, self.kind))
-        display = {'Skin': 'SINGLE_ARROW', 'Aim': 'SPHERE', 'RotExpression': 'CIRCLE'}[self.kind]
+        display = {'Multi': 'SINGLE_ARROW', 'Aim': 'SPHERE', 'RotExpression': 'CIRCLE'}[self.kind]
         obj = bpy.data.objects.new("__jcns_new_section", None)
         obj.empty_display_type = display
         obj.empty_display_size = 0.03
@@ -1488,14 +1491,14 @@ class JCNS_OT_AddSectionEntry(Operator):
         p = obj.jcns_cns_props
         p.is_jcns_constraint = True
         p.constraint_type = self.kind
-        if self.kind == 'Skin':
-            w = p.skin_sources.add()
+        if self.kind == 'Multi':
+            w = p.multi_sources.add()
             w.weight = 1.0
             from .modules_shim import ensure_path
             ensure_path()
             import jcns_sections
-            p.skin_tail = tuple(jcns_sections.skin_default_tail(
-                [{'tail': tuple(o.jcns_cns_props.skin_tail)} for o in section_empties(root, 'Skin') if o is not obj]))
+            p.multi_tail = tuple(jcns_sections.multi_default_tail(
+                [{'tail': tuple(o.jcns_cns_props.multi_tail)} for o in section_empties(root, 'Multi') if o is not obj]))
         obj.name = section_empty_name(self.kind, idx, p)
         for o in context.selected_objects:
             o.select_set(False)
@@ -1513,58 +1516,58 @@ def _active_section(context, kind):
     return obj, p
 
 
-class JCNS_OT_SkinSourceAdd(Operator):
-    bl_idname = "jcns.skin_source_add"
+class JCNS_OT_MultiSourceAdd(Operator):
+    bl_idname = "jcns.multi_source_add"
     bl_label  = T("ops.label.add_source")
-    bl_description = T("ops.desc.skin_source_add")
+    bl_description = T("ops.desc.multi_source_add")
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context):
-        return _active_section(context, 'Skin')[0] is not None
+        return _active_section(context, 'Multi')[0] is not None
 
     def execute(self, context):
-        _, p = _active_section(context, 'Skin')
-        w = p.skin_sources.add()
+        _, p = _active_section(context, 'Multi')
+        w = p.multi_sources.add()
         w.weight = 0.0
-        p.active_skin_source_index = len(p.skin_sources) - 1
+        p.active_multi_source_index = len(p.multi_sources) - 1
         return {'FINISHED'}
 
 
-class JCNS_OT_SkinSourceRemove(Operator):
-    bl_idname = "jcns.skin_source_remove"
+class JCNS_OT_MultiSourceRemove(Operator):
+    bl_idname = "jcns.multi_source_remove"
     bl_label  = T("ops.label.remove_source")
-    bl_description = T("ops.desc.skin_source_remove")
+    bl_description = T("ops.desc.multi_source_remove")
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context):
-        obj, p = _active_section(context, 'Skin')
-        return obj is not None and len(p.skin_sources) > 0
+        obj, p = _active_section(context, 'Multi')
+        return obj is not None and len(p.multi_sources) > 0
 
     def execute(self, context):
-        _, p = _active_section(context, 'Skin')
-        i = min(p.active_skin_source_index, len(p.skin_sources) - 1)
-        p.skin_sources.remove(i)
-        p.active_skin_source_index = max(0, i - 1)
+        _, p = _active_section(context, 'Multi')
+        i = min(p.active_multi_source_index, len(p.multi_sources) - 1)
+        p.multi_sources.remove(i)
+        p.active_multi_source_index = max(0, i - 1)
         return {'FINISHED'}
 
 
-class JCNS_OT_SkinNormalizeWeights(Operator):
-    bl_idname = "jcns.skin_normalize_weights"
-    bl_label  = T("ops.label.skin_normalize_weights")
-    bl_description = T("ops.desc.skin_normalize_weights")
+class JCNS_OT_MultiNormalizeWeights(Operator):
+    bl_idname = "jcns.multi_normalize_weights"
+    bl_label  = T("ops.label.multi_normalize_weights")
+    bl_description = T("ops.desc.multi_normalize_weights")
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context):
-        obj, p = _active_section(context, 'Skin')
-        return obj is not None and sum(w.weight for w in p.skin_sources) > 0
+        obj, p = _active_section(context, 'Multi')
+        return obj is not None and sum(w.weight for w in p.multi_sources) > 0
 
     def execute(self, context):
-        _, p = _active_section(context, 'Skin')
-        total = sum(w.weight for w in p.skin_sources)
-        for w in p.skin_sources:
+        _, p = _active_section(context, 'Multi')
+        total = sum(w.weight for w in p.multi_sources)
+        for w in p.multi_sources:
             w.weight /= total
         return {'FINISHED'}
 
@@ -1572,7 +1575,7 @@ class JCNS_OT_SkinNormalizeWeights(Operator):
 def _active_source_props(context):
     from . import get_jcns_constraint
     obj, p = get_jcns_constraint(context)
-    if obj is None or p.constraint_type not in ('Ranges', '') or not len(p.sources):
+    if obj is None or p.constraint_type not in ('Outputs', '') or not len(p.sources):
         return None
     return p.sources[min(p.active_source_index, len(p.sources) - 1)]
 
@@ -1601,9 +1604,9 @@ class JCNS_OT_CMCreate(Operator):
         from .modules_shim import get_mapping
         obj, sp = _cm_source(context)
         m = get_mapping()
-        keys = jcns_cm.jcns_complex.from_three_point(
+        keys = jcns_cm.jcns_complex.from_mid_point(
             sp.from_start, sp.from_kink, sp.from_end, sp.to_start, sp.to_kink, sp.to_end,
-            two_point=m.is_two_point(m.curve_mode_value(sp)), interp=m.source_interpolation(sp))
+            two_point=m.is_two_point(m.attr_flags_value(sp)), interp=m.source_interpolation(sp))
         sp.cm_cache.clear()
         jcns_cm.set_keys(sp, keys)
         # Shipped keyframed sources carry all-zero anchors.
@@ -1694,48 +1697,48 @@ def _active_cone_constraint(context):
     """Constraint props of the active Ranges constraint on a rebuilt root, or None."""
     from . import get_jcns_constraint
     obj, p = get_jcns_constraint(context)
-    if obj is None or p.constraint_type != 'Ranges' or _rebuild_root(context)[0] is None:
+    if obj is None or p.constraint_type != 'Outputs' or _rebuild_root(context)[0] is None:
         return None
     return p
 
 
-class JCNS_OT_ConeInfoAdd(Operator):
-    bl_idname = "jcns.cone_info_add"
-    bl_label  = T("ops.label.cone_info_add")
-    bl_description = T("ops.desc.cone_info_add")
+class JCNS_OT_ConeDriverAdd(Operator):
+    bl_idname = "jcns.cone_driver_add"
+    bl_label  = T("ops.label.cone_driver_add")
+    bl_description = T("ops.desc.cone_driver_add")
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context):
         p = _active_cone_constraint(context)
-        return p is not None and bool(_rebuild_root(context)[1].cone_drivers_json)
+        return p is not None and bool(_rebuild_root(context)[1].cone_inputs_json)
 
     def execute(self, context):
         p = _active_cone_constraint(context)
-        k = p.cone_infos.add()
-        if len(p.cone_infos) > 1:
-            prev = p.cone_infos[len(p.cone_infos) - 2]
-            k.cone_index, k.rest = prev.cone_index, tuple(prev.rest)
-        p.active_cone_info_index = len(p.cone_infos) - 1
+        k = p.cone_drivers.add()
+        if len(p.cone_drivers) > 1:
+            prev = p.cone_drivers[len(p.cone_drivers) - 2]
+            k.cone_input_index, k.rest = prev.cone_input_index, tuple(prev.rest)
+        p.active_cone_driver_index = len(p.cone_drivers) - 1
         return {'FINISHED'}
 
 
-class JCNS_OT_ConeInfoRemove(Operator):
-    bl_idname = "jcns.cone_info_remove"
-    bl_label  = T("ops.label.cone_info_remove")
-    bl_description = T("ops.desc.cone_info_remove")
+class JCNS_OT_ConeDriverRemove(Operator):
+    bl_idname = "jcns.cone_driver_remove"
+    bl_label  = T("ops.label.cone_driver_remove")
+    bl_description = T("ops.desc.cone_driver_remove")
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context):
         p = _active_cone_constraint(context)
-        return p is not None and len(p.cone_infos) > 0
+        return p is not None and len(p.cone_drivers) > 0
 
     def execute(self, context):
         p = _active_cone_constraint(context)
-        i = min(p.active_cone_info_index, len(p.cone_infos) - 1)
-        p.cone_infos.remove(i)
-        p.active_cone_info_index = max(0, i - 1)
+        i = min(p.active_cone_driver_index, len(p.cone_drivers) - 1)
+        p.cone_drivers.remove(i)
+        p.active_cone_driver_index = max(0, i - 1)
         return {'FINISHED'}
 
 
@@ -1753,15 +1756,15 @@ _classes = [
     JCNS_OT_SortAnchors,
     JCNS_OT_MirrorConstraints,
     JCNS_OT_AddSectionEntry,
-    JCNS_OT_SkinSourceAdd,
-    JCNS_OT_SkinSourceRemove,
-    JCNS_OT_SkinNormalizeWeights,
+    JCNS_OT_MultiSourceAdd,
+    JCNS_OT_MultiSourceRemove,
+    JCNS_OT_MultiNormalizeWeights,
     JCNS_OT_CMCreate,
     JCNS_OT_CMRemove,
     JCNS_OT_CMNormalize,
     JCNS_OT_CMEdit,
-    JCNS_OT_ConeInfoAdd,
-    JCNS_OT_ConeInfoRemove,
+    JCNS_OT_ConeDriverAdd,
+    JCNS_OT_ConeDriverRemove,
 ]
 
 

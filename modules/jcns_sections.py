@@ -1,5 +1,5 @@
 """
-Editable forms of the non-range sections (SkinConstraint, Aim, RotExpression)
+Editable forms of the non-range sections (MultiConstraint, Aim, RotExpression)
 and the rules that regenerate their derived data.  No bpy import.
 
 Editable form = what a person edits (bones as hashes, weights, vectors).
@@ -7,22 +7,22 @@ Parser form   = what JCNSParser produces and JCNSWriter consumes.
 
 Derived data:
 
-  SkinConstraint
+  MultiConstraint
     * the source-info table is the distinct source bones in first-use order,
       with no repeated hash
     * the record's first tail byte and the source-info u32 are one per-file
       constant, usually 5
     * the other two tail bytes vary per record from v35 on, so each record has
       its own; a new record starts from the file's most common pair
-    * ReadJointTable lists the joints whose world matrices the Skin and Aim
-      sections read: every skin source, and the parent of every joint they
+    * ReadJointTable lists the joints whose world matrices the Multi and Aim
+      sections read: every multi source, and the parent of every joint they
       write (a result computed in world space is brought back into its parent's
       space).  Written joints are left out, and so is any joint that is an
       ancestor of another listed one.  The list is sorted by hierarchy depth;
       order within a depth does not matter, since no two entries are related.
       Aim targets and up joints are not in it.  Deriving it needs the skeleton.
       A file without a table (player and NPC rigs) keeps none.
-  Skin (measured, round 12): the target's position is the linear blend of its sources'
+  Multi (measured, round 12): the target's position is the linear blend of its sources'
     skinning matrices with the weights divided by their sum; the rotation is the
     normalized sum of the weighted source rotations, each flipped to the running sum's
     hemisphere.  A file's section table has to list the section (2) for it to run.
@@ -85,17 +85,17 @@ def cone_inputs_from_json(text):
     return out
 
 
-# ── SkinConstraint ─────────────────────────────────────────────────────────
+# ── MultiConstraint ─────────────────────────────────────────────────────────
 
-def skin_editable(parser):
+def multi_editable(parser):
     """(records, meta) from a parsed file.
 
     records: [{'object': hash, 'tail': 2 bytes, 'sources': [{'hash': h, 'weight': w}, ...]}, ...]
     meta:    {'constant': int, 'read_joint_table': [hash, ...]}
     """
-    infos = parser.skin_source_infos
+    infos = parser.multi_source_infos
     records = []
-    for sk in parser.skin_constraints:
+    for sk in parser.multi_constraints:
         srcs = []
         for s in sk['sources']:
             ref = s['SourceRef']
@@ -103,18 +103,18 @@ def skin_editable(parser):
             h = infos[ref]['SourceHash'] if parser.version >= 29 else ref
             srcs.append({'hash': h, 'weight': s['Weight']})
         records.append({'object': sk['ObjectHash'], 'tail': bytes(sk['Tail'][1:3]), 'sources': srcs})
-    constant = parser.skin_constraints[0]['Tail'][0] if parser.skin_constraints else 5
+    constant = parser.multi_constraints[0]['Tail'][0] if parser.multi_constraints else 5
     return records, {'constant': constant, 'read_joint_table': list(parser.read_joint_table)}
 
 
-def skin_default_tail(records):
+def multi_default_tail(records):
     """Tail bytes for a new record: the file's most common, else zero."""
     tails = [bytes(r['tail']) for r in records]
     return max(set(tails), key=tails.count) if tails else bytes(2)
 
 
-def skin_parser_form(records, meta):
-    """(skin_constraints, skin_source_infos) for JCNSWriter (v35+ layout).
+def multi_parser_form(records, meta):
+    """(multi_constraints, multi_source_infos) for JCNSWriter (v35+ layout).
 
     Hash-list indices are placeholders: the writer remaps every one of them
     from the hash it stands for.
@@ -127,26 +127,26 @@ def skin_parser_form(records, meta):
                 index[s['hash']] = len(order)
                 order.append(s['hash'])
     const = meta.get('constant', 5) & 0xFF
-    skins = [{
+    multis = [{
         'ObjectHash': r['object'], 'ObjectHashIndex': 0,
         'Tail': bytes([const]) + bytes(r['tail']),
         'SourceCount': len(r['sources']),
         'sources': [{'SourceRef': index[s['hash']], 'Weight': float(s['weight'])} for s in r['sources']],
     } for r in records]
     infos = [{'SourceHash': h, 'SourceHashIndex': 0, 'UnknownUInt32': const} for h in order]
-    return skins, infos
+    return multis, infos
 
 
 def read_joint_signature(records, aim_joints):
-    """The structure a ReadJointTable depends on: skin objects and their
+    """The structure a ReadJointTable depends on: multi objects and their
     source bones in order, and the Aim joints — everything except weights and
     the Aim's own settings."""
-    return {'skin': [[r['object'], [s['hash'] for s in r['sources']]] for r in records],
+    return {'multi': [[r['object'], [s['hash'] for s in r['sources']]] for r in records],
             'aim': list(aim_joints)}
 
 
 def derive_read_joint_table(records, aim_joints, parent):
-    """(table, missing) from the Skin records, the Aim joints and the skeleton.
+    """(table, missing) from the Multi records, the Aim joints and the skeleton.
 
     `parent` maps a joint hash to its parent's hash (None for a root).  Joints
     the skeleton does not know are returned in `missing`, and the table is then
@@ -203,7 +203,7 @@ def resolve_read_joint_table(records, aim_joints, meta, locked, parent=None, nam
     return table, []
 
 
-def skin_weight_warnings(records, names=None):
+def multi_weight_warnings(records, names=None):
     """Records whose weights do not sum to 1.  Shipped records can sum to 0.9,
     so this warns rather than refuses."""
     out = []
@@ -211,7 +211,7 @@ def skin_weight_warnings(records, names=None):
         w = sum(s['weight'] for s in r['sources'])
         if r['sources'] and abs(w - 1.0) > 1e-3:
             label = (names or {}).get(r['object'], f"0x{r['object']:08X}")
-            out.append(T("core.sections.skin_weight_sum", i, label, w))
+            out.append(T("core.sections.multi_weight_sum", i, label, w))
     return out
 
 
@@ -230,7 +230,7 @@ def aim_editable(parser):
             'target': a['TargetHash'],
             'influence': struct.unpack_from('<f', a['target_body'], 0)[0],
             'vectors': vecs,
-            'rotation_type': body[56],
+            'world_up_type': body[56],
             'bytes': tuple(body[57:60]),
         })
     return out
@@ -242,7 +242,7 @@ def aim_parser_form(records):
         body = bytearray(72)
         for k, v in enumerate(r['vectors']):
             struct.pack_into('<3f', body, 8 + 12 * k, *v)
-        body[56] = r['rotation_type'] & 0xFF
+        body[56] = r['world_up_type'] & 0xFF
         body[57:60] = bytes(b & 0xFF for b in r['bytes'])
         up = r.get('up')
         out.append({

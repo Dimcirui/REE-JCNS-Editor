@@ -70,8 +70,8 @@ def _build_stub_parser(root_props):
     parser.is_stub = True
     parser.aim_constraints    = []
     parser.object_settings    = []
-    parser.skin_constraints   = []
-    parser.skin_source_infos  = []
+    parser.multi_constraints   = []
+    parser.multi_source_infos  = []
     parser.read_joint_table    = []
     parser.cone_inputs       = []
     parser.rot_expressions    = []
@@ -93,14 +93,14 @@ def skeleton_of(arm):
 
 def _sync_sections_to_parser(root_obj, root_props, parser):
     """
-    Rebuild parser.skin_* / aim_constraints / rot_expressions / cone_inputs (and,
+    Rebuild parser.multi_* / aim_constraints / rot_expressions / cone_inputs (and,
     for the stub, object_settings) from Blender.  Returns refusals; empty == OK.
 
     Runs only for sections_cached roots in rebuild mode: in-place versions never
     re-emit these sections.
     """
     import json
-    from . import section_empties, get_constraint_empties, AIM_TYPE_TO_INT
+    from . import section_empties, get_constraint_empties, WORLD_UP_TYPE_TO_INT
     _ensure_modules_path()
     import jcns_sections as X
 
@@ -111,9 +111,9 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
         return _name_to_hash(name.strip())
 
     records = [{'object': H(o.jcns_cns_props.target_bone),
-                'tail': bytes(o.jcns_cns_props.skin_tail),
-                'sources': [{'hash': H(w.bone), 'weight': w.weight} for w in o.jcns_cns_props.skin_sources]}
-               for o in section_empties(root_obj, 'Skin')]
+                'tail': bytes(o.jcns_cns_props.multi_tail),
+                'sources': [{'hash': H(w.bone), 'weight': w.weight} for w in o.jcns_cns_props.multi_sources]}
+               for o in section_empties(root_obj, 'Multi')]
     meta = {'constant': root_props.file_constant,
             'read_joint_table': [it.hash & 0xFFFFFFFF for it in root_props.read_joint_table]}
     locked = json.loads(root_props.read_joint_signature_json) if root_props.read_joint_signature_json else []
@@ -124,9 +124,9 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
                                                  pending=root_props.read_table_pending)
     if problems:
         return problems
-    for w in X.skin_weight_warnings(records):
+    for w in X.multi_weight_warnings(records):
         print('[JCNS EXPORT] warning: ' + w)
-    parser.skin_constraints, parser.skin_source_infos = X.skin_parser_form(records, meta)
+    parser.multi_constraints, parser.multi_source_infos = X.multi_parser_form(records, meta)
     if table != meta['read_joint_table']:
         print('[JCNS EXPORT] ReadJointTable re-derived from the armature: %d -> %d joint(s)'
               % (len(meta['read_joint_table']), len(table)))
@@ -140,7 +140,7 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
             'up': H(p.aim_up_bone) if p.aim_up_bone.strip() else None,
             'influence': p.aim_influence,
             'vectors': [tuple(p.aim_offset), tuple(p.aim_axis), tuple(p.aim_up_axis), tuple(p.aim_up_dir)],
-            'rotation_type': AIM_TYPE_TO_INT[p.aim_type], 'bytes': tuple(p.aim_bytes),
+            'world_up_type': WORLD_UP_TYPE_TO_INT[p.world_up_type], 'bytes': tuple(p.aim_bytes),
         })
     parser.aim_constraints = X.aim_parser_form(aims)
 
@@ -153,15 +153,15 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
 
     # ConeDrivers are not editable; re-emitted from the import cache.
     n_cone = parser.header.get('ConeInputCount', 0)
-    if root_props.cone_drivers_json:
-        parser.cone_inputs = X.cone_inputs_from_json(root_props.cone_drivers_json)
+    if root_props.cone_inputs_json:
+        parser.cone_inputs = X.cone_inputs_from_json(root_props.cone_inputs_json)
     elif n_cone:
         return [T("io.export.cone_not_cached", n_cone)]
     n = len(parser.cone_inputs)
     for o in get_constraint_empties(root_obj):
         # before v35 index 255 is a reference to no cone, which shipped files carry
-        bad = [k.cone_index for k in o.jcns_cns_props.cone_infos
-               if k.cone_index >= n and not (parser.version < 35 and k.cone_index == 255)]
+        bad = [k.cone_input_index for k in o.jcns_cns_props.cone_drivers
+               if k.cone_input_index >= n and not (parser.version < 35 and k.cone_input_index == 255)]
         if bad:
             return [T("io.export.cone_bad_index", o.name, bad[0], n)]
 
@@ -230,7 +230,7 @@ def _sync_non_range_to_parser(root_obj, parser):
             struct.pack_into('<I', raw, 4, int(p.mat_property_hash, 16) & 0xFFFFFFFF)
         except (ValueError, TypeError):
             pass
-        raw[8]  = p.mat_transform_type_raw & 0xFF
+        raw[8]  = p.mat_transform_element_raw & 0xFF
         raw[9]  = p.mat_tail_0 & 0xFF
         raw[10] = p.mat_tail_1 & 0xFF
         raw[11] = p.mat_tail_2 & 0xFF
@@ -248,7 +248,7 @@ def _sync_non_range_to_parser(root_obj, parser):
 
     jxg_obj = next((o for o in root_obj.children
                      if getattr(o, 'jcns_cns_props', None)
-                     and o.jcns_cns_props.constraint_type == 'JointExportGraph'), None)
+                     and o.jcns_cns_props.constraint_type == 'JointExprGraph'), None)
     orig_jxg = getattr(parser, 'joint_export_graph', None) or {}
     parser.joint_export_graph = ({'path': jxg_obj.jcns_cns_props.jxg_path,
                                   '_orig_path': orig_jxg.get('_orig_path')}
@@ -287,11 +287,11 @@ def _root_version(rp):
     return 35 if rp.detected_game == 'RE9' else 102
 
 
-def _transform_int(transform_type, default=1):
-    """TransformElement byte of an enum identifier (the inverse of TRANSFORM_TYPE_MAP)."""
-    from . import TRANSFORM_TYPE_MAP
-    for value, name in TRANSFORM_TYPE_MAP.items():
-        if name == transform_type:
+def _transform_int(transform_element, default=1):
+    """TransformElement byte of an enum identifier (the inverse of TRANSFORM_ELEMENT_MAP)."""
+    from . import TRANSFORM_ELEMENT_MAP
+    for value, name in TRANSFORM_ELEMENT_MAP.items():
+        if name == transform_element:
             return value
     return default
 
@@ -312,7 +312,7 @@ def _make_default_constraint_dict(empty_obj):
         'ConeDriverCount':   0,
         'ConeDriver':        [],
         'AttrFlags':                 0x30,
-        'TransformElement':         _transform_int(p.transform_type),
+        'TransformElement':         _transform_int(p.transform_element),
         'ReservedVec4':            (0.0, 0.0, 0.0, 1.0),
         'UnknownFloat2':          (0.0, 0.0),
         'UnknownByte72':        0,
@@ -356,7 +356,7 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
 
     # Target axis lives in OutputData[+73], not in any source block.
     parsed_c['Axis_parent'] = AXIS_TO_INT.get(p.target_axis, 0)
-    parsed_c['TransformElement'] = _transform_int(p.transform_type,
+    parsed_c['TransformElement'] = _transform_int(p.transform_element,
                                                parsed_c.get('TransformElement', 1))
 
     # Sources are rebuilt whole, so SourceCount always matches the data; opaque
@@ -384,12 +384,12 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
         base['ref_frame_y']     = sp.ref_frame_y
         base['ref_frame_z']     = sp.ref_frame_z
         base['ref_frame_w']     = sp.ref_frame_w
-        base['AttrFlags']    = (sp.curve_mode_extra & ~2) | (2 if sp.three_point else 0)
-        base['InputType']        = jcns_source_read.read_mode_value(sp.read_mode)
-        base['RotOrder']      = jcns_source_read.euler_order_value(sp.euler_order)
+        base['AttrFlags']    = (sp.attr_flags_other & ~2) | (2 if sp.mid_point else 0)
+        base['InputType']        = jcns_source_read.input_type_value(sp.input_type)
+        base['RotOrder']      = jcns_source_read.rot_order_value(sp.rot_order)
         base['UnknownUInt16_22']   = sp.unknown_uint16_22
         base['Interpolation'] = INTERPOLATION_TO_INT[sp.interpolation]
-        base['CurveType'] = sp.complex_mapping_flag
+        base['CurveType'] = sp.curve_type
         if sections_cached:
             # The F-Curve is the data; the count follows it.
             from . import jcns_cm
@@ -405,7 +405,7 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
     # type and are recomputed; v35 does not follow the rule and is written as is.
     from .modules_shim import get_flags
     flags = get_flags()
-    parsed_c['AttrFlags'] = (flags.apply_derived_bits(flags_byte(p), p.transform_type)
+    parsed_c['AttrFlags'] = (flags.apply_derived_bits(flags_byte(p), p.transform_element)
                          if version in flags.DERIVED_BITS_VERSIONS else flags_byte(p))
     parsed_c['ReservedVec4']          = (p.reserved_vec4_x, p.reserved_vec4_y,
                                        p.reserved_vec4_z, p.reserved_vec4_w)
@@ -422,8 +422,8 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
         parsed_c['ObjectHashIndex'] = 0
     parsed_c['ConeDriver'] = [{
         'Rest0': k.rest[0], 'Rest123': tuple(k.rest[1:]), 'Value': k.value,
-        'UnkByte0': k.unk_byte0, 'ConeInputIndex': k.cone_index, 'UnkByte3': k.unk_byte3}
-        for k in p.cone_infos]
+        'UnkByte0': k.unk_byte0, 'ConeInputIndex': k.cone_input_index, 'UnkByte3': k.unk_byte3}
+        for k in p.cone_drivers]
     parsed_c['ConeDriverCount'] = len(parsed_c['ConeDriver'])
     parsed_c['TailBytes']     = bytes([
         p.unknown_byte_74, p.unknown_byte_75, p.reserved_tail[0],
@@ -501,7 +501,7 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
         source_exists = os.path.isfile(source_path) and not upgraded
 
         empties = get_constraint_empties(root_obj)
-        # Files made only of Skin / Aim / RotExpression / Material entries have no Ranges.
+        # Files made only of Multi / Aim / RotExpression / Material entries have no Ranges.
         if not empties and not entries_of(root_obj):
             self.report({'WARNING'}, T("io.export.no_entries"))
             return {'CANCELLED'}

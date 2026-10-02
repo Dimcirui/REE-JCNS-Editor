@@ -89,13 +89,13 @@ def source_map(s, target_q):
     Input side in the source's units (its +25), output side in the target's.
     """
     m = get_mapping()
-    src_q = m.source_quantity(s.get('read_mode'))
+    src_q = m.source_quantity(s.get('input_type'))
     if s.get('cm'):
         return ('CM', tuple(jcns_complex.scaled(s['cm'], _unit_scale(src_q),
                                                 _unit_scale(target_q))))
     vals = (s['from_start'], s['from_kink'], s['from_end'],
             s['to_start'],   s['to_kink'],   s['to_end'])
-    return tuple(m.driver_anchors(vals, src_q, target_q)) + (m.is_two_point(s.get('curve_mode')),
+    return tuple(m.driver_anchors(vals, src_q, target_q)) + (m.is_two_point(s.get('attr_flags')),
                                                               s.get('interp', 0))
 
 
@@ -227,14 +227,14 @@ def rebuild_all():
             if register_bone_group(arm, obj, bone, chans):
                 rebuilt += 1
         translations = {b for b, transform, axis in group_constraints_by_channel(obj)
-                        if transform == 'Translation' and axis != 'W'}
+                        if transform == 'Trans' and axis != 'W'}
         for bone in translations:
             if register_translation_group(arm, obj, bone, translation_channels(obj, bone)):
                 rebuilt += 1
         for (bone, transform, axis), members in group_constraints_by_channel(obj).items():
             if bone in grouped and transform_path(transform) == 'rotation_euler':
                 continue
-            if bone in translations and transform == 'Translation':
+            if bone in translations and transform == 'Trans':
                 continue
             m = get_mapping()
             target_q = m.target_quantity(transform)

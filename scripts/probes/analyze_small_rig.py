@@ -46,11 +46,11 @@ def seg_eval(x, x0, y0, x1, y1, ease):
     return y0 + (y1 - y0) * ease(t)
 
 
-def interpolation(x_deg, out_deg, frm, to, three_point):
+def interpolation(x_deg, out_deg, frm, to, mid_point):
     """Rank easing curves for one mapping (degrees)."""
     cands = {}
     for name, ease in EASINGS.items():
-        if not three_point:
+        if not mid_point:
             cands[f'whole range: {name}'] = seg_eval(x_deg, frm[0], to[0], frm[2], to[2], ease)
         else:
             y1 = seg_eval(x_deg, frm[0], to[0], frm[1], to[1], ease)

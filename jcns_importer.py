@@ -99,7 +99,7 @@ def do_import(filepath, context, armature_obj=None):
     Returns (root_empty, count, error_str).  error_str is '' on success.
     """
     from . import (
-        AXIS_TO_INT, INT_TO_AXIS, TRANSFORM_TYPE_MAP, INT_TO_AIM_TYPE, INT_TO_ROT_REST, INT_TO_INTERPOLATION,
+        AXIS_TO_INT, INT_TO_AXIS, TRANSFORM_ELEMENT_MAP, INT_TO_WORLD_UP_TYPE, INT_TO_ROT_REST, INT_TO_INTERPOLATION,
         make_constraint_empty_name,
     )
 
@@ -189,7 +189,7 @@ def do_import(filepath, context, armature_obj=None):
         tgt_ax_str = INT_TO_AXIS.get(min(c.get('target_axis', 0), 3), 'X')
 
         transform_int = c.get('TransformElement', 1)
-        transform_str = TRANSFORM_TYPE_MAP.get(transform_int, 'Unknown')
+        transform_str = TRANSFORM_ELEMENT_MAP.get(transform_int, 'Unknown')
 
         first = file_sources[0] if file_sources else {}
         empty_name = make_constraint_empty_name(
@@ -207,9 +207,9 @@ def do_import(filepath, context, armature_obj=None):
 
         p = obj.jcns_cns_props
         p.is_jcns_constraint = True
-        p.constraint_type = 'Ranges'
+        p.constraint_type = 'Outputs'
         p.target_bone    = target_bone
-        p.transform_type = transform_str
+        p.transform_element = transform_str
         p.target_axis    = tgt_ax_str
 
         p.sources.clear()
@@ -228,21 +228,21 @@ def do_import(filepath, context, armature_obj=None):
             sp.ref_frame_z = s.get('ref_frame_z', 0.0)
             sp.ref_frame_w = s.get('ref_frame_w', 1.0)
             cm_value = s.get('AttrFlags', 3)
-            sp.three_point, sp.curve_mode_extra = bool(cm_value & 2), cm_value & ~2
-            mode = jcns_source_read.read_mode_id(s.get('InputType', 3))
+            sp.mid_point, sp.attr_flags_other = bool(cm_value & 2), cm_value & ~2
+            mode = jcns_source_read.input_type_id(s.get('InputType', 3))
             if mode is None:
                 # The enum cannot hold an unknown mode.
                 print("[JCNS] %s <- %s: InputType %r is unknown, read as SWING_TWIST"
                       % (c.get('ObjectName', '?'), s.get('SourceName', '?'), s.get('InputType')))
-                mode = 'SWING_TWIST'
-            sp.read_mode = mode
-            order = jcns_source_read.EULER_ORDER_NAMES.get(s.get('RotOrder', 0))
+                mode = 'ROT_RPY'
+            sp.input_type = mode
+            order = jcns_source_read.ROT_ORDER_NAMES.get(s.get('RotOrder', 0))
             if order is None:
                 # The enum holds only orders 0-3.
                 print("[JCNS] %s <- %s: RotOrder %r is unknown, read as XYZ"
                       % (c.get('ObjectName', '?'), s.get('SourceName', '?'), s.get('RotOrder')))
                 order = 'XYZ'
-            sp.euler_order = order
+            sp.rot_order = order
             sp.complex_mapping_info_count = s.get('ComplexMappingInfoCount', 0)
             sp.unknown_uint16_22   = s.get('UnknownUInt16_22', 0)
             interp = INT_TO_INTERPOLATION.get(s.get('Interpolation', 0))
@@ -251,12 +251,12 @@ def do_import(filepath, context, armature_obj=None):
                       % (c.get('ObjectName', '?'), s.get('SourceName', '?'), s.get('Interpolation')))
                 interp = 'LINEAR'
             sp.interpolation = interp
-            sp.complex_mapping_flag = s.get('CurveType', 0)
+            sp.curve_type = s.get('CurveType', 0)
             if s.get('ComplexMapping'):
                 jcns_cm.load(sp, s['ComplexMapping'])
 
         flags = c.get('AttrFlags', 0x30)
-        p.additive, p.flags_other = bool(flags & 1), flags & 0xFE
+        p.base_pose, p.attr_flags_other = bool(flags & 1), flags & 0xFE
         vec4                    = c.get('ReservedVec4', (0.0, 0.0, 0.0, 1.0))
         p.reserved_vec4_x, p.reserved_vec4_y, p.reserved_vec4_z, p.reserved_vec4_w = vec4
         f2                      = c.get('UnknownFloat2', (0.0, 0.0))
@@ -269,11 +269,11 @@ def do_import(filepath, context, armature_obj=None):
             p.object_hash       = jcns_targets.object_hash_override(
                 c.get('ObjectHash', 0) & 0xFFFFFFFF, target_bone)
         for ci in c.get('ConeDriver') or []:
-            k = p.cone_infos.add()
-            k.cone_index, k.value = ci['ConeInputIndex'], ci['Value']
+            k = p.cone_drivers.add()
+            k.cone_input_index, k.value = ci['ConeInputIndex'], ci['Value']
             k.rest = (ci['Rest0'],) + tuple(ci.get('Rest123', (0.0, 0.0, 0.0)))
             k.unk_byte0, k.unk_byte3 = ci['UnkByte0'], ci['UnkByte3']
-        if len(p.cone_infos):
+        if len(p.cone_drivers):
             # Rename: target_bone's update named it while the cone list was empty.
             from . import constraint_name_from_props
             obj.name = constraint_name_from_props(idx, p)
@@ -286,7 +286,7 @@ def do_import(filepath, context, armature_obj=None):
     # names this file's Ranges spell out, then the bundled dictionary, else show the
     # raw hash (the exporter reads a "0x1234ABCD" name back as that hash).
     import json
-    from jcns_sections import (skin_editable, read_joint_signature, aim_editable, rot_editable,
+    from jcns_sections import (multi_editable, read_joint_signature, aim_editable, rot_editable,
                                cone_inputs_to_json)
     from jcns_names import name_of
     from . import section_empty_name
@@ -311,16 +311,16 @@ def do_import(filepath, context, armature_obj=None):
         return obj, p2
 
     rp = root.jcns_root_props
-    sk_recs, sk_meta = skin_editable(parser)
+    sk_recs, sk_meta = multi_editable(parser)
     for idx, r in enumerate(sk_recs):
-        obj, p2 = _section_empty('Skin', idx, 'SINGLE_ARROW', 0.03)
-        p2.constraint_type = 'Skin'
+        obj, p2 = _section_empty('Multi', idx, 'SINGLE_ARROW', 0.03)
+        p2.constraint_type = 'Multi'
         p2.target_bone = _nm(r['object'])
-        p2.skin_tail = tuple(r['tail'])
+        p2.multi_tail = tuple(r['tail'])
         for src in r['sources']:
-            w = p2.skin_sources.add()
+            w = p2.multi_sources.add()
             w.bone, w.weight = _nm(src['hash']), src['weight']
-        obj.name = section_empty_name('Skin', idx, p2)
+        obj.name = section_empty_name('Multi', idx, p2)
     rp.file_constant = sk_meta['constant']
     rp.read_joint_table.clear()
     for h in sk_meta['read_joint_table']:
@@ -338,11 +338,11 @@ def do_import(filepath, context, armature_obj=None):
         p2.aim_up_bone = _nm(a['up']) if a['up'] is not None else ''
         p2.aim_influence = a['influence']
         p2.aim_offset, p2.aim_axis, p2.aim_up_axis, p2.aim_up_dir = a['vectors']
-        aim_type = INT_TO_AIM_TYPE.get(a['rotation_type'])
-        if aim_type is None:
-            print("[JCNS] Aim %d: WorldUpType %r is unknown, read as 0" % (idx, a['rotation_type']))
-            aim_type = 'WORLD_UP'
-        p2.aim_type = aim_type
+        world_up_type = INT_TO_WORLD_UP_TYPE.get(a['world_up_type'])
+        if world_up_type is None:
+            print("[JCNS] Aim %d: WorldUpType %r is unknown, read as 0" % (idx, a['world_up_type']))
+            world_up_type = 'SCENE_UP'
+        p2.world_up_type = world_up_type
         p2.aim_bytes = a['bytes']
         obj.name = section_empty_name('Aim', idx, p2)
 
@@ -365,7 +365,7 @@ def do_import(filepath, context, armature_obj=None):
     if not rot_meta['map_uniform']:
         print("[JCNS] RotExpressionMap holds different values, using the first (%d)" % rot_meta['map_value'])
 
-    rp.cone_drivers_json = cone_inputs_to_json(parser.cone_inputs) if getattr(parser, 'cone_inputs', []) else ''
+    rp.cone_inputs_json = cone_inputs_to_json(parser.cone_inputs) if getattr(parser, 'cone_inputs', []) else ''
     rp.object_settings_json = json.dumps([
         {'UnkBytes': o['UnkBytes'].hex(), 'UnknownDWORD': o['UnknownDWORD'],
          'ObjectNameHash': o['ObjectNameHash']} for o in parser.object_settings])
@@ -386,7 +386,7 @@ def do_import(filepath, context, armature_obj=None):
         raw = mc['raw_body']        # 12 bytes: NameHash(4) + PropHash(4) + TransformID(1) + tail(3)
         p2.mat_name_hash        = f"0x{_ms.unpack_from('<I', raw, 0)[0]:08X}"
         p2.mat_property_hash    = f"0x{_ms.unpack_from('<I', raw, 4)[0]:08X}"
-        p2.mat_transform_type_raw = raw[8]
+        p2.mat_transform_element_raw = raw[8]
         p2.mat_tail_0, p2.mat_tail_1, p2.mat_tail_2 = raw[9], raw[10], raw[11]
 
     if parser.joint_export_graph is not None:
@@ -398,7 +398,7 @@ def do_import(filepath, context, armature_obj=None):
         coll.objects.link(obj)
         p2 = obj.jcns_cns_props
         p2.is_jcns_constraint = True
-        p2.constraint_type = 'JointExportGraph'
+        p2.constraint_type = 'JointExprGraph'
         p2.jxg_path = path
 
     # Every bone name the Ranges spell out: the choices offered for source_bone.

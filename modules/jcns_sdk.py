@@ -81,27 +81,27 @@ class BoneRest:
 
 @dataclass
 class Drive:
-    read_mode: int
+    input_type: int
     axis: int
     quantity: str
     values: list                 # the reading of each key that recorded the driver, in list order
 
     def label(self):
-        return drive_label(self.read_mode, self.axis)
+        return drive_label(self.input_type, self.axis)
 
 
 @dataclass
 class Constraint:
     """One Ranges entry with one source.  Anchors are ascending in the driver value; a
     ComplexMapping constraint has all-zero anchors and `keys` [(x, y, slope_in, slope_out)]."""
-    transform_type: int
+    transform_element: int
     axis: int
-    additive: bool
+    base_pose: bool
     quantity: str
-    read_mode: int
+    input_type: int
     source_axis: int
-    euler_order: int
-    three_point: bool
+    rot_order: int
+    mid_point: bool
     from_anchors: tuple
     to_anchors: tuple
     driven: str = ""
@@ -112,7 +112,7 @@ class Constraint:
         return bool(self.keys)
 
     def source_label(self):
-        return drive_label(self.read_mode, self.source_axis)
+        return drive_label(self.input_type, self.source_axis)
 
     def target_label(self):
         return _axis_label(_target_name(self.quantity), self.axis)
@@ -121,7 +121,7 @@ class Constraint:
         if self.keys:
             return jcns_complex.evaluate(list(self.keys), x)
         return jcns_mapping.eval_piecewise(*self.from_anchors, *self.to_anchors, x,
-                                           two_point=not self.three_point)
+                                           two_point=not self.mid_point)
 
 
 @dataclass
@@ -149,8 +149,8 @@ class _Reject(Exception):
         self.reasons = list(reasons)
 
 
-def drive_label(read_mode, axis):
-    v = sr.read_mode_value(read_mode)
+def drive_label(input_type, axis):
+    v = sr.input_type_value(input_type)
     if v in (3, 4):
         base = T("sdk.label.twist" if axis == 0 else "sdk.label.swing")
     else:
@@ -165,14 +165,14 @@ def euler_of(pose):
     return tuple(sr._euler(sr._pos_w(tuple(c / n for c in pose.quat)), 0))
 
 
-def read_driver(pose, rest, read_mode, axis, order=0):
-    return cap.capture_source(read_mode, axis, rest.rest, rest.offset, euler_of(pose), pose.loc,
+def read_driver(pose, rest, input_type, axis, order=0):
+    return cap.capture_source(input_type, axis, rest.rest, rest.offset, euler_of(pose), pose.loc,
                               pose.scale, order=order, rest_scale=rest.rest_scale)
 
 
-def read_channel(pose, rest, transform_type, axis, additive=True):
+def read_channel(pose, rest, transform_element, axis, base_pose=True):
     """jcns_capture.capture_target for a pose snapshot."""
-    return cap.capture_target(transform_type, additive, axis, rest.rest, euler_of(pose), pose.loc,
+    return cap.capture_target(transform_element, base_pose, axis, rest.rest, euler_of(pose), pose.loc,
                               pose.scale, rest.offset, rest.parent_scale, rest.rest_scale)
 
 
@@ -306,13 +306,13 @@ def order_warnings(entries, count, quantity):
 # Detecting what moved
 # ---------------------------------------------------------------------------
 
-def _detect_drive(poses, rest, read_mode, axis, order):
-    if read_mode is None:
+def _detect_drive(poses, rest, input_type, axis, order):
+    if input_type is None:
         reads = _AUTO_READS
     else:
-        mode = sr.read_mode_value(read_mode)
-        if sr.read_mode_id(mode) is None:
-            raise _Reject(T("sdk.err.read_mode_unknown", read_mode))
+        mode = sr.input_type_value(input_type)
+        if sr.input_type_id(mode) is None:
+            raise _Reject(T("sdk.err.input_type_unknown", input_type))
         reads = ((mode, sr.read_quantity(mode)),)
     axes = range(3) if axis is None else (axis,)
     for mode, quantity in reads:
@@ -323,9 +323,9 @@ def _detect_drive(poses, rest, read_mode, axis, order):
                 best = (_spread(values), a, values)
         if best[0] > DRIVER_MIN[quantity]:
             return Drive(mode, best[1], quantity, best[2])
-    if read_mode is None and axis is None:
+    if input_type is None and axis is None:
         raise _Reject(T("sdk.err.drive_flat"))
-    raise _Reject(T("sdk.err.drive_flat_mode" if read_mode is not None else "sdk.err.drive_flat_any"))
+    raise _Reject(T("sdk.err.drive_flat_mode" if input_type is not None else "sdk.err.drive_flat_any"))
 
 
 def _detect_channels(bone, poses, rest, rotation_type, warnings):
@@ -419,12 +419,12 @@ def complex_keys(xs, ys, tangent='LINEAR'):
 
 
 def _rest_warnings(plan, driver_rest, rests, drive, order):
-    x_rest = read_driver(Pose(), driver_rest, drive.read_mode, drive.axis, order)
+    x_rest = read_driver(Pose(), driver_rest, drive.input_type, drive.axis, order)
     in_keys = any(abs(x_rest - v) <= CHANNEL_MIN[drive.quantity] for v in drive.values)
     off = []
     for c in plan.constraints:
         y = c.evaluate(x_rest)
-        want = read_channel(Pose(), rests[c.driven], c.transform_type, c.axis, c.additive)[0]
+        want = read_channel(Pose(), rests[c.driven], c.transform_element, c.axis, c.base_pose)[0]
         if abs(y - want) > REST_TOL:
             off.append(T("sdk.warn.rest_output", c.driven, c.target_label(), _fmt(y, c.quantity),
                          _fmt(want, c.quantity)))
@@ -437,14 +437,14 @@ def _rest_warnings(plan, driver_rest, rests, drive, order):
                                T("sdk.list_sep").join(off)))
 
 
-def plan_keys(keys, driver, driven, rests, read_mode=None, axis=None, euler_order=0,
+def plan_keys(keys, driver, driven, rests, input_type=None, axis=None, rot_order=0,
               rotation_type=1, tangent='LINEAR', complex_ok=True, complex_reason=""):
     """The constraints `keys` (a list of Key, start key first, end key last) describe.
 
     `driver` is the driver bone's name, `driven` the list of driven bone names, `rests` maps
-    each of them to its BoneRest.  `read_mode` (InputType value or identifier) and `axis`
+    each of them to its BoneRest.  `input_type` (InputType value or identifier) and `axis`
     (0-2) force the driver's read; None picks it from what moved.  Rotations are written as
-    additive TransformElement `rotation_type` (1, 4, 5 or 6), so a bone at rest produces 0.
+    base_pose TransformElement `rotation_type` (1, 4, 5 or 6), so a bone at rest produces 0.
     `tangent` ('LINEAR' or 'SMOOTH') shapes a ComplexMapping curve.  `complex_ok` says
     whether the file can hold one, `complex_reason` why not.
 
@@ -458,7 +458,7 @@ def plan_keys(keys, driver, driven, rests, read_mode=None, axis=None, euler_orde
     """
     plan = Plan()
     try:
-        _plan(plan, list(keys), driver, list(driven), rests, read_mode, axis, euler_order,
+        _plan(plan, list(keys), driver, list(driven), rests, input_type, axis, rot_order,
               rotation_type, tangent, complex_ok, complex_reason)
     except _Reject as exc:
         plan.errors += exc.reasons
@@ -468,7 +468,7 @@ def plan_keys(keys, driver, driven, rests, read_mode=None, axis=None, euler_orde
     return plan
 
 
-def _plan(plan, keys, driver, driven, rests, read_mode, axis, order, rotation_type, tangent,
+def _plan(plan, keys, driver, driven, rests, input_type, axis, order, rotation_type, tangent,
           complex_ok, complex_reason):
     if rotation_type not in ROTATION_TYPES:
         raise _Reject(T("sdk.err.rotation_type", T("sdk.list_sep").join(map(str, ROTATION_TYPES))))
@@ -498,7 +498,7 @@ def _plan(plan, keys, driver, driven, rests, read_mode, axis, order, rotation_ty
     if len(kept) < 2:
         raise _Reject(T("sdk.err.too_few_driver_keys", len(kept)))
 
-    drive = _detect_drive([keys[i].poses[driver] for i in kept], rests[driver], read_mode, axis, order)
+    drive = _detect_drive([keys[i].poses[driver] for i in kept], rests[driver], input_type, axis, order)
     plan.drive = drive
     plan.warnings += order_warnings(list(zip(kept, drive.values)), len(keys), drive.quantity)
 
@@ -543,9 +543,9 @@ def _plan(plan, keys, driver, driven, rests, read_mode, axis, order, rotation_ty
             from_a, to_a = _anchors(xs, ys)
             cm = ()
         plan.constraints.append(Constraint(
-            transform_type=tt, axis=ch_axis, additive=True, quantity=quantity,
-            read_mode=drive.read_mode, source_axis=drive.axis, euler_order=order,
-            three_point=plan.mode != 'two', from_anchors=from_a, to_anchors=to_a,
+            transform_element=tt, axis=ch_axis, base_pose=True, quantity=quantity,
+            input_type=drive.input_type, source_axis=drive.axis, rot_order=order,
+            mid_point=plan.mode != 'two', from_anchors=from_a, to_anchors=to_a,
             driven=bone, keys=cm))
     _rest_warnings(plan, rests[driver], rests, drive, order)
 
@@ -577,19 +577,19 @@ def describe(plan, driver_bone):
 def can_append(existing, constraint, complex_ok=True):
     """(ok, reason): may `constraint`'s source join the existing entry on its channel?
 
-    `existing` is a dict with `additive`, `cone_infos`, `n_sources`, `target_property`.  A source
+    `existing` is a dict with `base_pose`, `cone_drivers`, `n_sources`, `target_property`.  A source
     only adds to the entry's sum, so the entry must mean the same thing: the same AttrFlags
     bit0 (scale ignores it), no ConeDriver inputs, room for one more source.  A ComplexMapping
     source also needs a file that can hold ComplexMapping.
     """
     if existing.get('target_property') or existing.get('property_hash'):
         return False, T("sdk.append.property_target")
-    if existing.get('cone_infos'):
+    if existing.get('cone_drivers'):
         return False, T("sdk.append.cone_driver")
     if existing.get('n_sources', 0) >= MAX_SOURCES:
         return False, T("sdk.append.sources_full", MAX_SOURCES)
-    if constraint.transform_type != 2 and bool(existing.get('additive')) != bool(constraint.additive):
-        return False, T("sdk.append.additive_differs")
+    if constraint.transform_element != 2 and bool(existing.get('base_pose')) != bool(constraint.base_pose):
+        return False, T("sdk.append.base_pose_differs")
     if constraint.complex and not complex_ok:
         return False, T("sdk.append.no_complex")
     return True, ""

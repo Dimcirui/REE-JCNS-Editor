@@ -166,10 +166,10 @@ FILE_EXTENSIONS = ';'.join(f'.{v}' for v in SUPPORTED_VERSIONS)
 
 
 # ── Header ("DataInfo" table at Tags.DataEntry, normally 0x50) ─────────────
-# v12 has SkinConstraintSource{Entry,Count} and no Aim; Dependency fields start
+# v12 has MultiConstraintSource{Entry,Count} and no Aim; Dependency fields start
 # at v21; ReadJointTable fields start at v36.
 
-_has_skin_src = any_of(since(29), only(12))
+_has_multi_src = any_of(since(29), only(12))
 
 HEADER = Struct('Header', [
     F('ConeInputTableEntry',                'Q'),
@@ -180,7 +180,7 @@ HEADER = Struct('Header', [
     F('RotExpressionSourceHashIndicesEntry', 'Q', since(35)),
     F('RotExpressionHashIndicesEntry',       'Q', since(35)),
     F('MultiConstraintTableEntry',            'Q'),
-    F('MultiConstraintSourceTableEntry',      'Q', _has_skin_src),
+    F('MultiConstraintSourceTableEntry',      'Q', _has_multi_src),
     F('AimConstraintTableEntry',             'Q', since(16)),
     F('MaterialConstraintInfoEntry',         'Q', since(22)),
     F('JointExprGraphInfoEntry',           'Q', since(29)),
@@ -198,7 +198,7 @@ HEADER = Struct('Header', [
     F('RotExpressionMapCount',               'H'),
     F('MultiConstraintCount',                 'H'),
     F('ReadJointTableItemCount',             'H', since(36)),
-    F('MultiConstraintSourceCount',           'H', _has_skin_src),
+    F('MultiConstraintSourceCount',           'H', _has_multi_src),
     F('AimConstraintCount',                  'H', since(16)),
     F('MaterialConstraintInfoCount',         'H', since(22)),
     F('HeaderUnknownUInt16',                 'H', between(35, 102)),
@@ -252,7 +252,7 @@ def section_count(header, version):
     return 0
 
 
-# Section ids in the section table: 0 Ranges, 1 RotExpression, 2 Skin, 3 Aim,
+# Section ids in the section table: 0 Ranges, 1 RotExpression, 2 Multi, 3 Aim,
 # 4 Material, 5 JointExportGraph.  The engine runs only the sections listed.
 SECTION_APPEND_ORDER = (1, 3, 2, 0, 4, 5)
 
@@ -499,7 +499,7 @@ OBJECT_SETTING = Struct('ObjectSettings', [
 
 # Section 2.  One MultiConstraint per skinned object:
 #   SourceListOffset -> MultiSource[SourceCount]  (8 bytes each)
-# From v35 a MultiSource names a SkinSourceInfo (hash-table index + u32); v29-v34
+# From v35 a MultiSource names a MultiSourceInfo (hash-table index + u32); v29-v34
 # index a plain hash array instead; before v29 the hash is inline.
 MULTI = Struct('MultiConstraint', [
     F('SourceListOffset', 'Q'),
@@ -510,7 +510,7 @@ MULTI = Struct('MultiConstraint', [
 ])
 
 MULTI_SOURCE = Struct('MultiSource', [
-    F('SourceRef', 'I'),        # SkinSourceInfo index (v35+) / source-hash-array index (v29+) / hash
+    F('SourceRef', 'I'),        # MultiSourceInfo index (v35+) / source-hash-array index (v29+) / hash
     F('Weight',    'f'),
 ])
 

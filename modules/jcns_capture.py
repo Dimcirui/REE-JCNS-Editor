@@ -41,12 +41,12 @@ def _file_per_driver(quantity):
     return 1.0 / jcns_mapping._to_driver_units((1.0,), quantity)[0]
 
 
-def target_capturable(transform_type):
+def target_capturable(transform_element):
     """Does a target of this TransformElement value have a capture rule?"""
-    return int(transform_type) in CAPTURABLE_TARGETS
+    return int(transform_element) in CAPTURABLE_TARGETS
 
 
-def capture_source(read_mode, axis, rest, offset, pose_euler, pose_loc, pose_scale,
+def capture_source(input_type, axis, rest, offset, pose_euler, pose_loc, pose_scale,
                    order=0, frame=None, rest_scale=(1.0, 1.0, 1.0)):
     """What a source with this InputType reads off its bone in the given pose.
 
@@ -58,7 +58,7 @@ def capture_source(read_mode, axis, rest, offset, pose_euler, pose_loc, pose_sca
     """
     if not 0 <= axis <= 2:
         return None
-    value = sr.read_mode_value(read_mode)
+    value = sr.input_type_value(input_type)
     quantity = sr.read_quantity(value)
     if quantity == 'Scale':
         return pose_scale[axis] * rest_scale[axis]
@@ -68,7 +68,7 @@ def capture_source(read_mode, axis, rest, offset, pose_euler, pose_loc, pose_sca
     if mode is None:
         return None
     q = sr.pose_rotation(rest, pose_euler)
-    return sr.rotation(mode, q, axis, sr.euler_order_value(order), frame) * _file_per_driver(quantity)
+    return sr.rotation(mode, q, axis, sr.rot_order_value(order), frame) * _file_per_driver(quantity)
 
 
 def _twist(q, axis):
@@ -80,10 +80,10 @@ def _twist(q, axis):
     return 2.0 * math.atan2(c, w), 2.0 * math.acos(min(1.0, n))
 
 
-def capture_target(transform_type, additive, axis, rest, pose_euler, pose_loc, pose_scale,
+def capture_target(transform_element, base_pose, axis, rest, pose_euler, pose_loc, pose_scale,
                    offset=(0.0, 0.0, 0.0), parent_scale=(1.0, 1.0, 1.0),
                    rest_scale=(1.0, 1.0, 1.0)):
-    """The value a target entry (TransformElement value, AttrFlags bit0 = `additive`) writes on
+    """The value a target entry (TransformElement value, AttrFlags bit0 = `base_pose`) writes on
     `axis` to bring its bone to the given pose.
 
     `rest` / `offset` are the bone's rest rotation and offset from its parent (metres),
@@ -94,7 +94,7 @@ def capture_target(transform_type, additive, axis, rest, pose_euler, pose_loc, p
     rotation that this entry's single rotation cannot express; it is 0 except for
     TransformElement 13 / 14.
     """
-    tt = int(transform_type)
+    tt = int(transform_element)
     if not 0 <= axis <= 2 or tt not in CAPTURABLE_TARGETS:
         return None
     if tt == 0:
@@ -103,7 +103,7 @@ def capture_target(transform_type, additive, axis, rest, pose_euler, pose_loc, p
         if abs(parent_scale[axis]) < 1e-12:
             return None
         delta = sr.position(rest, (0.0, 0.0, 0.0), pose_loc, axis) / parent_scale[axis]
-        if not additive:
+        if not base_pose:
             delta += offset[axis]
         return delta * _file_per_driver('Translation'), 0.0
     if tt == 2:
@@ -111,11 +111,11 @@ def capture_target(transform_type, additive, axis, rest, pose_euler, pose_loc, p
 
     mode = sr.TARGET_MODES[tt]
     deg = _file_per_driver('Rotation')
-    if mode == 'euler' and additive:
+    if mode == 'euler' and base_pose:
         return pose_euler[axis] * deg, 0.0
     # Adding lays the value on the rest pose, so the pose's basis is the added rotation;
     # replacing decomposes the whole rotation, rest * basis.
-    q = sr.pose_rotation(_IDENTITY if additive else rest, pose_euler)
+    q = sr.pose_rotation(_IDENTITY if base_pose else rest, pose_euler)
     if mode == 'axis':
         t = _twist(q, axis)
         if t is None:

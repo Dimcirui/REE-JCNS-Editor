@@ -4,7 +4,7 @@ jcns_preview.py
 Make an entry visible in the viewport.
 
 Ranges entries get a Blender driver on the target bone (DriverBackend, wrapping
-jcns_operators); Skin / Aim / RotExpression get a native pose-bone constraint
+jcns_operators); Multi / Aim / RotExpression get a native pose-bone constraint
 (ConstraintBackend, which creates what modules/jcns_preview_plan.py describes).
 Both go through one interface and one pair of operators:
 
@@ -96,12 +96,12 @@ class DriverBackend(PreviewBackend):
 
 def _plan_for(kind_id, p):
     plan = get_plan()
-    if kind_id == 'Skin':
-        return plan.plan_skin(p.target_bone, [(w.bone, w.weight) for w in p.skin_sources])
+    if kind_id == 'Multi':
+        return plan.plan_multi(p.target_bone, [(w.bone, w.weight) for w in p.multi_sources])
     if kind_id == 'Aim':
-        from . import AIM_TYPE_TO_INT
+        from . import WORLD_UP_TYPE_TO_INT
         return plan.plan_aim(p.target_bone, p.aim_target_bone, tuple(p.aim_axis),
-                             p.aim_influence, p.aim_up_bone, AIM_TYPE_TO_INT[p.aim_type], tuple(p.aim_offset))
+                             p.aim_influence, p.aim_up_bone, WORLD_UP_TYPE_TO_INT[p.world_up_type], tuple(p.aim_offset))
     if kind_id == 'RotExpression':
         return plan.plan_rot(p.target_bone, p.rot_source_bone, tuple(p.rot_gains))
     return plan.ConstraintPlan(False, T("ui.preview.no_preview_kind"))

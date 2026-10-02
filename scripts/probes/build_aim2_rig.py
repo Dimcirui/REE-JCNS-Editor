@@ -60,7 +60,7 @@ def main(dst):
     cons.append(c)
     assert tail_group_counts(cons) == [0] * len(cons)
     aims = [{'joint': H('TestTgt' + b), 'target': H(TARGET), 'up': H(up) if up else None, 'influence': inf,
-             'vectors': [v0, (1, 0, 0), (0, 1, 0), v3], 'rotation_type': t, 'bytes': (1, 0, CONSTANT),
+             'vectors': [v0, (1, 0, 0), (0, 1, 0), v3], 'world_up_type': t, 'bytes': (1, 0, CONSTANT),
              'tail': bytes(12), 'target_tail': bytes(8)} for b, t, up, v0, v3, inf in AIMS]
     p.aim_constraints = X.aim_parser_form(aims)
     rots = [{'joint': H('TestTgt' + b), 'source': H(ROT_SOURCE), 'rotation': (0, 0, 0, 1), 'scale': (0, 0, 0, 1),
@@ -83,12 +83,12 @@ def check(dst):
         back = q.parse()
     h = q.header
     table = list(struct.unpack_from('<%dI' % h['SectionTableItemCount'], q.original_bytes, h['SectionTableEntry']))
-    assert table == SECTION_TABLE and len(back) == 9 and not q.skin_constraints
+    assert table == SECTION_TABLE and len(back) == 9 and not q.multi_constraints
     names = {H(n): n for n in ['TestTgt' + c for c in 'ABCDEFGHIJK'] + [TARGET, UP, ROT_SOURCE]}
     got = X.aim_editable(q)
     assert len(got) == len(AIMS)
     for g, (b, t, up, v0, v3, inf) in zip(got, AIMS):
-        assert names[g['joint']] == 'TestTgt' + b and names[g['target']] == TARGET and g['rotation_type'] == t
+        assert names[g['joint']] == 'TestTgt' + b and names[g['target']] == TARGET and g['world_up_type'] == t
         assert (names[g['up']] if g['up'] else None) == up and abs(g['influence'] - inf) < 1e-6
         assert [tuple(round(x, 4) for x in v) for v in g['vectors']] == [v0, (1, 0, 0), (0, 1, 0), v3], g
         print('aim', b, t, up, g['vectors'][0], g['vectors'][3], g['influence'])

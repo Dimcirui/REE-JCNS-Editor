@@ -114,7 +114,7 @@ class JCNSParser:
                                              16 9%, 1 8%, 0 3%, 9/5/13/53/57 rare).
                                              bit4 "isJoint" / bit5 "isAngular" follow
                                              TransformElement (see jcns_flags; derived on export).
-                                             bit0 (1 in 78%) = additive (measured, round 8):
+                                             bit0 (1 in 78%) = base_pose (measured, round 8):
                                              1 lays the value onto the rest pose (rest * R(v)),
                                              0 replaces it (a -2 deg rest vanished).  Either
                                              way the last writer of a channel still wins, and
@@ -170,7 +170,7 @@ class JCNSParser:
                                               {0,1} two-point (kink ignored), {2,3} three-point
                                               (measured).  bit 0 does nothing -- not to the curve,
                                               not to the pose (measured); AttrFlags bit0 is the
-                                              additive switch it usually mirrors.  3 64%, 0 13%, 1 12%,
+                                              base_pose switch it usually mirrors.  3 64%, 0 13%, 1 12%,
                                               2 10%; 4/5 only in 34 sources on material targets,
                                               unmeasured.
       +25:  InputType                  uint8    How the source bone is read (bt: TransformIDSrc /
@@ -180,7 +180,7 @@ class JCNSParser:
                                               0 position, 1 Euler (order: +27), 2 scale, 3 swing-twist
                                               about X (q = swing*twist), 4 the same with
                                               q = twist*swing, 5 rotation vector.  Only 0-5 occur
-                                              (2114 files); see jcns_source_read.READ_MODES.
+                                              (2114 files); see jcns_source_read.INPUT_TYPES.
       +26:  source_axis               uint8    bt: SourceAxis  0=X 1=Y 2=Z.  Sources never use W.
       +27:  RotOrder                uint8    (was UnkByte2) the Euler order of InputType 1
                                               (measured, round 8): 0 Rz*Ry*Rx (Blender XYZ),
@@ -225,7 +225,7 @@ class JCNSParser:
     """
 
     AXIS_NAMES = ['X', 'Y', 'Z', 'W']
-    # No transform-type name table here on purpose: TRANSFORM_TYPE_MAP in __init__.py
+    # No transform-type name table here on purpose: TRANSFORM_ELEMENT_MAP in __init__.py
     # is the single source of truth, and it covers all of bt 0.65.14's IDs 0-16.
 
     def __init__(self, filepath):
@@ -268,8 +268,8 @@ class JCNSParser:
         self.material_cns       = []
         self.joint_export_graph = None
         self.object_settings    = []
-        self.skin_constraints   = []
-        self.skin_source_infos  = []
+        self.multi_constraints   = []
+        self.multi_source_infos  = []
         self.read_joint_table    = []
         self.cone_inputs       = []
         self.header = read_header(data)
@@ -284,7 +284,7 @@ class JCNSParser:
         self._parse_material_cns(data)
         self._parse_joint_export_graph(data)
         self._parse_object_settings(data)
-        self._parse_skin_constraints(data)
+        self._parse_multi_constraints(data)
         return self.constraints
 
     def _read_section_order(self, data):
@@ -445,13 +445,13 @@ class JCNSParser:
             self.object_settings.append(rec)
         print(f"Parsed {n} ObjectSetting(s)")
 
-    def _parse_skin_constraints(self, data):
-        """Section 2: SkinConstraint records, their weighted source lists, and (v29+)
+    def _parse_multi_constraints(self, data):
+        """Section 2: MultiConstraint records, their weighted source lists, and (v29+)
         the shared source table; from v36 also the ReadJointTable (raw hashes;
-        SkinConstraintHashTable in bt / REE-Lib), which Skin shares with Aim."""
+        MultiConstraintHashTable in bt / REE-Lib), which Multi shares with Aim."""
         v, h = self.version, self.header
         n = h.get('MultiConstraintCount', 0)
-        self.skin_constraints, self.skin_source_infos, self.read_joint_table = [], [], []
+        self.multi_constraints, self.multi_source_infos, self.read_joint_table = [], [], []
         if not n:
             return
         base, size = h['MultiConstraintTableEntry'], MULTI.size(v)
@@ -462,7 +462,7 @@ class JCNSParser:
                                  else rec['ObjectHash'])
             rec['sources'] = [MULTI_SOURCE.read(data, rec['SourceListOffset'] + k * src_size, v)
                               for k in range(rec['SourceCount'])]
-            self.skin_constraints.append(rec)
+            self.multi_constraints.append(rec)
 
         ns = h.get('MultiConstraintSourceCount', 0)
         info_base = h.get('MultiConstraintSourceTableEntry', 0)
@@ -472,13 +472,13 @@ class JCNSParser:
                 rec = MULTI_SOURCE_INFO.read(data, info_base + i * isz, v)
                 if v >= 35:
                     rec['SourceHash'] = self._hash_at(rec['SourceHashIndex'])
-                self.skin_source_infos.append(rec)
+                self.multi_source_infos.append(rec)
 
         k = h.get('ReadJointTableItemCount', 0)
         if k and h.get('ReadJointTableEntry'):
             self.read_joint_table = list(struct.unpack_from(
                 f'<{k}I', data, h['ReadJointTableEntry']))
-        print(f"Parsed {n} SkinConstraint(s), {len(self.skin_source_infos)} source info, "
+        print(f"Parsed {n} MultiConstraint(s), {len(self.multi_source_infos)} source info, "
               f"{len(self.read_joint_table)} read joint(s)")
 
     def _parse_rot_expressions(self, data):

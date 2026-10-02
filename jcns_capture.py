@@ -56,8 +56,8 @@ def read_source(arm, sp):
     rest, offset = _rest_transform(arm, sp.source_bone)
     euler, loc, scale = _pose_of(pose_bone)
     return core.capture_source(
-        sp.read_mode, axis, rest, offset, euler, loc, scale,
-        order=sp.euler_order,
+        sp.input_type, axis, rest, offset, euler, loc, scale,
+        order=sp.rot_order,
         frame=(sp.ref_frame_w, sp.ref_frame_x, sp.ref_frame_y, sp.ref_frame_z),
         rest_scale=mesh_rest_scale(bone))
 
@@ -77,7 +77,7 @@ def read_target(arm, p):
     # The parent's rest scale, as register_translation_group takes it.
     parent_scale = mesh_rest_scale(bone.parent) if bone.parent is not None else (1.0, 1.0, 1.0)
     euler, loc, scale = _pose_of(pose_bone)
-    return core.capture_target(_transform_int(p.transform_type), p.additive, axis, rest,
+    return core.capture_target(_transform_int(p.transform_element), p.base_pose, axis, rest,
                                euler, loc, scale, offset, parent_scale, mesh_rest_scale(bone))
 
 
@@ -87,7 +87,7 @@ def _entry(context):
     from types import SimpleNamespace
     from . import get_jcns_constraint, get_jcns_root_from_constraint
     obj, p = get_jcns_constraint(context)
-    if obj is None or p.constraint_type not in ('Ranges', '') or not len(p.sources):
+    if obj is None or p.constraint_type not in ('Outputs', '') or not len(p.sources):
         return None
     _root, rp = get_jcns_root_from_constraint(obj)
     if rp is None:
@@ -118,7 +118,7 @@ class JCNS_OT_CaptureAnchor(Operator):
     def poll(cls, context):
         from .jcns_operators import _caps_for
         st = _entry(context)
-        return st is not None and st.arm is not None and _caps_for(st.rp, 'Ranges').can_edit
+        return st is not None and st.arm is not None and _caps_for(st.rp, 'Outputs').can_edit
 
     def execute(self, context):
         from .jcns_exporter import _transform_int
@@ -150,15 +150,15 @@ class JCNS_OT_CaptureAnchor(Operator):
                 self.report({'ERROR'}, T("io.capture.no_read_value"))
                 return {'CANCELLED'}
         else:
-            if not core.target_capturable(_transform_int(st.p.transform_type)):
-                self.report({'ERROR'}, T("io.capture.no_pose_value", st.p.transform_type))
+            if not core.target_capturable(_transform_int(st.p.transform_element)):
+                self.report({'ERROR'}, T("io.capture.no_pose_value", st.p.transform_element))
                 return {'CANCELLED'}
             got = read_target(st.arm, st.p)
             if got is None:
                 self.report({'ERROR'}, T("io.capture.undefined"))
                 return {'CANCELLED'}
             value, error = got
-            unit = _target_unit(st.p.transform_type)
+            unit = _target_unit(st.p.transform_element)
             if error > 0.5:
                 warning = T("io.capture.warn_axis", axis, error)
             elif st.p.preview_on:
@@ -231,7 +231,7 @@ def _draw_readout(layout, c, sp):
     anchors = (sp.from_start, sp.from_kink, sp.from_end, sp.to_start, sp.to_kink, sp.to_end)
     y = core.mapped_output(anchors, x, m.source_two_point(sp), m.source_interpolation(sp),
                            jcns_cm.keys(sp))
-    text = T("io.capture.readout", x, m.source_unit(sp), y, _target_unit(c.p.transform_type))
+    text = T("io.capture.readout", x, m.source_unit(sp), y, _target_unit(c.p.transform_element))
     if len(c.p.sources) > 1:
         text += T("io.capture.readout_single")
     layout.label(text=text, icon='EYEDROPPER')

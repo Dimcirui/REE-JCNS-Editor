@@ -19,7 +19,7 @@ STRINGS = {
         "ZH": "引擎的处理规则，含义未知的字段，和取值固定、导出时原样写回的字段。",
         "EN": "How the engine processes this entry, fields of unknown meaning, and fields with fixed values written back unchanged on export.",
     },
-    "editors.panel.skin": {"ZH": "Skin 蒙皮", "EN": "Skin"},
+    "editors.panel.multi": {"ZH": "Skin 蒙皮", "EN": "Skin"},
     "editors.panel.aim": {"ZH": "Aim 瞄准", "EN": "Aim"},
     "editors.panel.rotexpr": {"ZH": "RotExpr 旋转表达式", "EN": "RotExpr"},
     "editors.panel.material": {"ZH": "Material 材质", "EN": "Material"},
@@ -41,9 +41,9 @@ STRINGS = {
     "editors.field.local_axis": {"ZH": "局部轴向：", "EN": "Local axis:"},
     "editors.field.transform": {"ZH": "变换：", "EN": "Transform:"},
     "editors.field.property": {"ZH": "属性：", "EN": "Property:"},
-    "editors.field.additive": {"ZH": "叠加：", "EN": "Additive:"},
-    "editors.field.read_mode": {"ZH": "读取方式：", "EN": "Read mode:"},
-    "editors.field.euler_order": {"ZH": "欧拉顺序：", "EN": "Euler order:"},
+    "editors.field.base_pose": {"ZH": "叠加：", "EN": "Additive:"},
+    "editors.field.input_type": {"ZH": "读取方式：", "EN": "Read mode:"},
+    "editors.field.rot_order": {"ZH": "欧拉顺序：", "EN": "Euler order:"},
     "editors.field.ref_frame": {"ZH": "参考系：", "EN": "Reference frame:"},
     "editors.field.driven": {"ZH": "被驱动：", "EN": "Driven:"},
     "editors.field.driver": {"ZH": "驱动：", "EN": "Driver:"},
@@ -114,8 +114,8 @@ STRINGS = {
     "editors.tools.mirror": {"ZH": "镜像到另一侧…", "EN": "Mirror to Other Side…"},
 
     # --- Ranges: advanced -----------------------------------------------------------
-    "editors.adv.curve_mode_extra": {"ZH": "曲线模式其余位", "EN": "Other curve-mode bits"},
-    "editors.adv.flags_other": {"ZH": "其余标志位", "EN": "Other flag bits"},
+    "editors.adv.attr_flags_other": {"ZH": "曲线模式其余位", "EN": "Other curve-mode bits"},
+    "editors.adv.attr_flags_other": {"ZH": "其余标志位", "EN": "Other flag bits"},
     "editors.adv.flags_note": {
         "ZH": "其余标志位：位4、位5 导出时按变换类型重算；位2、位3 只出现在形变和材质目标上",
         "EN": "Other flag bits: bits 4 and 5 are recalculated from the transform type on export; bits 2 and 3 only appear on deform and material targets",
@@ -135,14 +135,14 @@ STRINGS = {
     "editors.adv.fields_unknown": {"ZH": "未知字段", "EN": "Unknown fields"},
 
     # --- Skin -----------------------------------------------------------------------
-    "editors.skin.need_armature": {
+    "editors.multi.need_armature": {
         "ZH": "先设置目标骨架，才能增删驱动",
         "EN": "Set the target armature first to add or remove drivers",
     },
-    "editors.skin.weight_sum": {"ZH": "权重和 %.3f", "EN": "Weight sum %.3f"},
-    "editors.skin.normalize": {"ZH": "归一化", "EN": "Normalize"},
-    "editors.skin.v102_zero": {"ZH": "v102 固定为 0", "EN": "Fixed at 0 in v102"},
-    "editors.skin.tail": {"ZH": "尾部 2 字节", "EN": "Trailing 2 bytes"},
+    "editors.multi.weight_sum": {"ZH": "权重和 %.3f", "EN": "Weight sum %.3f"},
+    "editors.multi.normalize": {"ZH": "归一化", "EN": "Normalize"},
+    "editors.multi.v102_zero": {"ZH": "v102 固定为 0", "EN": "Fixed at 0 in v102"},
+    "editors.multi.tail": {"ZH": "尾部 2 字节", "EN": "Trailing 2 bytes"},
 
     # --- Aim ------------------------------------------------------------------------
     "editors.aim.need_armature": {

@@ -53,52 +53,52 @@ AXIS_ITEMS = [
 # The two bytes vary independently, so both stay raw editable numbers.
 
 
-def _read_mode_items():
+def _input_type_items():
     from .modules_shim import ensure_path
     ensure_path()
     import jcns_source_read
     items = [(ident, "%d %s" % (value, name), desc, value)
-             for value, ident, name, _q, desc in jcns_source_read.READ_MODES]
-    default = jcns_source_read.read_mode_id(jcns_source_read.DEFAULT_READ_MODE)
+             for value, ident, name, _q, desc in jcns_source_read.INPUT_TYPES]
+    default = jcns_source_read.input_type_id(jcns_source_read.DEFAULT_INPUT_TYPE)
     return items, default
 
 
 # +25 InputType; the table lives in modules/jcns_source_read.py.
-_READ_MODE_ITEMS, _READ_MODE_DEFAULT = _read_mode_items()
+_INPUT_TYPE_ITEMS, _INPUT_TYPE_DEFAULT = _input_type_items()
 
 
-def _euler_order_items():
+def _rot_order_items():
     from .modules_shim import ensure_path
     ensure_path()
     import jcns_source_read
     return [(name, "%d %s" % (value, name), T("props.euler.order_desc", name, name[0]), value)
-            for value, name in sorted(jcns_source_read.EULER_ORDER_NAMES.items())]
+            for value, name in sorted(jcns_source_read.ROT_ORDER_NAMES.items())]
 
 
 # +27 RotOrder, Blender order names.
-_EULER_ORDER_ITEMS = _euler_order_items()
+_ROT_ORDER_ITEMS = _rot_order_items()
 
 # Source byte +28: how a segment of the mapping runs between its anchors.
 INTERPOLATION_ITEMS = [
     ('LINEAR', T("props.interp.linear"), T("props.interp.linear_desc")),
-    ('CUBIC_IN', T("props.interp.cubic_in"), T("props.interp.cubic_in_desc")),
-    ('CUBIC_OUT', T("props.interp.cubic_out"), T("props.interp.cubic_out_desc")),
-    ('SMOOTHSTEP', T("props.interp.smoothstep"), T("props.interp.smoothstep_desc")),
+    ('SLOW', T("props.interp.cubic_in"), T("props.interp.cubic_in_desc")),
+    ('FAST', T("props.interp.cubic_out"), T("props.interp.cubic_out_desc")),
+    ('SMOOTH', T("props.interp.smoothstep"), T("props.interp.smoothstep_desc")),
 ]
 INTERPOLATION_TO_INT = {item[0]: i for i, item in enumerate(INTERPOLATION_ITEMS)}
 INT_TO_INTERPOLATION = {i: ident for ident, i in INTERPOLATION_TO_INT.items()}
 
 # Aim WorldUpType: how the roll around the aim axis is fixed.
-AIM_TYPE_ITEMS = [
-    ('WORLD_UP', T("props.aim_type.world_up"), T("props.aim_type.world_up_desc")),
-    ('UP_JOINT_POSITION', T("props.aim_type.up_joint_position"), T("props.aim_type.up_joint_position_desc")),
-    ('UP_JOINT_AXIS', T("props.aim_type.up_joint_axis"), T("props.aim_type.up_joint_axis_desc")),
-    ('UP_DIRECTION', T("props.aim_type.up_direction"), T("props.aim_type.up_direction_desc")),
-    ('SHORTEST_ARC', T("props.aim_type.shortest_arc"), T("props.aim_type.shortest_arc_desc")),
-    ('SHORTEST_ARC_PARENT', T("props.aim_type.shortest_arc_parent"), T("props.aim_type.shortest_arc_parent_desc")),
+WORLD_UP_TYPE_ITEMS = [
+    ('SCENE_UP', T("props.world_up_type.world_up"), T("props.world_up_type.world_up_desc")),
+    ('OBJECT_UP', T("props.world_up_type.up_joint_position"), T("props.world_up_type.up_joint_position_desc")),
+    ('OBJECT_ROTATION_UP', T("props.world_up_type.up_joint_axis"), T("props.world_up_type.up_joint_axis_desc")),
+    ('VECTOR', T("props.world_up_type.up_direction"), T("props.world_up_type.up_direction_desc")),
+    ('NONE', T("props.world_up_type.shortest_arc"), T("props.world_up_type.shortest_arc_desc")),
+    ('NONE_MAYA_LIKE', T("props.world_up_type.shortest_arc_parent"), T("props.world_up_type.shortest_arc_parent_desc")),
 ]
-AIM_TYPE_TO_INT = {item[0]: i for i, item in enumerate(AIM_TYPE_ITEMS)}
-INT_TO_AIM_TYPE = {i: ident for ident, i in AIM_TYPE_TO_INT.items()}
+WORLD_UP_TYPE_TO_INT = {item[0]: i for i, item in enumerate(WORLD_UP_TYPE_ITEMS)}
+INT_TO_WORLD_UP_TYPE = {i: ident for ident, i in WORLD_UP_TYPE_TO_INT.items()}
 
 # RotExpression byte[1]: whether the result lies on the rest pose.
 ROT_REST_ITEMS = [
@@ -109,46 +109,46 @@ ROT_REST_TO_INT = {'REPLACE': 0, 'ADD_REST': 48}
 INT_TO_ROT_REST = {0: 'REPLACE', 48: 'ADD_REST'}
 
 TRANSFORM_ITEMS = [
-    ('Translation',    "Translation",    T("props.transform.t0")),
-    ('Rotation',       "Rotation",       T("props.transform.t1")),
+    ('Trans',    "Trans",    T("props.transform.t0")),
+    ('Rot',       "Rot",       T("props.transform.t1")),
     ('Scale',          "Scale",          T("props.transform.t2")),
-    ('BlendShape',     "BlendShape",     T("props.transform.t3")),
-    ('SwingTwist',     "SwingTwist",     T("props.transform.t4")),
-    ('TwistSwing',     "TwistSwing",     T("props.transform.t5")),
-    ('RotationVector', "RotationVector", T("props.transform.t6")),
-    ('Material_Color', "Material_Color", T("props.transform.t7")),
-    ('Material_4D',    "Material_4D",    T("props.transform.t8")),
-    ('Material_3D',    "Material_3D",    T("props.transform.t9")),
-    ('Material_2D',    "Material_2D",    T("props.transform.t10")),
-    ('Scalar',         "Scalar",         T("props.transform.t11")),
-    ('Unknown_12',     "Unknown_12",     T("props.transform.t12")),
-    ('AxisRotation',   "AxisRotation",   T("props.transform.t13")),
-    ('AxisRotation_14', "AxisRotation_14", T("props.transform.t14")),
-    ('UnkRotation_15', "UnkRotation_15", T("props.transform.t15")),
-    ('UnkRotation_16', "UnkRotation_16", T("props.transform.t16")),
+    ('Deform',     "Deform",     T("props.transform.t3")),
+    ('RotRPY',     "RotRPY",     T("props.transform.t4")),
+    ('RotPYR',     "RotPYR",     T("props.transform.t5")),
+    ('ExpMap', "ExpMap", T("props.transform.t6")),
+    ('Material', "Material", T("props.transform.t7")),
+    ('MaterialF4',    "MaterialF4",    T("props.transform.t8")),
+    ('MaterialPosF4',    "MaterialPosF4",    T("props.transform.t9")),
+    ('MaterialRotF4',    "MaterialRotF4",    T("props.transform.t10")),
+    ('ComponentProperty',         "ComponentProperty",         T("props.transform.t11")),
+    ('UserValue',     "UserValue",     T("props.transform.t12")),
+    ('Rot2',   "Rot2",   T("props.transform.t13")),
+    ('RotRPY2', "RotRPY2", T("props.transform.t14")),
+    ('RotPYR2', "RotPYR2", T("props.transform.t15")),
+    ('ExpMap2', "ExpMap2", T("props.transform.t16")),
 ]
 
 AXIS_TO_INT = {'X': 0, 'Y': 1, 'Z': 2, 'W': 3}
 INT_TO_AXIS = {0: 'X', 1: 'Y', 2: 'Z', 3: 'W'}
 
-TRANSFORM_TYPE_MAP = {
-    0:  'Translation',
-    1:  'Rotation',
+TRANSFORM_ELEMENT_MAP = {
+    0:  'Trans',
+    1:  'Rot',
     2:  'Scale',
-    3:  'BlendShape',
-    4:  'SwingTwist',
-    5:  'TwistSwing',
-    6:  'RotationVector',
-    7:  'Material_Color',
-    8:  'Material_4D',
-    9:  'Material_3D',
-    10: 'Material_2D',
-    11: 'Scalar',
-    12: 'Unknown_12',
-    13: 'AxisRotation',
-    14: 'AxisRotation_14',
-    15: 'UnkRotation_15',
-    16: 'UnkRotation_16',
+    3:  'Deform',
+    4:  'RotRPY',
+    5:  'RotPYR',
+    6:  'ExpMap',
+    7:  'Material',
+    8:  'MaterialF4',
+    9:  'MaterialPosF4',
+    10: 'MaterialRotF4',
+    11: 'ComponentProperty',
+    12: 'UserValue',
+    13: 'Rot2',
+    14: 'RotRPY2',
+    15: 'RotPYR2',
+    16: 'ExpMap2',
 }
 
 
@@ -156,14 +156,14 @@ TRANSFORM_TYPE_MAP = {
 # Update and search callbacks
 # ---------------------------------------------------------------------------
 
-def _update_additive(self, context):
+def _update_base_pose(self, context):
     _refresh_flags_preview(self)
 
 
 def flags_byte(p):
-    """The OutputData AttrFlags byte: bit 0 is the additive switch, the other bits
+    """The OutputData AttrFlags byte: bit 0 is the base_pose switch, the other bits
     are kept as read (bits 4 and 5 are rederived from the transform type on export)."""
-    return (int(p.flags_other) & 0xFE) | int(bool(p.additive))
+    return (int(p.attr_flags_other) & 0xFE) | int(bool(p.base_pose))
 
 
 def _refresh_flags_preview(self):
@@ -198,10 +198,10 @@ def _sync_constraint_name(self):
         return
     # Section Empties keep their '[AimNN] …' prefix (see SECTION_PREFIX).
     # Material / JXG labels never change.
-    if p.constraint_type in ('Skin', 'Aim', 'RotExpression'):
+    if p.constraint_type in ('Multi', 'Aim', 'RotExpression'):
         obj.name = section_empty_name(p.constraint_type, section_index(obj), p)
         return
-    if p.constraint_type not in ('Ranges', ''):
+    if p.constraint_type not in ('Outputs', ''):
         return
     idx = 0
     if obj.name.startswith('['):
@@ -214,7 +214,7 @@ def _sync_constraint_name(self):
 
 # Non-range section Empties are named "[<Prefix><NN>] <label>".  The exporter
 # reads the entry order back out of the prefix, so keep it stable.
-SECTION_PREFIX = {'Skin': 'Skin', 'Aim': 'Aim', 'RotExpression': 'RotExpr', 'Material': 'Mat'}
+SECTION_PREFIX = {'Multi': 'Multi', 'Aim': 'Aim', 'RotExpression': 'RotExpr', 'Material': 'Mat'}
 
 
 def section_index(obj):
@@ -229,7 +229,7 @@ def section_index(obj):
 
 def section_empty_name(kind, idx, p):
     pre = SECTION_PREFIX.get(kind, kind)
-    if kind == 'Skin':
+    if kind == 'Multi':
         label = p.target_bone or '?'
     elif kind == 'Aim':
         label = f"{p.target_bone or '?'} → {p.aim_target_bone or '?'}"
@@ -316,13 +316,13 @@ class JCNSCMKey(PropertyGroup):
                         default=0, min=0)
 
 
-class JCNSConeInfo(PropertyGroup):
+class JCNSConeDriver(PropertyGroup):
     """One ConeDriver record (24 bytes, v24+): a cone this constraint reads.
 
     RE9 v35: Rest is (0,0,0,0), or (0,0,0,1) on scale targets; Value is what the
     target takes for that cone (bt: AngleDeg, but scale targets hold factors).
     """
-    cone_index: IntProperty(name="ConeInput", description=T("props.cone.index_desc"), default=0, min=0)
+    cone_input_index: IntProperty(name="ConeInput", description=T("props.cone.index_desc"), default=0, min=0)
     value: FloatProperty(name=T("props.cone.value"), description=T("props.cone.value_desc"), default=0.0)
     rest: FloatVectorProperty(name="Rest", size=4, default=(0.0, 0.0, 0.0, 0.0))
     unk_byte0: IntProperty(name="+20", default=0, min=0, max=255)
@@ -341,7 +341,7 @@ class JCNSHashItem(PropertyGroup):
 
 
 class JCNSWeightedSource(PropertyGroup):
-    """One source bone of a SkinConstraint record."""
+    """One source bone of a MultiConstraint record."""
     bone: StringProperty(name=T("props.weighted.bone"), default="", update=_refresh_preview,
                          search=lambda self, context, text: _search_bone_names(context, text))
     weight: FloatProperty(name=T("props.weighted.weight"), default=1.0, precision=4, update=_refresh_preview_values)
@@ -412,29 +412,29 @@ class JCNSSourceProperties(PropertyGroup):
 
     # --- Raw bytes ---
     # +24 and +25 default to 3, the most common value.
-    three_point: BoolProperty(
+    mid_point: BoolProperty(
         update=_refresh_preview_values,
-        name=T("props.source.three_point"),
-        description=T("props.source.three_point_desc"),
+        name=T("props.source.mid_point"),
+        description=T("props.source.mid_point_desc"),
         default=True,
     )
-    curve_mode_extra: IntProperty(
-        name=T("props.source.curve_mode_extra"),
-        description=T("props.source.curve_mode_extra_desc"),
+    attr_flags_other: IntProperty(
+        name=T("props.source.attr_flags_other"),
+        description=T("props.source.attr_flags_other_desc"),
         default=1, min=0, max=253,
     )
-    read_mode: EnumProperty(
+    input_type: EnumProperty(
         update=_refresh_preview,
-        name=T("props.source.read_mode"),
-        description=T("props.source.read_mode_desc"),
-        items=_READ_MODE_ITEMS,
-        default=_READ_MODE_DEFAULT,
+        name=T("props.source.input_type"),
+        description=T("props.source.input_type_desc"),
+        items=_INPUT_TYPE_ITEMS,
+        default=_INPUT_TYPE_DEFAULT,
     )
-    euler_order: EnumProperty(
+    rot_order: EnumProperty(
         update=_refresh_preview,
-        name=T("props.source.euler_order"),
-        description=T("props.source.euler_order_desc"),
-        items=_EULER_ORDER_ITEMS,
+        name=T("props.source.rot_order"),
+        description=T("props.source.rot_order_desc"),
+        items=_ROT_ORDER_ITEMS,
         default='XYZ',
     )
     complex_mapping_info_count: IntProperty(
@@ -451,7 +451,7 @@ class JCNSSourceProperties(PropertyGroup):
         description=T("props.source.interpolation_desc"),
         items=INTERPOLATION_ITEMS, default='LINEAR',
     )
-    complex_mapping_flag: IntProperty(
+    curve_type: IntProperty(
         name=T("props.source.cm_flag"), description=T("props.source.cm_flag_desc"),
         default=0, min=0, max=255,
     )
@@ -485,12 +485,12 @@ class JCNSConstraintProperties(PropertyGroup):
         search=_search_target_bone,
         search_options={'SUGGESTION'},
     )
-    transform_type: EnumProperty(
+    transform_element: EnumProperty(
         update=_refresh_preview,
-        name=T("props.cns.transform_type"),
-        description=T("props.cns.transform_type_desc"),
+        name=T("props.cns.transform_element"),
+        description=T("props.cns.transform_element_desc"),
         items=TRANSFORM_ITEMS,
-        default='Rotation',
+        default='Rot',
     )
 
     # --- Axis (editable — exported back to file) ---
@@ -503,14 +503,14 @@ class JCNSConstraintProperties(PropertyGroup):
     )
 
     # --- OutputData fields (editable, exported) ---
-    additive: BoolProperty(
-        name=T("props.cns.additive"),
-        description=T("props.cns.additive_desc"),
-        default=True, update=_update_additive,
+    base_pose: BoolProperty(
+        name=T("props.cns.base_pose"),
+        description=T("props.cns.base_pose_desc"),
+        default=True, update=_update_base_pose,
     )
-    flags_other: IntProperty(
-        name=T("props.cns.flags_other"),
-        description=T("props.cns.flags_other_desc"),
+    attr_flags_other: IntProperty(
+        name=T("props.cns.attr_flags_other"),
+        description=T("props.cns.attr_flags_other_desc"),
         default=0x30, min=0, max=254,
     )
     reserved_vec4_x: FloatProperty(name="Vec4 X", default=0.0, precision=5, description=T("props.cns.vec4_zero_desc"))
@@ -544,8 +544,8 @@ class JCNSConstraintProperties(PropertyGroup):
         default=0,
     )
     # ConeDriver[]: the cones this constraint reads (RE9 uses them heavily)
-    cone_infos: CollectionProperty(type=JCNSConeInfo)
-    active_cone_info_index: IntProperty(default=0)
+    cone_drivers: CollectionProperty(type=JCNSConeDriver)
+    active_cone_driver_index: IntProperty(default=0)
     # +77 is the joint-group count (jcns_writer.tail_group_counts derives it); +74 and +75
     # are unknown, and +75 defaults to its most common value.
     unknown_byte_74: IntProperty(name="+74", default=0, min=0, max=255,
@@ -570,9 +570,9 @@ class JCNSConstraintProperties(PropertyGroup):
         description=T("props.cns.mat_property_hash_desc"),
         default="0x00000000",
     )
-    mat_transform_type_raw: IntProperty(
+    mat_transform_element_raw: IntProperty(
         name="TransformationID",
-        description=T("props.cns.mat_transform_type_desc"),
+        description=T("props.cns.mat_transform_element_desc"),
         default=0, min=0, max=255,
     )
     mat_tail_0: IntProperty(name="MatTail[0]", default=0, min=0, max=255)
@@ -586,12 +586,12 @@ class JCNSConstraintProperties(PropertyGroup):
         default="",
     )
 
-    # --- SkinConstraint (target_bone is the skinned object) ---
-    skin_sources: CollectionProperty(type=JCNSWeightedSource)
-    active_skin_source_index: IntProperty(default=0)
-    skin_tail: IntVectorProperty(
-        name=T("props.cns.skin_tail"), size=2, default=(0, 0), min=0, max=255,
-        description=T("props.cns.skin_tail_desc"))
+    # --- MultiConstraint (target_bone is the skinned object) ---
+    multi_sources: CollectionProperty(type=JCNSWeightedSource)
+    active_multi_source_index: IntProperty(default=0)
+    multi_tail: IntVectorProperty(
+        name=T("props.cns.multi_tail"), size=2, default=(0, 0), min=0, max=255,
+        description=T("props.cns.multi_tail_desc"))
 
     # --- Aim (target_bone is the aimed joint) ---
     aim_target_bone: StringProperty(name=T("props.cns.aim_target_bone"), default="", update=_refresh_preview,
@@ -609,7 +609,7 @@ class JCNSConstraintProperties(PropertyGroup):
                                      description=T("props.cns.aim_up_axis_desc"))
     aim_up_dir: FloatVectorProperty(name=T("props.cns.aim_up_dir"), size=3, default=(0.0, 1.0, 0.0),
                                     description=T("props.cns.aim_up_dir_desc"))
-    aim_type: EnumProperty(name=T("props.cns.aim_type"), items=AIM_TYPE_ITEMS, default='WORLD_UP',
+    world_up_type: EnumProperty(name=T("props.cns.world_up_type"), items=WORLD_UP_TYPE_ITEMS, default='SCENE_UP',
                            update=_refresh_preview)
     aim_bytes: IntVectorProperty(name=T("props.cns.aim_bytes"), size=3, default=(1, 0, 5), min=0, max=255)
 
@@ -627,8 +627,8 @@ class JCNSConstraintProperties(PropertyGroup):
     # --- Section type (set at import, read-only in UI) ---
     constraint_type: StringProperty(
         name="Constraint Type",
-        description="Section type from the JCNS file (e.g. 'Ranges', 'Aim', 'Skin'…)",
-        default='Ranges',
+        description="Section type from the JCNS file (e.g. 'Outputs', 'Aim', 'Multi'…)",
+        default='Outputs',
     )
 
     # --- Driver state (runtime, not exported) ---
@@ -793,14 +793,14 @@ class JCNSRootProperties(PropertyGroup):
         description="Version number of the imported file (the .jcns.<N> suffix); 0 = imported by an older add-on",
         default=0,
     )
-    # Set by importers that store Skin / Aim / RotExpression / ComplexMapping in
+    # Set by importers that store Multi / Aim / RotExpression / ComplexMapping in
     # Blender.  When False, the exporter takes those sections from the re-parsed
     # source file, since the Empties hold no data.
     sections_cached: BoolProperty(default=False)
     # Browser state (UI only)
     browser_kind: EnumProperty(
         name=T("props.root.browser_kind"), description=T("props.root.browser_kind_desc"),
-        items=_browser_kind_items(), default='Ranges',
+        items=_browser_kind_items(), default='Outputs',
     )
     browser_view: EnumProperty(
         name=T("props.root.browser_view"), description=T("props.root.browser_view_desc"),
@@ -813,7 +813,7 @@ class JCNSRootProperties(PropertyGroup):
         get=_entry_index_get, set=_entry_index_set,
     )
     file_constant: IntProperty(default=5)
-    # ReadJointTable: the joints Skin and Aim read, in file order (see jcns_sections).
+    # ReadJointTable: the joints Multi and Aim read, in file order (see jcns_sections).
     read_joint_table: CollectionProperty(type=JCNSHashItem)
     read_joint_index: IntProperty(default=0)
     read_joint_signature_json: StringProperty(default="")
@@ -831,7 +831,7 @@ class JCNSRootProperties(PropertyGroup):
         description=T("props.root.rot_map_value_desc"))
     object_settings_json: StringProperty(default="")
     # ConeInput table (v35+), cached so a rebuild can re-emit it
-    cone_drivers_json: StringProperty(default="")
+    cone_inputs_json: StringProperty(default="")
     # Read only when source_version is 0 (see jcns_exporter._root_version).
     detected_game: EnumProperty(
         name=T("props.root.detected_game"),
@@ -933,7 +933,7 @@ def get_constraint_empties(root_empty):
     """
     def _is_range(obj):
         p = getattr(obj, 'jcns_cns_props', None)
-        return p and (p.constraint_type == 'Ranges' or p.constraint_type == '')
+        return p and (p.constraint_type == 'Outputs' or p.constraint_type == '')
 
     empties = []
     for obj in root_empty.children:
@@ -968,7 +968,7 @@ def channel_key(cns_props):
     one driver per F-Curve channel, so constraints sharing a key are built as a
     single driver.
     """
-    return (cns_props.target_bone, cns_props.transform_type, cns_props.target_axis)
+    return (cns_props.target_bone, cns_props.transform_element, cns_props.target_axis)
 
 
 def group_constraints_by_channel(root_empty):
@@ -1016,7 +1016,7 @@ def constraint_name_from_props(idx, props):
         props.target_axis,
         first.source_axis if first else 'X',
         max(0, len(srcs) - 1),
-        len(props.cone_infos),
+        len(props.cone_drivers),
     )
 
 
@@ -1047,7 +1047,7 @@ _classes = [
     JCNSCMKey,                  # groups must register before the groups that reference them
     JCNSIntItem,
     JCNSHashItem,
-    JCNSConeInfo,
+    JCNSConeDriver,
     JCNSWeightedSource,
     JCNSSourceProperties,
     JCNSConstraintProperties,

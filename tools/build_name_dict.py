@@ -4,7 +4,7 @@ build_name_dict.py
 Build modules/data/joint_names.tsv.gz: every name RE Engine hashes in a .jcns,
 keyed by that hash (MurmurHash3 of the name as UTF-16LE, seed 0xFFFFFFFF — the
 same function the files use), so the add-on can show a name where a file only
-stores the hash (Skin / Aim / RotExpression joints, Material joints, the
+stores the hash (Multi / Aim / RotExpression joints, Material joints, the
 ReadJointTable, ...).
 
 Names are collected from

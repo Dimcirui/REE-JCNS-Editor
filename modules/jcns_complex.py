@@ -91,7 +91,7 @@ def mirrored(keys, in_sign, out_sign):
     return out
 
 
-def from_three_point(fs, fk, fe, ts, tk, te, two_point=False):
+def from_mid_point(fs, fk, fe, ts, tk, te, two_point=False):
     """Keys drawing the same segments as a three-point mapping, sorted
     ascending in x."""
     pts = [(fs, ts), (fe, te)] if two_point else [(fs, ts), (fk, tk), (fe, te)]

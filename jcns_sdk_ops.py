@@ -190,17 +190,17 @@ def _previewed(st):
 
 
 _READ_ITEMS = [('AUTO', T("sdk.item.auto"), T("sdk.item.read_auto_desc"))] + [
-    (ident, "%d %s" % (value, name), desc) for value, ident, name, _q, desc in sr.READ_MODES]
+    (ident, "%d %s" % (value, name), desc) for value, ident, name, _q, desc in sr.INPUT_TYPES]
 _AXIS_ITEMS = [('AUTO', T("sdk.item.auto"), T("sdk.item.axis_auto_desc")), ('X', "X", ""), ('Y', "Y", ""), ('Z', "Z", "")]
 _TANGENT_ITEMS = [('LINEAR', T("sdk.item.linear"), T("sdk.item.linear_desc")),
                   ('SMOOTH', T("sdk.item.smooth"), T("sdk.item.smooth_desc"))]
 
 
-def make_plan(st, read_mode='AUTO', source_axis='AUTO', tangent='LINEAR'):
+def make_plan(st, input_type='AUTO', source_axis='AUTO', tangent='LINEAR'):
     """The plan for the recorded keys."""
     return core.plan_keys(
         st.keys(), st.driver, st.driven, st.rests(),
-        read_mode=None if read_mode == 'AUTO' else read_mode,
+        input_type=None if input_type == 'AUTO' else input_type,
         axis=None if source_axis == 'AUTO' else 'XYZ'.index(source_axis),
         tangent=tangent, complex_ok=st.cm_ok, complex_reason=st.cm_reason)
 
@@ -502,9 +502,9 @@ def _fill_source(sp, c, driver):
     from . import INT_TO_AXIS, jcns_cm
     sp.source_bone = driver
     sp.source_axis = INT_TO_AXIS[c.source_axis]
-    sp.read_mode = sr.read_mode_id(c.read_mode)
-    sp.euler_order = sr.EULER_ORDER_NAMES[c.euler_order]
-    sp.three_point = c.three_point
+    sp.input_type = sr.input_type_id(c.input_type)
+    sp.rot_order = sr.ROT_ORDER_NAMES[c.rot_order]
+    sp.mid_point = c.mid_point
     for field, v in zip(('from_start', 'from_kink', 'from_end'), c.from_anchors):
         setattr(sp, field, round(v, 5) + 0.0)
     for field, v in zip(('to_start', 'to_kink', 'to_end'), c.to_anchors):
@@ -515,7 +515,7 @@ def _fill_source(sp, c, driver):
         sp.cm_cache.clear()
         jcns_cm.set_keys(sp, list(c.keys))
         sp.complex_mapping_info_count = len(c.keys)
-        sp.complex_mapping_flag = 1
+        sp.curve_type = 1
 
 
 def land(context, st, plan, append, touched=None):
@@ -526,7 +526,7 @@ def land(context, st, plan, append, touched=None):
     the others become new entries at the end of the file.  `touched`, when given, collects
     the (bone, transform, axis) of every channel that got a new entry or source.
     """
-    from . import (INT_TO_AXIS, TRANSFORM_TYPE_MAP, _sync_constraint_name,
+    from . import (INT_TO_AXIS, TRANSFORM_ELEMENT_MAP, _sync_constraint_name,
                    group_constraints_by_channel, jcns_preview)
     from .jcns_operators import _clear_channel, new_constraint_empty
 
@@ -534,7 +534,7 @@ def land(context, st, plan, append, touched=None):
     last = None
     was_previewed = []
     for c in plan.constraints:
-        transform = TRANSFORM_TYPE_MAP[c.transform_type]
+        transform = TRANSFORM_ELEMENT_MAP[c.transform_element]
         axis = INT_TO_AXIS[c.axis]
         channel = (c.driven, transform, axis)
         if touched is not None and channel not in touched:
@@ -546,7 +546,7 @@ def land(context, st, plan, append, touched=None):
         host = None
         if append and members:
             hp = members[-1].jcns_cns_props
-            ok, _why = core.can_append({'additive': hp.additive, 'cone_infos': len(hp.cone_infos),
+            ok, _why = core.can_append({'base_pose': hp.base_pose, 'cone_drivers': len(hp.cone_drivers),
                                         'n_sources': len(hp.sources), 'target_property': hp.target_property,
                                         'property_hash': hp.property_hash}, c, complex_ok=st.cm_ok)
             host = members[-1] if ok else None
@@ -563,8 +563,8 @@ def land(context, st, plan, append, touched=None):
             if last is None:
                 raise RuntimeError(T("sdk.land.no_collection"))
             p = last.jcns_cns_props
-            p.target_bone, p.transform_type, p.target_axis = c.driven, transform, axis
-            p.additive = c.additive
+            p.target_bone, p.transform_element, p.target_axis = c.driven, transform, axis
+            p.base_pose = c.base_pose
             _fill_source(p.sources[0], c, st.driver)
             created += 1
         _sync_constraint_name(p)
@@ -589,7 +589,7 @@ def preview_channels(st, channels):
     arm = st.rp.target_armature
     if arm is None:
         return T("sdk.preview.no_armature")
-    backend = jcns_preview.backend_of('Ranges')
+    backend = jcns_preview.backend_of('Outputs')
     groups = group_constraints_by_channel(st.root)
     failed = 0
     for channel in channels:
@@ -626,8 +626,8 @@ class JCNS_OT_SDKGenerate(_SDKOperator):
     bl_label  = T("sdk.generate.label")
     bl_description = T("sdk.generate.desc")
 
-    read_mode: EnumProperty(name=T("sdk.generate.read_mode"), items=_READ_ITEMS, default='AUTO',
-                            description=T("sdk.generate.read_mode_desc"))
+    input_type: EnumProperty(name=T("sdk.generate.input_type"), items=_READ_ITEMS, default='AUTO',
+                            description=T("sdk.generate.input_type_desc"))
     source_axis: EnumProperty(name=T("sdk.generate.source_axis"), items=_AXIS_ITEMS, default='AUTO',
                               description=T("sdk.generate.source_axis_desc"))
     tangent: EnumProperty(name=T("sdk.generate.tangent"), items=_TANGENT_ITEMS, default='LINEAR',
@@ -643,14 +643,14 @@ class JCNS_OT_SDKGenerate(_SDKOperator):
     def poll(cls, context):
         from .jcns_operators import _caps_for
         st = _state(context)[0]
-        return st is not None and _caps_for(st.rp, 'Ranges').can_add
+        return st is not None and _caps_for(st.rp, 'Outputs').can_add
 
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self, width=420)
 
     def draw(self, context):
         layout = self.layout
-        layout.prop(self, "read_mode")
+        layout.prop(self, "input_type")
         layout.prop(self, "source_axis")
         st = _state(context)[0]
         if st is not None and sum(1 for k in st.keys() if st.driver in k.poses) > core.MAX_KEYS:
@@ -658,13 +658,13 @@ class JCNS_OT_SDKGenerate(_SDKOperator):
         layout.prop(self, "append_sources")
         layout.prop(self, "preview_after")
         if st is not None:
-            _plan_lines(layout.box(), context, make_plan(st, self.read_mode, self.source_axis, self.tangent), st)
+            _plan_lines(layout.box(), context, make_plan(st, self.input_type, self.source_axis, self.tangent), st)
 
     def execute(self, context):
         st = self.state(context)
         if st is None:
             return {'CANCELLED'}
-        plan = make_plan(st, self.read_mode, self.source_axis, self.tangent)
+        plan = make_plan(st, self.input_type, self.source_axis, self.tangent)
         if not plan.ok:
             self.report({'ERROR'}, plan.errors[0])
             return {'CANCELLED'}
@@ -750,7 +750,7 @@ class JCNS_PT_SDK(Panel):
         from .jcns_ui import _wrap_label, _resolve_root
         root, rp = _resolve_root(context)
         layout = self.layout
-        caps = _caps_for(rp, 'Ranges')
+        caps = _caps_for(rp, 'Outputs')
         if not caps.can_add:
             layout.label(text=caps.reason('add') or T("sdk.panel.cannot_add"), icon='LOCKED')
         body = layout.column()

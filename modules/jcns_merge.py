@@ -28,12 +28,12 @@ from jcns_i18n import T
 MAX_SOURCES = 255           # SourceCount is a uint8
 
 # What makes two entries the same channel.
-CHANNEL_FIELDS = ('target_bone', 'target_property', 'transform_type', 'target_axis')
+CHANNEL_FIELDS = ('target_bone', 'target_property', 'transform_element', 'target_axis')
 
 # Entry-level fields that must agree for a lossless merge: (key, label string key).
 ENTRY_FIELDS = (
-    ('additive', "io.merge.field.additive"),
-    ('flags_other', "io.merge.field.flags_other"),
+    ('base_pose', "io.merge.field.base_pose"),
+    ('attr_flags_other', "io.merge.field.attr_flags_other"),
     ('reserved_vec4', "io.merge.field.vec4"),
     ('unknown_float2', "io.merge.field.float2"),
     ('unknown_byte_72', "io.merge.field.unknown_byte_72"),
@@ -128,8 +128,8 @@ def plan_merge(entries, indices, complex_ok=True):
     if differing:
         plan.conflicts.append(Conflict('entry_fields', T("io.merge.fields_differ", T("io.sep.list").join(differing))))
 
-    if any(m.get('cone_infos') for m in members):
-        plan.conflicts.append(Conflict('cone_infos', T("io.merge.cone_infos")))
+    if any(m.get('cone_drivers') for m in members):
+        plan.conflicts.append(Conflict('cone_drivers', T("io.merge.cone_drivers")))
 
     if any(not m.get('sources') for m in members):
         plan.conflicts.append(Conflict('sources', T("io.merge.no_sources")))
@@ -161,7 +161,7 @@ def group_spans(entries):
     target, property and transform type and carry count 0.
     """
     def ident(e):
-        return (e.get('target_bone'), e.get('target_property', ''), e.get('transform_type'))
+        return (e.get('target_bone'), e.get('target_property', ''), e.get('transform_element'))
 
     spans, i, n = [], 0, len(entries)
     while i < n:

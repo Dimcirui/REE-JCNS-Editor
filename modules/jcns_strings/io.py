@@ -4,8 +4,8 @@ STRINGS = {
     "io.sep.list": {"ZH": "、", "EN": ", "},
 
     # ---- modules/jcns_merge.py: fields that must agree ----
-    "io.merge.field.additive": {"ZH": "叠加", "EN": "Additive"},
-    "io.merge.field.flags_other": {"ZH": "其余标志位", "EN": "Other flags"},
+    "io.merge.field.base_pose": {"ZH": "叠加", "EN": "Additive"},
+    "io.merge.field.attr_flags_other": {"ZH": "其余标志位", "EN": "Other flags"},
     "io.merge.field.vec4": {"ZH": "Vec4", "EN": "Vec4"},
     "io.merge.field.float2": {"ZH": "Float2", "EN": "Float2"},
     "io.merge.field.unknown_byte_72": {"ZH": "未知字节 (+72)", "EN": "Unknown byte (+72)"},
@@ -27,7 +27,7 @@ STRINGS = {
         "EN": "The target is a material or morph property, which cannot be merged",
     },
     "io.merge.fields_differ": {"ZH": "%s不一致", "EN": "Fields differ: %s"},
-    "io.merge.cone_infos": {
+    "io.merge.cone_drivers": {
         "ZH": "带 ConeDriver 输入，多源约束表达不了",
         "EN": "It has ConeDriver inputs, which a multi-source constraint cannot express",
     },

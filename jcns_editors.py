@@ -23,7 +23,7 @@ from bpy.types import Panel
 from . import jcns_capture
 from .modules_shim import get_targets as _targets, T
 from .jcns_ui import (_mapping, _fmt, _field_row, _draw_raw_group, _active_source,
-                      _skin_table_locked, _target_unit, _curve_icon, _swatch_icon,
+                      _multi_table_locked, _target_unit, _curve_icon, _swatch_icon,
                       _wrap_label, _kinds)
 
 
@@ -121,7 +121,7 @@ def draw_mapping_warnings(layout, p, sp, m):
         col.label(text=T("editors.warn.inert"), icon='RADIOBUT_OFF')
         return
     if d['offset_at_rest']:
-        text = T("editors.warn.rest_offset", _fmt(d['rest_output']), _target_unit(p.transform_type))
+        text = T("editors.warn.rest_offset", _fmt(d['rest_output']), _target_unit(p.transform_element))
         if m.would_swapping_ends_help(sp):
             _warn_row(col, text, T("editors.btn.swap_ends"), "jcns.swap_mapto_ends")
         else:
@@ -165,7 +165,7 @@ def draw_anchors(layout, m, sp, c):
     src_ok, tgt_ok = jcns_capture.sides_readable(c, sp)
     col2 = layout.column(align=True)
     col2.separator()
-    col2.prop(sp, "three_point")
+    col2.prop(sp, "mid_point")
     col2.prop(sp, "interpolation")
     h = col2.row()
     h.label(text=_unit_title(T("editors.word.driver"), m.source_unit(sp)))
@@ -178,7 +178,7 @@ def draw_anchors(layout, m, sp, c):
         jcns_capture.anchor_cell(rw, sp, field, src_ok)
 
     h = col2.row()
-    h.label(text=_unit_title(T("editors.word.output"), _target_unit(c.p.transform_type)))
+    h.label(text=_unit_title(T("editors.word.output"), _target_unit(c.p.transform_element)))
     h.label(text="A′")
     h.label(text="B′")
     h.label(text="C′")
@@ -229,8 +229,8 @@ def _early_read_axes(c, p, sp):
     if c.root is None or not sp.source_bone:
         return []
     later = jcns_operators._written_from(c.root, c.obj)
-    q = _mapping().source_quantity(sp.read_mode)
-    path = jcns_operators._DRIVABLE[q][0]
+    q = _mapping().source_quantity(sp.input_type)
+    path = jcns_operators.QUANTITY_PATH[q]
     axes = (0, 1, 2) if q != 'Scale' else ({'X': 0, 'Y': 1, 'Z': 2}.get(sp.source_axis, 0),)
     return [a for a in axes if (sp.source_bone, path, a) in later]
 
@@ -239,7 +239,7 @@ class JCNS_PT_Ed_Ranges(_EditorMain, Panel):
     bl_label  = T("editors.word.driven")
     bl_description = T("editors.panel.driven_desc")
     bl_idname = "JCNS_PT_ed_ranges"
-    KIND = 'Ranges'
+    KIND = 'Outputs'
 
     def draw(self, context):
         from . import sibling_constraints, get_constraint_empties, jcns_merge_ops
@@ -251,11 +251,11 @@ class JCNS_PT_Ed_Ranges(_EditorMain, Panel):
         col = layout.column(align=True)
         _field_row(col, T("editors.field.bone"), p, "target_bone")
         _field_row(col, T("editors.field.local_axis"), p, "target_axis")
-        _field_row(col, T("editors.field.transform"), p, "transform_type")
+        _field_row(col, T("editors.field.transform"), p, "transform_element")
         from .jcns_exporter import _transform_int
-        if p.target_property or _targets().has_property_name(_transform_int(p.transform_type)):
+        if p.target_property or _targets().has_property_name(_transform_int(p.transform_element)):
             _field_row(col, T("editors.field.property"), p, "target_property")
-        _field_row(col, T("editors.field.additive"), p, "additive")
+        _field_row(col, T("editors.field.base_pose"), p, "base_pose")
 
         # 导出按 [N] 前缀排列；同一通道上后写的那条覆盖前面的。
         sibs = sibling_constraints(obj)
@@ -269,14 +269,14 @@ class JCNS_PT_Ed_Ranges_Sources(_Editor, Panel):
     bl_label  = T("editors.panel.sources")
     bl_idname = "JCNS_PT_ed_ranges_sources"
     bl_parent_id = "JCNS_PT_edit"
-    KIND = 'Ranges'
+    KIND = 'Outputs'
 
     def draw_header(self, context):
         from . import get_jcns_constraint, get_jcns_root_from_constraint
         from .jcns_operators import _caps_for
         _, rp = get_jcns_root_from_constraint(get_jcns_constraint(context)[0])
         row = self.layout.row(align=True)
-        row.enabled = rp is not None and _caps_for(rp, 'Ranges').can_add   # sources come and go only where entries can
+        row.enabled = rp is not None and _caps_for(rp, 'Outputs').can_add   # sources come and go only where entries can
         row.operator("jcns.add_source", text="", icon='ADD')
         row.operator("jcns.remove_source", text="", icon='REMOVE')
 
@@ -299,12 +299,12 @@ class JCNS_PT_Ed_Ranges_Sources(_Editor, Panel):
             col.label(text=T("editors.sources.item", p.active_source_index), icon='BONE_DATA')
         _field_row(col, T("editors.field.bone"), sp, "source_bone")
         _field_row(col, T("editors.field.local_axis"), sp, "source_axis")
-        _field_row(col, T("editors.field.read_mode"), sp, "read_mode")
+        _field_row(col, T("editors.field.input_type"), sp, "input_type")
         row = col.row(align=True)
-        row.active = sp.read_mode == 'EULER'          # the other reads ignore it
-        _field_row(row, T("editors.field.euler_order"), sp, "euler_order")
+        row.active = sp.input_type == 'EULER'          # the other reads ignore it
+        _field_row(row, T("editors.field.rot_order"), sp, "rot_order")
         row = col.row(align=True)
-        row.active = sp.read_mode in ('SWING_TWIST', 'TWIST_SWING', 'ROTATION_VECTOR')   # the other reads ignore it
+        row.active = sp.input_type in ('SWING_TWIST', 'TWIST_SWING', 'ROTATION_VECTOR')   # the other reads ignore it
         row.label(text=T("editors.field.ref_frame"))
         for axis in "xyzw":
             row.prop(sp, "ref_frame_" + axis, text=axis.upper())
@@ -317,7 +317,7 @@ class JCNS_PT_Ed_Ranges_Mapping(_Editor, Panel):
     bl_label  = T("editors.panel.mapping")
     bl_idname = "JCNS_PT_ed_ranges_mapping"
     bl_parent_id = "JCNS_PT_edit"
-    KIND = 'Ranges'
+    KIND = 'Outputs'
 
     @classmethod
     def poll(cls, context):
@@ -359,7 +359,7 @@ class JCNS_PT_Ed_Ranges_Cones(_Editor, Panel):
     bl_description = T("editors.panel.cones_desc")
     bl_idname = "JCNS_PT_ed_ranges_cones"
     bl_parent_id = "JCNS_PT_edit"
-    KIND = 'Ranges'
+    KIND = 'Outputs'
 
     @classmethod
     def poll(cls, context):
@@ -368,7 +368,7 @@ class JCNS_PT_Ed_Ranges_Cones(_Editor, Panel):
             return False
         obj, p = get_jcns_constraint(context)
         _, rp = get_jcns_root_from_constraint(obj)
-        return bool(len(p.cone_infos) or (rp and rp.cone_drivers_json))
+        return bool(len(p.cone_drivers) or (rp and rp.cone_inputs_json))
 
     def draw(self, context):
         c = _begin(self.layout, context, banner=False)
@@ -376,13 +376,13 @@ class JCNS_PT_Ed_Ranges_Cones(_Editor, Panel):
             return
         layout, p = c.body, c.p
         row = layout.row()
-        row.template_list("JCNS_UL_cone_infos", "", p, "cone_infos", p, "active_cone_info_index",
-                          rows=min(max(len(p.cone_infos), 2), 8))
+        row.template_list("JCNS_UL_cone_drivers", "", p, "cone_drivers", p, "active_cone_driver_index",
+                          rows=min(max(len(p.cone_drivers), 2), 8))
         col = row.column(align=True)
-        col.operator("jcns.cone_info_add", text="", icon='ADD')
-        col.operator("jcns.cone_info_remove", text="", icon='REMOVE')
-        if len(p.cone_infos):
-            k = p.cone_infos[min(p.active_cone_info_index, len(p.cone_infos) - 1)]
+        col.operator("jcns.cone_driver_add", text="", icon='ADD')
+        col.operator("jcns.cone_driver_remove", text="", icon='REMOVE')
+        if len(p.cone_drivers):
+            k = p.cone_drivers[min(p.active_cone_driver_index, len(p.cone_drivers) - 1)]
             box = layout.box()
             box.prop(k, "value")
             box.row(align=True).prop(k, "rest", text="Rest")
@@ -395,7 +395,7 @@ class JCNS_PT_Ed_Ranges_Tools(_Editor, Panel):
     bl_label  = T("editors.panel.tools")
     bl_idname = "JCNS_PT_ed_ranges_tools"
     bl_parent_id = "JCNS_PT_edit"
-    KIND = 'Ranges'
+    KIND = 'Outputs'
 
     def draw_header(self, context):
         self.layout.label(text="", icon='TOOL_SETTINGS')
@@ -415,7 +415,7 @@ class JCNS_PT_Ed_Ranges_Advanced(_Editor, _Sub, Panel):
     bl_description = T("editors.panel.advanced_desc")
     bl_idname = "JCNS_PT_ed_ranges_advanced"
     bl_parent_id = "JCNS_PT_edit"
-    KIND = 'Ranges'
+    KIND = 'Outputs'
 
     def draw_header(self, context):
         self.layout.label(text="", icon='PREFERENCES')
@@ -429,19 +429,19 @@ class JCNS_PT_Ed_Ranges_Advanced(_Editor, _Sub, Panel):
 
         from .jcns_exporter import _transform_int
         from .jcns_drivers import jcns_source_read as sr
-        lines = list(sr.target_rule(_transform_int(p.transform_type), p.additive))
+        lines = list(sr.target_rule(_transform_int(p.transform_element), p.base_pose))
         if sp is not None:
-            lines += sr.read_rule(sp.read_mode, sr.euler_order_value(sp.euler_order),
+            lines += sr.read_rule(sp.input_type, sr.rot_order_value(sp.rot_order),
                                   abs(sp.ref_frame_w) >= 1.0 - 1e-9)
         _draw_rules(layout.box(), lines)
 
         if sp is not None:
             _draw_raw_group(layout, T("editors.word.driver"), 'PREFERENCES', [
-                (sp, [("curve_mode_extra", T("editors.adv.curve_mode_extra"))]),
-                (sp, [("unknown_uint16_22", "+22"), ("complex_mapping_flag", "+29")]),
+                (sp, [("attr_flags_other", T("editors.adv.attr_flags_other"))]),
+                (sp, [("unknown_uint16_22", "+22"), ("curve_type", "+29")]),
             ])
         box = _draw_raw_group(layout, T("editors.word.driven"), 'PREFERENCES', [
-            (p, [("flags_other", T("editors.adv.flags_other"))]),
+            (p, [("attr_flags_other", T("editors.adv.attr_flags_other"))]),
             (p, [("unknown_float2_x", "Float2 X"), ("unknown_float2_y", "Y")]),
             (p, [("unknown_byte_72", "+72"), ("unknown_byte_74", "+74"), ("unknown_byte_75", "+75")]),
         ])
@@ -460,13 +460,13 @@ class JCNS_PT_Ed_Ranges_Advanced(_Editor, _Sub, Panel):
 
 
 # ---------------------------------------------------------------------------
-# Skin —— 蒙皮权重
+# Multi —— 蒙皮权重
 # ---------------------------------------------------------------------------
 
-class JCNS_PT_Ed_Skin(_EditorMain, Panel):
-    bl_label  = T("editors.panel.skin")
-    bl_idname = "JCNS_PT_ed_skin"
-    KIND = 'Skin'
+class JCNS_PT_Ed_Multi(_EditorMain, Panel):
+    bl_label  = T("editors.panel.multi")
+    bl_idname = "JCNS_PT_ed_multi"
+    KIND = 'Multi'
 
     def draw(self, context):
         c = _begin(self.layout, context)
@@ -474,38 +474,38 @@ class JCNS_PT_Ed_Skin(_EditorMain, Panel):
             return
         p, rp = c.p, c.rp
         box = c.body.box()
-        locked = _skin_table_locked(rp)
+        locked = _multi_table_locked(rp)
         _field_row(box.column(align=True), T("editors.field.driven"), p, "target_bone")
         if locked:
-            box.label(text=T("editors.skin.need_armature"), icon='INFO')
+            box.label(text=T("editors.multi.need_armature"), icon='INFO')
         hdr = box.row(align=True)
         hdr.label(text=T("editors.word.driver"), icon='BONE_DATA')
         sub = hdr.row(align=True)
         sub.enabled = not locked
-        sub.operator("jcns.skin_source_add", text="", icon='ADD')
-        sub.operator("jcns.skin_source_remove", text="", icon='REMOVE')
-        box.template_list("JCNS_UL_skin_sources", "", p, "skin_sources",
-                          p, "active_skin_source_index",
-                          rows=min(max(len(p.skin_sources), 2), 8))
-        total = sum(w.weight for w in p.skin_sources)
+        sub.operator("jcns.multi_source_add", text="", icon='ADD')
+        sub.operator("jcns.multi_source_remove", text="", icon='REMOVE')
+        box.template_list("JCNS_UL_multi_sources", "", p, "multi_sources",
+                          p, "active_multi_source_index",
+                          rows=min(max(len(p.multi_sources), 2), 8))
+        total = sum(w.weight for w in p.multi_sources)
         row = box.row(align=True)
-        row.label(text=T("editors.skin.weight_sum", total),
-                  icon='INFO' if p.skin_sources and abs(total - 1.0) > 1e-3 else 'CHECKMARK')
-        row.operator("jcns.skin_normalize_weights", text=T("editors.skin.normalize"))
+        row.label(text=T("editors.multi.weight_sum", total),
+                  icon='INFO' if p.multi_sources and abs(total - 1.0) > 1e-3 else 'CHECKMARK')
+        row.operator("jcns.multi_normalize_weights", text=T("editors.multi.normalize"))
 
 
-class JCNS_PT_Ed_Skin_Reserved(_Editor, _Sub, Panel):
+class JCNS_PT_Ed_Multi_Reserved(_Editor, _Sub, Panel):
     bl_label  = T("editors.panel.advanced")
-    bl_idname = "JCNS_PT_ed_skin_reserved"
-    bl_parent_id = "JCNS_PT_ed_skin"
-    KIND = 'Skin'
+    bl_idname = "JCNS_PT_ed_multi_reserved"
+    bl_parent_id = "JCNS_PT_ed_multi"
+    KIND = 'Multi'
 
     def draw(self, context):
         c = _begin(self.layout, context, banner=False)
         if c is None:
             return
-        _draw_raw_group(c.body, T("editors.skin.v102_zero"), 'PREFERENCES',
-                    [(c.p, [("skin_tail", T("editors.skin.tail"))])])
+        _draw_raw_group(c.body, T("editors.multi.v102_zero"), 'PREFERENCES',
+                    [(c.p, [("multi_tail", T("editors.multi.tail"))])])
 
 
 # ---------------------------------------------------------------------------
@@ -524,12 +524,12 @@ class JCNS_PT_Ed_Aim(_EditorMain, Panel):
         p = c.p
         col = c.body.box().column(align=True)
         _field_row(col, T("editors.field.driven"), p, "target_bone")
-        if _skin_table_locked(c.rp):
+        if _multi_table_locked(c.rp):
             col.label(text=T("editors.aim.need_armature"), icon='INFO')
         _field_row(col, T("editors.field.aim_target"), p, "aim_target_bone")
-        _field_row(col, T("editors.field.type"), p, "aim_type")
+        _field_row(col, T("editors.field.type"), p, "world_up_type")
         row = col.row(align=True)
-        row.active = p.aim_type in ('UP_JOINT_POSITION', 'UP_JOINT_AXIS')
+        row.active = p.world_up_type in ('OBJECT_UP', 'OBJECT_ROTATION_UP')
         _field_row(row, T("editors.field.up_bone"), p, "aim_up_bone")
         _field_row(col, T("editors.field.influence"), p, "aim_influence")
         vec = c.body.box().column(align=True)
@@ -537,19 +537,19 @@ class JCNS_PT_Ed_Aim(_EditorMain, Panel):
         for name in ("aim_axis", "aim_up_axis"):
             vec.prop(p, name)
         row = vec.column(align=True)
-        row.active = p.aim_type in ('UP_DIRECTION', 'UP_JOINT_AXIS')
+        row.active = p.world_up_type in ('VECTOR', 'OBJECT_ROTATION_UP')
         row.prop(p, "aim_up_dir")
         vec.prop(p, "aim_offset")
 
 
 # 各类型怎样定翻滚。
 _AIM_RULES = {
-    'WORLD_UP': [("editors.aim.rule.world_up", True)],
-    'UP_JOINT_POSITION': [("editors.aim.rule.up_joint_position", True)],
-    'UP_JOINT_AXIS': [("editors.aim.rule.up_joint_axis", True)],
-    'UP_DIRECTION': [("editors.aim.rule.up_direction", True)],
-    'SHORTEST_ARC': [("editors.aim.rule.shortest_arc", True)],
-    'SHORTEST_ARC_PARENT': [("editors.aim.rule.shortest_arc_parent", True)],
+    'SCENE_UP': [("editors.aim.rule.world_up", True)],
+    'OBJECT_UP': [("editors.aim.rule.up_joint_position", True)],
+    'OBJECT_ROTATION_UP': [("editors.aim.rule.up_joint_axis", True)],
+    'VECTOR': [("editors.aim.rule.up_direction", True)],
+    'NONE': [("editors.aim.rule.shortest_arc", True)],
+    'NONE_MAYA_LIKE': [("editors.aim.rule.shortest_arc_parent", True)],
 }
 
 
@@ -564,7 +564,7 @@ class JCNS_PT_Ed_Aim_Raw(_Editor, _Sub, Panel):
         if c is None:
             return
         p = c.p
-        _draw_rules(c.body.box(), [(T(k), measured) for k, measured in _AIM_RULES[p.aim_type]])
+        _draw_rules(c.body.box(), [(T(k), measured) for k, measured in _AIM_RULES[p.world_up_type]])
         _draw_raw_group(c.body, T("editors.adv.fields_unknown"), 'PREFERENCES', [
             (p, [("aim_bytes", "")]),
         ])
@@ -648,7 +648,7 @@ class JCNS_PT_Ed_Material_Raw(_Editor, _Sub, Panel):
         _draw_raw_group(c.body, T("editors.mat.hashes_title"), 'PREFERENCES', [
             (p, [("mat_name_hash", T("editors.mat.name_hash")),
                  ("mat_property_hash", T("editors.mat.property_hash"))]),
-            (p, [("mat_transform_type_raw", T("editors.mat.transform_id")),
+            (p, [("mat_transform_element_raw", T("editors.mat.transform_id")),
                  ("mat_tail_0", T("editors.mat.tail0")),
                  ("mat_tail_1", T("editors.mat.tail1")),
                  ("mat_tail_2", T("editors.mat.tail2"))]),
@@ -662,7 +662,7 @@ class JCNS_PT_Ed_Material_Raw(_Editor, _Sub, Panel):
 class JCNS_PT_Ed_JXG(_EditorMain, Panel):
     bl_label  = T("editors.panel.jxg")
     bl_idname = "JCNS_PT_ed_jxg"
-    KIND = 'JointExportGraph'
+    KIND = 'JointExprGraph'
 
     def draw(self, context):
         c = _begin(self.layout, context)
@@ -698,8 +698,8 @@ _classes = [
     JCNS_PT_Ed_Ranges_Cones,
     JCNS_PT_Ed_Ranges_Tools,
     JCNS_PT_Ed_Ranges_Advanced,
-    JCNS_PT_Ed_Skin,
-    JCNS_PT_Ed_Skin_Reserved,
+    JCNS_PT_Ed_Multi,
+    JCNS_PT_Ed_Multi_Reserved,
     JCNS_PT_Ed_Aim,
     JCNS_PT_Ed_Aim_Raw,
     JCNS_PT_Ed_RotExpr,

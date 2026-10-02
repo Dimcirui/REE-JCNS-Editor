@@ -22,7 +22,7 @@ def _count_truncated_sources(parser):
                if len(c.get('sources', [])) != c.get('JointDriverCount', 0))
 
 
-def _count_unread_cone_info(parser):
+def _count_unread_cone_driver(parser):
     """Constraints whose ConeDriver list is not fully held by the parser."""
     return sum(1 for c in parser.constraints
                if c.get('ConeDriverCount', 0) != len(c.get('ConeDriver') or []))
@@ -57,9 +57,9 @@ def check_exportable(parser):
 
     # The rebuild writer re-emits ConeDrivers and every ConeDriver list, but
     # only what the parser (or Blender) actually holds.
-    n = _count_unread_cone_info(parser)
+    n = _count_unread_cone_driver(parser)
     if n:
-        problems.append(T("core.validate.unread_cone_info", n))
+        problems.append(T("core.validate.unread_cone_driver", n))
     count = _header_count(parser, 'ConeInputCount')
     if count and len(getattr(parser, 'cone_inputs', [])) != count:
         problems.append(T("core.validate.cone_count", count,

@@ -13,7 +13,7 @@ Pixel order matches what Blender expects from ImagePreview.image_pixels_float:
 a flat RGBA float list, row 0 at the BOTTOM.
 """
 
-from jcns_mapping import (eval_piecewise, describe, source_rest_input, is_two_point, curve_mode_value,
+from jcns_mapping import (eval_piecewise, describe, source_rest_input, is_two_point, attr_flags_value,
                           source_interpolation)
 import jcns_complex
 
@@ -211,7 +211,7 @@ def cache_key(sources, width, height):
                  else getattr(s, name, 0.0))
             parts.append(round(float(v), 4))
         parts.append(round(source_rest_input(s), 4))
-        parts.append(is_two_point(curve_mode_value(s)))
+        parts.append(is_two_point(attr_flags_value(s)))
         parts.append(source_interpolation(s))
     return tuple(parts)
 

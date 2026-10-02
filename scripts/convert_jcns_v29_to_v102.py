@@ -4,7 +4,7 @@ convert_jcns_v29_to_v102.py
 Convert a .jcns.29 file (Monster Hunter Wilds before TU4) to .jcns.102 (after TU4).
 
 The conversion itself is modules/jcns_upgrade.py; this is the command line around it.
-A file with Skin or Aim sections also needs the ReadJointTable v102 added, which is
+A file with Multi or Aim sections also needs the ReadJointTable v102 added, which is
 derived from the skeleton: pass the character's .mesh, or leave it out and the one
 .mesh next to the file is used.
 
@@ -49,7 +49,7 @@ def main():
 
     parent = names = None
     mesh = args.mesh
-    if not mesh and parser.skin_constraints:
+    if not mesh and parser.multi_constraints:
         found = glob.glob(os.path.join(os.path.dirname(os.path.abspath(args.input)), '*.mesh.*'))
         mesh = found[0] if len(found) == 1 else None
     if mesh:

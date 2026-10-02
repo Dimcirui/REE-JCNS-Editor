@@ -1,6 +1,6 @@
 """
 analyze_sections_rig.py -- round 12 (build_sections_rig.py): what do Aim, RotExpression and
-Skin do to a bone?
+Multi do to a bone?
 
     python scripts/probes/analyze_sections_rig.py --data <round12_keep> --plan <round11_plan.json>
     python scripts/probes/analyze_sections_rig.py --self-test
@@ -14,7 +14,7 @@ shows up as a constant in the bone's own frame).
   Aim      u = R^T * dir(aimed bone -> target): constant if Vec1 is the aim axis.  Then
            candidates: shortest arc from the rest pose, and a full look-at of
            (Vec1 -> direction, Vec2 -> up) for three up references.
-  Skin     T.pos = sum_i alpha_i * p_i + sum_i R_i * c_i  (alpha free) fits the weights
+  Multi     T.pos = sum_i alpha_i * p_i + sum_i R_i * c_i  (alpha free) fits the weights
            the engine used; the rotation is regressed on sum_i R_i C_i the same way.
   RotExpr  the source's rotation read as Euler angles / rotation vector / quaternion
            components, times the coefficients, composed with the rest pose or replacing it.
@@ -186,9 +186,9 @@ def analyze_aim(W, K, rests, bone, vec1, vec2, target, up_bone, shifts=(-2, -1, 
     return res
 
 
-# ── Skin ────────────────────────────────────────────────────────────────────
+# ── Multi ────────────────────────────────────────────────────────────────────
 
-def analyze_skin(W, K, rests, bone, sources):
+def analyze_multi(W, K, rests, bone, sources):
     tag = f'e.TestTgt{bone}'
     out = {}
     T, TR = pos_cols(W, tag), quat_cols(W, tag)
@@ -244,13 +244,13 @@ def analyze_skin(W, K, rests, bone, sources):
         for i, (name, _) in enumerate(sources):
             entry[f'rot_vs_source_{name}_relative_spread_deg'] = float(
                 ang(Rot.from_matrix(Rm[i]).inv() * TR, (Rot.from_matrix(Rm[i]).inv() * TR)[0]).max())
-        entry['rot_nlerp_running_max_err_deg'] = skin_rotation_nlerp(
+        entry['rot_nlerp_running_max_err_deg'] = multi_rotation_nlerp(
             [quat_cols(W, f'{src}.{name}') for name, _ in sources], nominal / nominal.sum(), TR)
         out[src] = entry
     return dict(bone=bone, sources=[s for s, _ in sources], by_source_set=out)
 
 
-def skin_rotation_nlerp(Rs, w, T, seeds=8):
+def multi_rotation_nlerp(Rs, w, T, seeds=8):
     """Fit T = normalize(sum_i w_i q_i X_i) with each q_i X_i flipped toward the running
     sum, X_i unknown constant rotations; -> worst-frame error in degrees."""
     from scipy.optimize import least_squares
@@ -334,7 +334,7 @@ SPEC = dict(
     aim=[('B', 0, None), ('C', 1, 'L_Hand'), ('D', 2, 'L_Hand'), ('H', 3, None), ('I', 4, None)],
     target='R_Hand', vec1=(1, 0, 0), vec2=(0, 1, 0),
     rot=[('E', (0, 0, 0, 0)), ('F', (0, 48, 0, 0))], rot_source='L_Thigh', rot_gains=(0.5, 0.8, -0.9),
-    skin=[('J', [('L_Hand', 0.5), ('R_Hand', 0.3), ('Head', 0.2)]), ('K', [('L_Hand', 0.5), ('R_Hand', 0.25)])])
+    multi=[('J', [('L_Hand', 0.5), ('R_Hand', 0.3), ('Head', 0.2)]), ('K', [('L_Hand', 0.5), ('R_Hand', 0.25)])])
 
 
 def rests_from(plan):
@@ -342,7 +342,7 @@ def rests_from(plan):
 
 
 def run(F, rests):
-    out = dict(sanity=sanity(F, rests), aim={}, rot={}, skin={})
+    out = dict(sanity=sanity(F, rests), aim={}, rot={}, multi={})
     if out['sanity']['control_A_err_deg'] > 0.002:
         out['warning'] = 'control A off: the jcns or mesh in the game is not this round'
     W, K = F['world'], F['skel']
@@ -356,14 +356,14 @@ def run(F, rests):
     out['rot_E_vs_F_max_deg'] = float(ang(E, Fq).max())
     rest_e = Rot.from_quat(rests['E'][[1, 2, 3, 0]])
     out['rot_F_equals_rest_times_E_max_deg'] = float(ang(Fq, rest_e * E).max())   # F = rest * E exactly?
-    for b, srcs in SPEC['skin']:
-        out['skin'][b] = analyze_skin(W, K, rests, b, srcs)
+    for b, srcs in SPEC['multi']:
+        out['multi'][b] = analyze_multi(W, K, rests, b, srcs)
     return out
 
 
 # ── self-test: synthetic captures with known answers ───────────────────────
 
-def synthetic(n=600, seed=1, aim_model='lookat_world_Y', skin_alpha=(0.5, 0.3, 0.2), rot_model='euler'):
+def synthetic(n=600, seed=1, aim_model='lookat_world_Y', multi_alpha=(0.5, 0.3, 0.2), rot_model='euler'):
     rng = np.random.default_rng(seed)
     t = np.arange(n)
     names = {}
@@ -413,9 +413,9 @@ def synthetic(n=600, seed=1, aim_model='lookat_world_Y', skin_alpha=(0.5, 0.3, 0
             Rw = shortest_arc(unit(rw.apply([1.0, 0, 0])), d) * rw
         put(W, f'e.TestTgt{b}', base_p, Rw)
         put(K, f'TestTgt{b}', np.zeros((n, 3)), ear_q.inv() * Rw)
-    # skin: target pinned with known per-source offsets
-    a = np.array(skin_alpha)
-    for b, srcs in SPEC['skin']:
+    # multi: target pinned with known per-source offsets
+    a = np.array(multi_alpha)
+    for b, srcs in SPEC['multi']:
         al = np.array([w for _, w in srcs]) if b != 'J' else a
         pos = np.zeros((n, 3))
         rot_acc = np.zeros((n, 3, 3))
@@ -465,11 +465,11 @@ def self_test():
             top = v['top5'][0]
             want_rot = 'rest_relative_euler_xyz|xyz|rest_times' if rot_model == 'euler' else 'raw_rotvec|replace'
             assert top['candidate'] == want_rot and top['max_error'] < 1e-3, (k, v['top5'])
-        s = res['skin']['J']['by_source_set']['e']
+        s = res['multi']['J']['by_source_set']['e']
         assert np.allclose(s['alpha'], [0.5, 0.3, 0.2], atol=1e-6), s['alpha']
         assert s['pos_max_resid_m'] < 1e-8
         assert s['rot_nlerp_running_max_err_deg'] < 0.1, s['rot_nlerp_running_max_err_deg']
-        s = res['skin']['K']['by_source_set']['e']
+        s = res['multi']['K']['by_source_set']['e']
         assert np.allclose(s['alpha'], [0.5, 0.25], atol=1e-6), s['alpha']
         assert s['pos_max_resid_alpha_nominal_m'] < 1e-8 and s['pos_max_resid_alpha_normalized_m'] > 1e-4
         print('self-test OK:', aim_model, rot_model)

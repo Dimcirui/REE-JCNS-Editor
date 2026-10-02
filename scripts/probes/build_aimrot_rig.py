@@ -15,7 +15,7 @@ small angles, off by up to 8.6 deg for large ones).
   RotExpr  source L_Thigh, bytes (0,0,0,0) (the result does not include the rest pose)
            E  coefficients (1,1,1)     a copy?
            F  (1,0,0)   G  (0,1,0)   H  (0,0,1)     one axis at a time
-Skin is left out, so the section table is [1, 3, 0].
+Multi is left out, so the section table is [1, 3, 0].
 """
 import contextlib
 import copy
@@ -59,7 +59,7 @@ def main(dst):
     p = JCNSParser(SRC)
     with contextlib.redirect_stdout(io.StringIO()):
         cons = p.parse()
-    assert len(cons) == 8 and not p.aim_constraints and not p.skin_constraints
+    assert len(cons) == 8 and not p.aim_constraints and not p.multi_constraints
     for c in cons:
         set_count(c, 0)
     c = copy.deepcopy(cons[0])
@@ -75,7 +75,7 @@ def main(dst):
     assert tail_group_counts(cons) == [0] * len(cons)
 
     aims = [{'joint': H('TestTgt' + b), 'target': H(AIM_TARGET), 'up': None, 'influence': inf,
-             'vectors': [(0, 0, 0), v1, v2, v3], 'rotation_type': t, 'bytes': (1, 0, CONSTANT),
+             'vectors': [(0, 0, 0), v1, v2, v3], 'world_up_type': t, 'bytes': (1, 0, CONSTANT),
              'tail': bytes(12), 'target_tail': bytes(8)} for b, t, v1, v2, v3, inf in AIMS]
     p.aim_constraints = X.aim_parser_form(aims)
     rots = [{'joint': H('TestTgt' + b), 'source': H(ROT_SOURCE), 'rotation': (0, 0, 0, 1),
@@ -102,14 +102,14 @@ def check(dst):
     table = list(struct.unpack_from('<%dI' % h['SectionTableItemCount'], q.original_bytes, h['SectionTableEntry']))
     assert table == SECTION_TABLE and h['SectionCount'] == 3, table
     assert len(back) == 9 and [c['TailBytes'][3] for c in back] == [0] * 9
-    assert not q.skin_constraints
+    assert not q.multi_constraints
     names = {H(n): n for n in ['TestTgt' + c for c in 'ABCDEFGHIJK'] + [AIM_TARGET, ROT_SOURCE]}
     want = plan()
     got = X.aim_editable(q)
     assert len(got) == len(want['aim'])
     for g, w in zip(got, want['aim']):
         assert names[g['joint']] == w['bone'] and names[g['target']] == AIM_TARGET
-        assert g['up'] is None and g['rotation_type'] == w['type']
+        assert g['up'] is None and g['world_up_type'] == w['type']
         assert [tuple(round(x) for x in v) for v in g['vectors'][1:]] == [w['vec1'], w['vec2'], w['vec3']], g
         assert abs(g['influence'] - w['influence']) < 1e-6
     got_rot, meta = X.rot_editable(q)
@@ -118,7 +118,7 @@ def check(dst):
         assert names[g['joint']] == w['bone'] and names[g['source']] == ROT_SOURCE and g['bytes'] == (0, 0, 0, 0)
         assert tuple(round(f, 6) for f in g['floats']) == w['gains'], g
     for a in got:
-        print('aim', names[a['joint']], a['rotation_type'], [tuple(round(x) for x in v) for v in a['vectors'][1:]],
+        print('aim', names[a['joint']], a['world_up_type'], [tuple(round(x) for x in v) for v in a['vectors'][1:]],
               a['influence'])
     for a in got_rot:
         print('rot', names[a['joint']], tuple(round(f, 3) for f in a['floats']))

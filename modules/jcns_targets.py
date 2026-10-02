@@ -17,13 +17,13 @@ DIRECT_TARGET_TYPES = frozenset({3, 7, 8, 9, 10, 11, 12})
 PROPERTY_TYPES = frozenset({7, 8, 9, 10, 11})
 
 
-def is_direct_target(transform_type):
+def is_direct_target(transform_element):
     """Whether a TransformElement byte names its target by ObjectHash instead of a hash-table index."""
-    return transform_type in DIRECT_TARGET_TYPES
+    return transform_element in DIRECT_TARGET_TYPES
 
 
-def has_property_name(transform_type):
-    return transform_type in PROPERTY_TYPES
+def has_property_name(transform_element):
+    return transform_element in PROPERTY_TYPES
 
 
 def name_hash(name):
