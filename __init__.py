@@ -42,7 +42,7 @@ AXIS_ITEMS = [
     ('W', "W", T("props.axis.w")),
 ]
 
-# ConstraintSource_v2 bytes +24 / +25 (the .bt calls them UpdateTimingID and
+# JointDriver_v2 bytes +24 / +25 (the .bt calls them UpdateTimingID and
 # TransformIDSrc).
 #   +24 is the curve mode: 0 / 1 are two-point (the kink is ignored; a straight
 #       line from start to end), 2 / 3 three-point.  4 / 5 are unmodelled and
@@ -63,7 +63,7 @@ def _read_mode_items():
     return items, default
 
 
-# +25 ReadMode; the table lives in modules/jcns_source_read.py.
+# +25 InputType; the table lives in modules/jcns_source_read.py.
 _READ_MODE_ITEMS, _READ_MODE_DEFAULT = _read_mode_items()
 
 
@@ -75,7 +75,7 @@ def _euler_order_items():
             for value, name in sorted(jcns_source_read.EULER_ORDER_NAMES.items())]
 
 
-# +27 EulerOrder, Blender order names.
+# +27 RotOrder, Blender order names.
 _EULER_ORDER_ITEMS = _euler_order_items()
 
 # Source byte +28: how a segment of the mapping runs between its anchors.
@@ -88,7 +88,7 @@ INTERPOLATION_ITEMS = [
 INTERPOLATION_TO_INT = {item[0]: i for i, item in enumerate(INTERPOLATION_ITEMS)}
 INT_TO_INTERPOLATION = {i: ident for ident, i in INTERPOLATION_TO_INT.items()}
 
-# Aim RotationType: how the roll around the aim axis is fixed.
+# Aim WorldUpType: how the roll around the aim axis is fixed.
 AIM_TYPE_ITEMS = [
     ('WORLD_UP', T("props.aim_type.world_up"), T("props.aim_type.world_up_desc")),
     ('UP_JOINT_POSITION', T("props.aim_type.up_joint_position"), T("props.aim_type.up_joint_position_desc")),
@@ -161,7 +161,7 @@ def _update_additive(self, context):
 
 
 def flags_byte(p):
-    """The ConstraintInfo Flags byte: bit 0 is the additive switch, the other bits
+    """The OutputData AttrFlags byte: bit 0 is the additive switch, the other bits
     are kept as read (bits 4 and 5 are rederived from the transform type on export)."""
     return (int(p.flags_other) & 0xFE) | int(bool(p.additive))
 
@@ -295,7 +295,7 @@ def _search_target_bone(self, context, edit_text):
 
 
 # ---------------------------------------------------------------------------
-# Property Group: one ConstraintSource_v2 block
+# Property Group: one JointDriver_v2 block
 # ---------------------------------------------------------------------------
 
 class JCNSCMKey(PropertyGroup):
@@ -317,12 +317,12 @@ class JCNSCMKey(PropertyGroup):
 
 
 class JCNSConeInfo(PropertyGroup):
-    """One ConeDriverInfo record (24 bytes, v24+): a cone this constraint reads.
+    """One ConeDriver record (24 bytes, v24+): a cone this constraint reads.
 
     RE9 v35: Rest is (0,0,0,0), or (0,0,0,1) on scale targets; Value is what the
     target takes for that cone (bt: AngleDeg, but scale targets hold factors).
     """
-    cone_index: IntProperty(name="ConeDriver", description=T("props.cone.index_desc"), default=0, min=0)
+    cone_index: IntProperty(name="ConeInput", description=T("props.cone.index_desc"), default=0, min=0)
     value: FloatProperty(name=T("props.cone.value"), description=T("props.cone.value_desc"), default=0.0)
     rest: FloatVectorProperty(name="Rest", size=4, default=(0.0, 0.0, 0.0, 0.0))
     unk_byte0: IntProperty(name="+20", default=0, min=0, max=255)
@@ -348,7 +348,7 @@ class JCNSWeightedSource(PropertyGroup):
 
 
 class JCNSSourceProperties(PropertyGroup):
-    """One driving source: one 72-byte ConstraintSource_v2 block."""
+    """One driving source: one 72-byte JointDriver_v2 block."""
 
     source_bone: StringProperty(
         update=_refresh_preview,
@@ -466,7 +466,7 @@ class JCNSSourceProperties(PropertyGroup):
 # ---------------------------------------------------------------------------
 
 class JCNSConstraintProperties(PropertyGroup):
-    """On every entry Empty: one 80-byte ConstraintInfo block plus its sources."""
+    """On every entry Empty: one 80-byte OutputData block plus its sources."""
 
     # Marks an entry Empty; set at import and by Add Constraint.
     is_jcns_constraint: BoolProperty(default=False)
@@ -502,7 +502,7 @@ class JCNSConstraintProperties(PropertyGroup):
         default='X',
     )
 
-    # --- ConstraintInfo fields (editable, exported) ---
+    # --- OutputData fields (editable, exported) ---
     additive: BoolProperty(
         name=T("props.cns.additive"),
         description=T("props.cns.additive_desc"),
@@ -525,7 +525,7 @@ class JCNSConstraintProperties(PropertyGroup):
         name=T("props.cns.unknown_byte_72"), description=T("props.cns.unknown_byte_72_desc"),
         default=0, min=0, max=255,
     )
-    # Material / RSZ property targets (TransformType 7-11) name a property on the target.
+    # Material / RSZ property targets (TransformElement 7-11) name a property on the target.
     target_property: StringProperty(
         name=T("props.cns.target_property"),
         description=T("props.cns.target_property_desc"),
@@ -543,7 +543,7 @@ class JCNSConstraintProperties(PropertyGroup):
         description=T("props.cns.object_hash_desc"),
         default=0,
     )
-    # ConeDriverInfo[]: the cones this constraint reads (RE9 uses them heavily)
+    # ConeDriver[]: the cones this constraint reads (RE9 uses them heavily)
     cone_infos: CollectionProperty(type=JCNSConeInfo)
     active_cone_info_index: IntProperty(default=0)
     # +77 is the joint-group count (jcns_writer.tail_group_counts derives it); +74 and +75
@@ -830,7 +830,7 @@ class JCNSRootProperties(PropertyGroup):
         name=T("props.root.rot_map_value"), default=0, min=0, max=255,
         description=T("props.root.rot_map_value_desc"))
     object_settings_json: StringProperty(default="")
-    # ConeDriver table (v35+), cached so a rebuild can re-emit it
+    # ConeInput table (v35+), cached so a rebuild can re-emit it
     cone_drivers_json: StringProperty(default="")
     # Read only when source_version is 0 (see jcns_exporter._root_version).
     detected_game: EnumProperty(
@@ -964,7 +964,7 @@ def get_constraint_empties(root_empty):
 def channel_key(cns_props):
     """The Blender F-Curve channel a constraint drives: (bone, transform, axis).
 
-    Several ConstraintInfo blocks can drive the same channel, and Blender allows
+    Several OutputData blocks can drive the same channel, and Blender allows
     one driver per F-Curve channel, so constraints sharing a key are built as a
     single driver.
     """

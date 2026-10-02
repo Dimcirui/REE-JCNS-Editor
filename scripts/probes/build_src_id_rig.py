@@ -1,6 +1,6 @@
 """
 build_src_id_rig.py -- xaihi test rig, round 7 (2026-09-30): what does each source
-+25 (ReadMode) read off a bone?
++25 (InputType) read off a bone?
 
 Round 6 showed +25=3 reads the twist angle of the bone's whole parent-relative
 rotation.  Here one controlled source, TestTgtA, turns hard on all three axes
@@ -68,15 +68,15 @@ def main():
     for tgt, tax, src, sax, sid, (span_from, span_to) in ENTRIES:
         c = copy.deepcopy(tmpl)
         c['ObjectName'] = tgt
-        c['TransformAxis_parent'] = c['target_axis'] = AXIS[tax]
-        c['Flags'] = 49
-        c['TransformType'] = 1
+        c['Axis_parent'] = c['target_axis'] = AXIS[tax]
+        c['AttrFlags'] = 49
+        c['TransformElement'] = 1
         set_count(c, 0)
         s = c['sources'][0]
         s['SourceName'] = src
         s['source_axis'] = AXIS[sax]
-        s['ReadMode'] = sid
-        s['CurveMode'] = 0            # two-point line
+        s['InputType'] = sid
+        s['AttrFlags'] = 0            # two-point line
         s['from_start'], s['from_kink'], s['from_end'] = -span_from, 0.0, span_from
         s['to_start'], s['to_kink'], s['to_end'] = -span_to, 0.0, span_to
         s['ComplexMapping'] = []
@@ -92,7 +92,7 @@ def main():
     for i, c in enumerate(back):
         s = c['sources'][0]
         print(f"[{i:02}] {c['ObjectName']:<14}.{'XYZW'[c['target_axis']]} <- {s['SourceName']}.{'XYZW'[s['source_axis']]}"
-              f"  +25={s['ReadMode']}  from=({s['from_start']:g},{s['from_end']:g}) to=({s['to_start']:g},{s['to_end']:g})")
+              f"  +25={s['InputType']}  from=({s['from_start']:g},{s['from_end']:g}) to=({s['to_start']:g},{s['to_end']:g})")
 
 
 if __name__ == '__main__':

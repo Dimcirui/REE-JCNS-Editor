@@ -7,7 +7,7 @@ has all four).
 
 Bones (round-11 mesh, reused as is).  Each target is written by exactly one entry:
 
-  Ranges   [08]  A.X  type 1 F49 <- L_Thigh.X (ReadMode 3) x0.5        input control
+  Ranges   [08]  A.X  type 1 F49 <- L_Thigh.X (InputType 3) x0.5        input control
   Aim      B  type 0  no up bone        (rest: multi-axis)
            C  type 1  up = L_Hand
            D  type 2  up = L_Hand
@@ -86,11 +86,11 @@ def main(dst=DST):
 
     c = copy.deepcopy(cons[0])
     c['ObjectName'] = 'TestTgtA'
-    c['TransformAxis_parent'] = c['target_axis'] = 0
-    c['Flags'], c['TransformType'] = 49, 1
+    c['Axis_parent'] = c['target_axis'] = 0
+    c['AttrFlags'], c['TransformElement'] = 49, 1
     set_count(c, 0)
     s = c['sources'][0]
-    s.update(SourceName='L_Thigh', source_axis=0, ReadMode=3, CurveMode=0, EulerOrder=0,
+    s.update(SourceName='L_Thigh', source_axis=0, InputType=3, AttrFlags=0, RotOrder=0,
              from_start=-90.0, from_kink=0.0, from_end=90.0, to_start=-45.0, to_kink=0.0, to_end=45.0,
              ComplexMapping=[], ComplexMappingInfoCount=0)
     cons.append(c)
@@ -121,7 +121,7 @@ def main(dst=DST):
     p.original_bytes = bytes(orig)
     hdr['SectionTableItemCount'] = hdr['SectionCount'] = len(SECTION_TABLE)
     for key, n in (('RotExpressionInfoCount', len(rots)), ('RotExpressionMapCount', len(rots)),
-                   ('AimConstraintCount', len(aims)), ('SkinConstraintCount', len(records))):
+                   ('AimConstraintCount', len(aims)), ('MultiConstraintCount', len(records))):
         hdr[key] = n
 
     JCNSWriter(p, dst).build_lossless()

@@ -1,5 +1,5 @@
 """
-What a JCNS source reads off its bone, per the source's +25 byte, ReadMode.
+What a JCNS source reads off its bone, per the source's +25 byte, InputType.
 
 Every rotation read works on the bone's whole rotation relative to its parent,
 rest pose included (q = rest * Rz * Ry * Rx for a Blender XYZ Euler pose), and
@@ -16,14 +16,14 @@ included:
 
 Two more source fields shape the rotation reads:
 
-  +27 (EulerOrder)  the Euler order of +25=1, as a matrix product with
+  +27 (RotOrder)  the Euler order of +25=1, as a matrix product with
          the rightmost factor applied first: 0 Rz*Ry*Rx (Blender XYZ), 1 Rx*Rz*Ry
          (YZX), 2 Ry*Rx*Rz (ZXY), 3 Rx*Ry*Rz (ZYX).  +25 = 3/4/5 ignore it.
   ref_frame (+56, the reference frame)  +25 = 3/4/5 decompose f^-1 * q * f instead of
          q, so the twist axis is f * X and the rotation vector is read in f's
          axes.  +25=1 ignores it.
 
-Only ReadMode 0-5 occur.  Pure Python, no bpy.  Quaternions are (w, x, y, z); angles are radians.
+Only InputType 0-5 occur.  Pure Python, no bpy.  Quaternions are (w, x, y, z); angles are radians.
 """
 import math
 
@@ -46,20 +46,20 @@ ROTATION_MODES = {1: 'euler', 3: 'swing_twist', 4: 'twist_swing', 5: 'rotvec'}
 
 
 def read_mode_value(mode):
-    """A ReadMode as its byte value, from the value itself or its identifier."""
+    """A InputType as its byte value, from the value itself or its identifier."""
     if isinstance(mode, str):
         return _BY_ID[mode][0] if mode in _BY_ID else DEFAULT_READ_MODE
     return int(mode)
 
 
 def read_mode_id(value):
-    """The identifier of a ReadMode byte; None for a value outside 0-5."""
+    """The identifier of a InputType byte; None for a value outside 0-5."""
     m = _BY_VALUE.get(int(value))
     return m[1] if m else None
 
 
 def read_quantity(mode):
-    """'Translation', 'Rotation' or 'Scale' for a ReadMode (value or identifier)."""
+    """'Translation', 'Rotation' or 'Scale' for a InputType (value or identifier)."""
     m = _BY_VALUE.get(read_mode_value(mode))
     return m[3] if m else 'Rotation'
 
@@ -95,14 +95,14 @@ def pose_rotation(rest, euler):
     return _pos_w(qmul(rest, from_euler_xyz(euler)))
 
 
-# +27 EulerOrder -> (i, j, k) with R = R_i * R_j * R_k (k applied first)
+# +27 RotOrder -> (i, j, k) with R = R_i * R_j * R_k (k applied first)
 EULER_ORDERS = {0: (2, 1, 0), 1: (0, 2, 1), 2: (1, 0, 2), 3: (0, 1, 2)}
 # The same orders as Blender names them (first-applied axis first)
 EULER_ORDER_NAMES = {0: 'XYZ', 1: 'YZX', 2: 'ZXY', 3: 'ZYX'}
 
 
 def euler_order_value(order):
-    """A +27 EulerOrder as its byte value, from the value or its Blender name."""
+    """A +27 RotOrder as its byte value, from the value or its Blender name."""
     if isinstance(order, str):
         for value, name in EULER_ORDER_NAMES.items():
             if name == order:
@@ -141,7 +141,7 @@ def _swing_twist_x(q, twist_first):
 def rotation(mode, q, axis, order=0, frame=None):
     """Component `axis` (0-2) of whole rotation q as read by one rotation mode.
 
-    `order` is the source's +27 EulerOrder (used by 'euler' only); `frame` its
+    `order` is the source's +27 RotOrder (used by 'euler' only); `frame` its
     ref_frame (w, x, y, z), the reference frame of the other modes.
     """
     q = _pos_w(q)
@@ -164,7 +164,7 @@ def rotation(mode, q, axis, order=0, frame=None):
 
 def override_basis(rest, replaced, added):
     """Blender pose basis (XYZ Euler, radians) of a bone whose rotation channels are
-    written with Flags bit0 = 0 (replace) and / or 1 (add).
+    written with AttrFlags bit0 = 0 (replace) and / or 1 (add).
 
     bit0 = 1 lays a value on the rest pose, rest * R(v); bit0 = 0 replaces the
     channel: take the rest pose's XYZ Euler angles, put each replaced channel's
@@ -184,8 +184,8 @@ def override_basis(rest, replaced, added):
     return tuple(_euler(_pos_w(qmul(_conj(rest), q)), 0))
 
 
-# How a rotation target composes its three channel values, by TransformType.
-# They mirror the source reads: 1 / 4 / 5 / 6 build the rotation the way ReadMode 1 / 3 / 4 / 5 take it
+# How a rotation target composes its three channel values, by TransformElement.
+# They mirror the source reads: 1 / 4 / 5 / 6 build the rotation the way InputType 1 / 3 / 4 / 5 take it
 # apart.  13 and 14 hold a single rotation about the written axis per bone -- the
 # last such entry on the bone wins, whatever its axis.
 TARGET_MODES = {1: 'euler', 4: 'swing_twist', 5: 'twist_swing', 6: 'rotvec',
@@ -226,7 +226,7 @@ def target_basis(rest, parts):
     entry's value is used in it whatever its own mode (an Euler bone takes the Y value
     of a type 4 entry as its Euler Y).
 
-    Added channels (Flags bit0 = 1) lay their composed rotation on the rest pose,
+    Added channels (AttrFlags bit0 = 1) lay their composed rotation on the rest pose,
     q1 = rest * compose(added).  Replaced channels (bit0 = 0) then take that rotation apart
     in the mode's own decomposition, put each value in place of its component and compose
     again; with no added channel q1 is the rest pose.  This matches bones that mix
@@ -262,7 +262,7 @@ def rest_input(mode, axis, rest, offset_cm, order=0, frame=None, scale=None):
     """What a source reads with its bone at rest, in the file's units (degrees,
     centimetres, or 1 for a scale).
 
-    `mode` is a ReadMode value or identifier, `rest` the bone's parent-relative rest
+    `mode` is a InputType value or identifier, `rest` the bone's parent-relative rest
     rotation (w, x, y, z), `offset_cm` its rest offset from the parent; `order` and
     `frame` as for rotation(); `scale` its rest scale (default 1).
     """
@@ -328,8 +328,8 @@ def _target_rules():
 
 
 def target_rule(transform_type, additive):
-    """Lines saying how the engine applies an entry of this TransformType, with
-    Flags bit0 = `additive`.  -> [(text, measured), ...]"""
+    """Lines saying how the engine applies an entry of this TransformElement, with
+    AttrFlags bit0 = `additive`.  -> [(text, measured), ...]"""
     rules = _target_rules().get(int(transform_type))
     if rules is None:
         return [(T("core.rule.unknown_target"), False)]

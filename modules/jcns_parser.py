@@ -5,10 +5,10 @@ import sys
 from jcns_i18n import T
 import jcns_schema as S
 from jcns_schema import (
-    HEADER, CONSTRAINT_INFO, AIM, AIM_TARGET, MATERIAL, ROT_EXPRESSION,
-    COMPLEX_MAPPING, OBJECT_SETTING, SKIN, SKIN_SOURCE, SKIN_SOURCE_INFO,
-    CONE_DRIVER, CONE_DRIVER_INFO, cone_struct, pre35_to_neutral, pre35_lossy,
-    SUPPORTED_VERSIONS, VERSION_GAMES, source_struct, transform_axis_key,
+    HEADER, OUTPUT_DATA, AIM, AIM_TARGET, MATERIAL, ROT_EXPRESSION,
+    COMPLEX_MAPPING, OBJECT_SETTING, MULTI, MULTI_SOURCE, MULTI_SOURCE_INFO,
+    CONE_INPUT, CONE_DRIVER, cone_struct, pre35_to_neutral, pre35_lossy,
+    SUPPORTED_VERSIONS, VERSION_GAMES, source_struct, output_axis_key,
     check_header_layout,
 )
 
@@ -17,13 +17,13 @@ from jcns_schema import (
 # original offset, so values can change but the file's structure cannot.
 FULL_REBUILD_VERSIONS = frozenset({22, 35, 36, 102})
 
-# Versions whose ConeDriver table is read (v35+ layout, and v22's older one).
+# Versions whose ConeInput table is read (v35+ layout, and v22's older one).
 CONE_DRIVER_VERSIONS = frozenset({22})
 
 
 # Header counts of the sections the pre-v35 rebuild does not write: their layouts before v35 are
 # not verified, so a file that has one is written in place.
-_UNWRITTEN_BEFORE_35 = ('AimConstraintCount', 'RotExpressionInfoCount', 'SkinConstraintCount',
+_UNWRITTEN_BEFORE_35 = ('AimConstraintCount', 'RotExpressionInfoCount', 'MultiConstraintCount',
                         'MaterialConstraintInfoCount')
 
 
@@ -69,8 +69,8 @@ def read_header(data, check_layout=True):
     header['Version'] = version
     header['DataEntry'] = data_entry
     header['HeaderEnd'] = data_entry + HEADER.size(version)
-    header['ConstraintSetsStart'] = header['ConstraintInfoEntry']
-    header['ConstraintSetSize'] = CONSTRAINT_INFO.size(version)
+    header['ConstraintSetsStart'] = header['OutputEntry']
+    header['ConstraintSetSize'] = OUTPUT_DATA.size(version)
     header['SectionTableItemCount'] = S.section_count(header, version)
     return header
 
@@ -88,32 +88,32 @@ class JCNSParser:
     The notes below describe the v102 layout (field names are the schema's) and
     the field statistics measured over the shipped Wilds corpus.  Older versions
     differ as described in jcns_schema: no hash-table indices before v35, an
-    earlier TransformAxis and no Flags byte before v35, a 64/56-byte
-    ConstraintInfo before v21/v13, and a 64-byte ConstraintSource_v1 before v13.
+    earlier TransformAxis and no AttrFlags byte before v35, a 64/56-byte
+    OutputData before v21/v13, and a 64-byte JointDriver_v1 before v13.
 
     Statistics are over the 1103 shipped Wilds .jcns.102 files (22839 constraints,
     26053 sources), recounted 2026-09-30; "measured" means tested in game on the
     xaihi rig (see scripts/probes).  Every field is round-tripped verbatim by
-    jcns_writer except the ones it derives (offsets, counts, hash indices, Flags
+    jcns_writer except the ones it derives (offsets, counts, hash indices, AttrFlags
     bit4/5, the joint-group byte); its defaults apply only to new constraints.
 
-    80-byte ConstraintInfo block layout (parent, at 0xF0 + n*80):
-      +0:   ConeDriverInfoOffset  uint64   bt: ConeDriverInfoList.Offset (0=none)
-      +8:   OffsetSourceList      uint64   pointer to ConstraintSource_v2
+    80-byte OutputData block layout (parent, at 0xF0 + n*80):
+      +0:   ConeDriverOffset  uint64   bt: ConeDriverInfoList.Offset (0=none)
+      +8:   OffsetSourceList      uint64   pointer to JointDriver_v2
       +16:  ObjectNameOffset      uint64   pointer to TARGET bone name (UTF-16LE)
       +24:  PropertyOffset        uint64   pointer to property name; set in 5.9%, all on
                                              non-joint targets (Blend_A.., UV_Tile_Offset, ...)
       +32:  ObjectHashIndex       uint32   index into hash_list -> target bone hash
       +36:  ObjectHash            uint32   direct target bone hash (redundant with above)
       +40:  PropertyHash          uint32   hash of the property name; 0 when there is none
-      +44:  ConeDriverInfoCount   uint8    0 in every Wilds constraint; RE9 (v35) uses
-                                             ConeDrivers heavily (1466 of 2349, see CONE_DRIVER).
+      +44:  ConeDriverCount   uint8    0 in every Wilds constraint; RE9 (v35) uses
+                                             ConeDrivers heavily (1466 of 2349, see CONE_INPUT).
       +45:  SourceCount           uint8    1 in 89.3%, up to 8; 0 in 19 (BlendShape targets
                                              mostly).  Sources sum (measured).
-      +46:  Flags                 uint8    bt: flags_cns.  11 values (49 35%, 17 35%, 48 11%,
+      +46:  AttrFlags                 uint8    bt: flags_cns.  11 values (49 35%, 17 35%, 48 11%,
                                              16 9%, 1 8%, 0 3%, 9/5/13/53/57 rare).
                                              bit4 "isJoint" / bit5 "isAngular" follow
-                                             TransformType (see jcns_flags; derived on export).
+                                             TransformElement (see jcns_flags; derived on export).
                                              bit0 (1 in 78%) = additive (measured, round 8):
                                              1 lays the value onto the rest pose (rest * R(v)),
                                              0 replaces it (a -2 deg rest vanished).  Either
@@ -127,10 +127,10 @@ class JCNSParser:
                                              Scale: bit0=0/1 both directly replace written
                                              axes; unwritten axes keep rest scale, including
                                              non-unit (1.4,0.7,1.8), measured round 11. Agrees
-                                             with bit0 of its sources' CurveMode in 93.5%, but
+                                             with bit0 of its sources' AttrFlags in 93.5%, but
                                              that bit does nothing.  bit2/bit3: only on
                                              BlendShape / material targets.  bits 1/6/7: never.
-      +47:  TransformType         uint8    bt: TransformationID.  15 values.  Measured: 0
+      +47:  TransformElement         uint8    bt: TransformationID.  15 values.  Measured: 0
                                              Translation, 2 Scale, and the rotations, which
                                              mirror the source ReadModes (round 9):
                                              1 Euler rest*Rz*Ry*Rx, 4 swing*twist, 5 twist*swing,
@@ -154,11 +154,11 @@ class JCNSParser:
                                              / rotation 8 on one bone).  Unmeasured.
                                              +76, +78, +79: always 0.
                                              +77: joint-group count -- the N entries right after
-                                             this one (same target, property, TransformType and
-                                             Flags) are written to THIS entry's target (measured;
+                                             this one (same target, property, TransformElement and
+                                             AttrFlags) are written to THIS entry's target (measured;
                                              see jcns_writer.tail_group_counts, which derives it).
 
-    72-byte ConstraintSource_v2 layout (pointed to by OffsetSourceList):
+    72-byte JointDriver_v2 layout (pointed to by OffsetSourceList):
       +0:   ComplexMappingInfoOffset  uint64   bt: ComplexMappingInfoOffset (0=none)
       +8:   SourceNameOffset          uint64   pointer to SOURCE bone name (UTF-16LE)
       +16:  SourceHashIndex           uint32   index into hash_list -> source bone hash
@@ -166,14 +166,14 @@ class JCNSParser:
                                               sources ({3, 4, 7}).  The curve is a cubic Hermite
                                               (measured, see jcns_complex).
       +22:  UnknownUInt16_22             uint16   0 in every source but one (flower_ziva, 1).
-      +24:  CurveMode                 uint8    bt: UpdateTiming (wrong).  bit 1 selects the curve:
+      +24:  AttrFlags                 uint8    bt: UpdateTiming (wrong).  bit 1 selects the curve:
                                               {0,1} two-point (kink ignored), {2,3} three-point
                                               (measured).  bit 0 does nothing -- not to the curve,
-                                              not to the pose (measured); Flags bit0 is the
+                                              not to the pose (measured); AttrFlags bit0 is the
                                               additive switch it usually mirrors.  3 64%, 0 13%, 1 12%,
                                               2 10%; 4/5 only in 34 sources on material targets,
                                               unmeasured.
-      +25:  ReadMode                  uint8    How the source bone is read (bt: TransformIDSrc /
+      +25:  InputType                  uint8    How the source bone is read (bt: TransformIDSrc /
                                               InterpolationID, both marked "Not sure").  Measured
                                               for every value, off the bone's whole
                                               parent-relative transform, rest included:
@@ -182,24 +182,24 @@ class JCNSParser:
                                               q = twist*swing, 5 rotation vector.  Only 0-5 occur
                                               (2114 files); see jcns_source_read.READ_MODES.
       +26:  source_axis               uint8    bt: SourceAxis  0=X 1=Y 2=Z.  Sources never use W.
-      +27:  EulerOrder                uint8    (was UnkByte2) the Euler order of ReadMode 1
+      +27:  RotOrder                uint8    (was UnkByte2) the Euler order of InputType 1
                                               (measured, round 8): 0 Rz*Ry*Rx (Blender XYZ),
                                               1 Rx*Rz*Ry (YZX), 2 Ry*Rx*Rz (ZXY), 3 Rx*Ry*Rz (ZYX).
-                                              ReadMode 3/4/5 ignore it.  0 82%, 1 13%, 2 5%,
+                                              InputType 3/4/5 ignore it.  0 82%, 1 13%, 2 5%,
                                               3 0.3%; it follows the source bone (94.5%
                                               predictable from it): Thigh / Hand mostly 1, finger
                                               F1 bones and capes 2, wings 3, nearly all others 0,
-                                              always 0 for ReadMode 0/2 -- a per-bone rotation
+                                              always 0 for InputType 0/2 -- a per-bone rotation
                                               order, stored even where the read ignores it.
       +28:  Interpolation              uint8    how each mapping segment runs between its anchors
                                               (measured, rounds 15 and 16; per segment also on a
                                               three-point map): 0 straight, 1 cubic ease in (t^3),
                                               2 cubic ease out (1-(1-t)^3), 3 smoothstep (3t^2-2t^3).
                                               0 92%, 3 8%, 1 / 2 rare, mostly on non-joint targets
-                                              and ReadMode 1/4.
-      +29:  ComplexMappingFlag         uint8    1 exactly when ComplexMappingInfoCount > 0 (derived on write); 2 in
+                                              and InputType 1/4.
+      +29:  CurveType         uint8    1 exactly when ComplexMappingInfoCount > 0 (derived on write); 2 in
                                               90 further sources, all material 2D/3D targets with
-                                              ReadMode 1 and CurveMode 1/5.  +29 = 2 on a rotation
+                                              InputType 1 and AttrFlags 1/5.  +29 = 2 on a rotation
                                               entry gave an output of -90 * input, unclamped, and
                                               overrode +28 = 3 (round 15); no meaning for bones.
       +30:  ReservedWord30             uint16   always 0
@@ -211,11 +211,11 @@ class JCNSParser:
       +56:  ref_frame_x/y/z/w         float    (0,0,0,1) in every source but two: ch90_021's
                                               Chest -> Chest_Roll_Val_HJ and Spine0 ->
                                               Spine_Roll_Val_HJ, both a 90 deg turn about Y
-                                              (0,-0.7071,0,0.7071), ReadMode 3.  Not the bone's
+                                              (0,-0.7071,0,0.7071), InputType 3.  Not the bone's
                                               rest pose (the engine takes that from the skeleton)
-                                              but the frame f the rotation is read in: ReadMode
+                                              but the frame f the rotation is read in: InputType
                                               3/4/5 decompose f^-1 * q * f, so that value moves the
-                                              twist axis from X to Z (measured, round 8); ReadMode
+                                              twist axis from X to Z (measured, round 8); InputType
                                               1 ignores it.
     Total: 72 bytes
 
@@ -271,7 +271,7 @@ class JCNSParser:
         self.skin_constraints   = []
         self.skin_source_infos  = []
         self.read_joint_table    = []
-        self.cone_drivers       = []
+        self.cone_inputs       = []
         self.header = read_header(data)
         self.section_order = self._read_section_order(data)
         print(f"Version: {self.version} ({VERSION_GAMES.get(self.version, '?')}), "
@@ -295,10 +295,10 @@ class JCNSParser:
         return list(struct.unpack_from(f'<{n}I', data, off))
 
     def _parse_cone_drivers(self, data):
-        """Section 0 ConeDriver table (v35 layout, and v22's; other versions stay in place)."""
-        self.cone_drivers = []
-        n = self.header.get('ConeDriverCount', 0)
-        base = self.header.get('ConeDriverTableEntry', 0)
+        """Section 0 ConeInput table (v35 layout, and v22's; other versions stay in place)."""
+        self.cone_inputs = []
+        n = self.header.get('ConeInputCount', 0)
+        base = self.header.get('ConeInputTableEntry', 0)
         if not n or not base or not (self.version >= 35 or self.version in CONE_DRIVER_VERSIONS):
             return
         layout = cone_struct(self.version)
@@ -316,8 +316,8 @@ class JCNSParser:
                 cd['JointName'] = self._read_wstring(data, rec['JointName_Offset'])
                 cd['ParentJointName'] = self._read_wstring(data, rec['ParentJointName_Offset'])
                 cd['SymmetryJointHash'] = None
-            self.cone_drivers.append(cd)
-        print(f"Parsed {n} ConeDriver(s)")
+            self.cone_inputs.append(cd)
+        print(f"Parsed {n} ConeInput(s)")
 
     def _parse_hash_list(self, data):
         # The global hash table only exists from v35; older files store hashes inline.
@@ -330,21 +330,21 @@ class JCNSParser:
 
     def _parse_constraints(self, data):
         v = self.version
-        count = self.header['ConstraintCount']
+        count = self.header['OutputCount']
         base = self.header['ConstraintSetsStart']
-        size = CONSTRAINT_INFO.size(v)
+        size = OUTPUT_DATA.size(v)
         src_struct = source_struct(v)
         src_size = src_struct.size(v)
-        axis_key = transform_axis_key(v)
+        axis_key = output_axis_key(v)
 
         self.constraints = []
         for idx in range(count):
             off = base + idx * size
-            rec = CONSTRAINT_INFO.read(data, off, v)
+            rec = OUTPUT_DATA.read(data, off, v)
             c = dict(rec)
             c['_rec'] = rec                       # original record, for in-place writes
             c['ParentSetOffset'] = off
-            c['TransformAxis_parent'] = rec[axis_key]
+            c['Axis_parent'] = rec[axis_key]
             c['target_axis'] = rec[axis_key]
             c['ObjectName'] = self._read_wstring(data, rec['ObjectNameOffset'])
             c['_orig_object_name'] = c['ObjectName']
@@ -354,7 +354,7 @@ class JCNSParser:
             c['_orig_property_name'] = c['PropertyName']
 
             # ObjectName can be an RSZ object or property target (e.g. 'via.motion.Chain'
-            # with TransformType=11 and a non-zero PropertyHash) whose ObjectHash is not
+            # with TransformElement=11 and a non-zero PropertyHash) whose ObjectHash is not
             # the name's hash; record whether they agree while both are still original.
             c['ObjectHashMatchesName'] = bool(
                 c['ObjectName'] and _hash_utf16(c['ObjectName']) == rec['ObjectHash'])
@@ -363,20 +363,20 @@ class JCNSParser:
             else:
                 c['TargetHash'] = rec['ObjectHash']
 
-            # ConeDriverInfo[ConeDriverInfoCount]: which cones drive this constraint.
-            c['ConeDriverInfo'] = []
-            n_cone, cone_at = rec['ConeDriverInfoCount'], rec['ConeDriverInfoOffset']
+            # ConeDriver[ConeDriverCount]: which cones drive this constraint.
+            c['ConeDriver'] = []
+            n_cone, cone_at = rec['ConeDriverCount'], rec['ConeDriverOffset']
             if n_cone and cone_at:
-                size_ci = CONE_DRIVER_INFO.size(v)
-                c['ConeDriverInfo'] = [CONE_DRIVER_INFO.read(data, cone_at + k * size_ci, v)
+                size_ci = CONE_DRIVER.size(v)
+                c['ConeDriver'] = [CONE_DRIVER.read(data, cone_at + k * size_ci, v)
                                        for k in range(n_cone)]
 
-            # ConstraintSource[SourceCount] — consecutive records at SourceListOffset.
+            # JointDriver[SourceCount] — consecutive records at SourceListOffset.
             # Multi-source constraints are common (~12% in Wilds).
             c['sources'] = []
             ptr = rec['SourceListOffset']
             if ptr:
-                for k in range(rec['SourceCount_parent']):
+                for k in range(rec['JointDriverCount']):
                     s_off = ptr + k * src_size
                     if s_off + src_size > len(data):
                         break                     # truncated file; jcns_validate reports it
@@ -450,26 +450,26 @@ class JCNSParser:
         the shared source table; from v36 also the ReadJointTable (raw hashes;
         SkinConstraintHashTable in bt / REE-Lib), which Skin shares with Aim."""
         v, h = self.version, self.header
-        n = h.get('SkinConstraintCount', 0)
+        n = h.get('MultiConstraintCount', 0)
         self.skin_constraints, self.skin_source_infos, self.read_joint_table = [], [], []
         if not n:
             return
-        base, size = h['SkinConstraintTableEntry'], SKIN.size(v)
-        src_size = SKIN_SOURCE.size(v)
+        base, size = h['MultiConstraintTableEntry'], MULTI.size(v)
+        src_size = MULTI_SOURCE.size(v)
         for i in range(n):
-            rec = SKIN.read(data, base + i * size, v)
+            rec = MULTI.read(data, base + i * size, v)
             rec['ObjectHash'] = (self._hash_at(rec['ObjectHashIndex']) if v >= 35
                                  else rec['ObjectHash'])
-            rec['sources'] = [SKIN_SOURCE.read(data, rec['SourceListOffset'] + k * src_size, v)
+            rec['sources'] = [MULTI_SOURCE.read(data, rec['SourceListOffset'] + k * src_size, v)
                               for k in range(rec['SourceCount'])]
             self.skin_constraints.append(rec)
 
-        ns = h.get('SkinConstraintSourceCount', 0)
-        info_base = h.get('SkinConstraintSourceTableEntry', 0)
-        if ns and info_base and SKIN_SOURCE_INFO.size(v):
-            isz = SKIN_SOURCE_INFO.size(v)
+        ns = h.get('MultiConstraintSourceCount', 0)
+        info_base = h.get('MultiConstraintSourceTableEntry', 0)
+        if ns and info_base and MULTI_SOURCE_INFO.size(v):
+            isz = MULTI_SOURCE_INFO.size(v)
             for i in range(ns):
-                rec = SKIN_SOURCE_INFO.read(data, info_base + i * isz, v)
+                rec = MULTI_SOURCE_INFO.read(data, info_base + i * isz, v)
                 if v >= 35:
                     rec['SourceHash'] = self._hash_at(rec['SourceHashIndex'])
                 self.skin_source_infos.append(rec)
@@ -532,7 +532,7 @@ class JCNSParser:
 
     def _parse_joint_export_graph(self, data):
         """Section 5 (v29+): zero or one entry, a single uint64 pointer to a path."""
-        off = self.header.get('JointExportGraphInfoEntry', 0)
+        off = self.header.get('JointExprGraphInfoEntry', 0)
         self.joint_export_graph = None
         if off == 0:
             return

@@ -15,7 +15,7 @@ whole rotation, which is why B, C, D, H write only some axes.
   G      type 1 X added + Y replaced on one bone (the panel models this with override_basis)
   I      type 1 X / Z with a type 4 Y on the same bone
   J K    UnknownFloat2 (-45, 0) and (-90, -90): any difference from control A?
-  E F    a scale read by ReadMode 2: the rest scale, the pose scale, or their product?
+  E F    a scale read by InputType 2: the rest scale, the pose scale, or their product?
 """
 import argparse
 import json
@@ -158,7 +158,7 @@ def analyze(F, rests, stride=STRIDE):
             pose_vs_rest_times_out_deg=float(ang(q(b), wxyz_to_rot([rest(b)] * len(o)) * Rot.from_euler('x', o[:, None])).max()),
             pose_vs_control_deg=float(ang(q(b), q('A')).max()))
 
-    # E F: a scale read through ReadMode 2
+    # E F: a scale read through InputType 2
     rs = {b: np.array([1.0, 1.0, 1.0]) for b in 'ABCDEFGHIJK'}
     rs['E'] = rs['F'] = np.array([1.4, 0.7, 1.8])
     reads = np.degrees(np.stack([out(i) for i in OUT['E']], axis=1))

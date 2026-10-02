@@ -9,7 +9,7 @@ rest included, the same calls as jcns_drivers._read.
 Target side (capture_target) is the inverse of the target composition,
 jcns_source_read.target_basis / translation_basis and the scale rule: the value one
 entry would have to write on one axis for the bone to land in the given pose.  It
-assumes the entry's own TransformType decides how the bone is composed and, for a
+assumes the entry's own TransformElement decides how the bone is composed and, for a
 bone driven by several entries, takes the other axes from the pose as they are.
 
 Inputs are plain Blender pose data: XYZ Euler in radians, location and offsets in
@@ -17,11 +17,11 @@ metres, scale as the pose ratio.  Results are in the file's units (degrees,
 centimetres, scale as is).  Quaternions are (w, x, y, z).
 
 What cannot be recovered, by design:
-  * a rotation read keeps only the asked component (ReadMode 3 drops the swing on Y/Z
+  * a rotation read keeps only the asked component (InputType 3 drops the swing on Y/Z
     from its X value, and so on), so a read does not identify the pose;
   * angles come back in (-180, 180] (rotation vectors and swing-twist components
     wrap there), so a written value beyond that returns its equivalent;
-  * a TransformType 13 / 14 entry holds one rotation about its own axis, so a pose
+  * a TransformElement 13 / 14 entry holds one rotation about its own axis, so a pose
     that is not a pure turn about that axis comes back with the rest as `error`.
 """
 import math
@@ -30,7 +30,7 @@ import jcns_complex
 import jcns_mapping
 import jcns_source_read as sr
 
-# TransformType values capture_target can take a value for; the others drive no
+# TransformElement values capture_target can take a value for; the others drive no
 # bone channel (blend shapes, materials, unknown) or have no defined composition.
 CAPTURABLE_TARGETS = (0, 1, 2, 4, 5, 6, 13, 14)
 _IDENTITY = (1.0, 0.0, 0.0, 0.0)
@@ -42,19 +42,19 @@ def _file_per_driver(quantity):
 
 
 def target_capturable(transform_type):
-    """Does a target of this TransformType value have a capture rule?"""
+    """Does a target of this TransformElement value have a capture rule?"""
     return int(transform_type) in CAPTURABLE_TARGETS
 
 
 def capture_source(read_mode, axis, rest, offset, pose_euler, pose_loc, pose_scale,
                    order=0, frame=None, rest_scale=(1.0, 1.0, 1.0)):
-    """What a source with this ReadMode reads off its bone in the given pose.
+    """What a source with this InputType reads off its bone in the given pose.
 
     `rest` and `offset` are the bone's rest rotation and offset from its parent (metres);
-    `order` and `frame` are the source's +27 EulerOrder and ref_frame, as for
+    `order` and `frame` are the source's +27 RotOrder and ref_frame, as for
     jcns_source_read.rotation; `rest_scale` is the bone's rest scale.  Every rotation
     axis of the pose counts, including the ones an applied preview would leave unread.
-    -> degrees, centimetres or a scale; None for an axis beyond Z or an unknown ReadMode.
+    -> degrees, centimetres or a scale; None for an axis beyond Z or an unknown InputType.
     """
     if not 0 <= axis <= 2:
         return None
@@ -83,16 +83,16 @@ def _twist(q, axis):
 def capture_target(transform_type, additive, axis, rest, pose_euler, pose_loc, pose_scale,
                    offset=(0.0, 0.0, 0.0), parent_scale=(1.0, 1.0, 1.0),
                    rest_scale=(1.0, 1.0, 1.0)):
-    """The value a target entry (TransformType value, Flags bit0 = `additive`) writes on
+    """The value a target entry (TransformElement value, AttrFlags bit0 = `additive`) writes on
     `axis` to bring its bone to the given pose.
 
     `rest` / `offset` are the bone's rest rotation and offset from its parent (metres),
     `parent_scale` the parent's rest scale, `rest_scale` the bone's own.
     -> (value, error) in degrees, centimetres or a scale, or None when there is no rule
-    (axis beyond Z, a TransformType outside CAPTURABLE_TARGETS, a zero parent scale, a
+    (axis beyond Z, a TransformElement outside CAPTURABLE_TARGETS, a zero parent scale, a
     pose that leaves the twist undefined).  `error` is the angle in degrees of the pose's
     rotation that this entry's single rotation cannot express; it is 0 except for
-    TransformType 13 / 14.
+    TransformElement 13 / 14.
     """
     tt = int(transform_type)
     if not 0 <= axis <= 2 or tt not in CAPTURABLE_TARGETS:

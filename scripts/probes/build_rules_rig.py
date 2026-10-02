@@ -1,6 +1,6 @@
 """
 build_rules_rig.py -- xaihi test rig, round 13: the Ranges rules the panel still marks as guesses.
-Round-11 mesh, reused as is.  Every entry reads L_Thigh.X (ReadMode 3) through a two-point map
+Round-11 mesh, reused as is.  Every entry reads L_Thigh.X (InputType 3) through a two-point map
 (-90..90 degrees, gains X 0.5, Y 0.8, Z -0.9) unless it says otherwise.  Every joint-group count is 0.
 
   [08]     A  type 1 F49 X                     input control
@@ -12,10 +12,10 @@ Round-11 mesh, reused as is.  Every entry reads L_Thigh.X (ReadMode 3) through a
   [18-20]  I  type 1 F49 X, type 4 F49 Y, type 1 F49 Z     two rotation types on one bone
   [21]     J  type 1 F49 X, UnknownFloat2 (-45, 0)          the float's effect, against A
   [22]     K  type 1 F49 X, UnknownFloat2 (-90, -90)
-  [23-25]  E  rotation X / Y / Z <- E.scale X / Y / Z, ReadMode 2, identity map 0..3
+  [23-25]  E  rotation X / Y / Z <- E.scale X / Y / Z, InputType 2, identity map 0..3
            (E's static scale is (1.4, 0.7, 1.8): is that what a scale source reads?)
   [26]     F  type 2 F17 Y <- L_Thigh.X, scale 1 +- 0.9 (a moving scale)
-  [27]     F  rotation X <- F.scale Y, ReadMode 2, identity map 0..3  (after [26], same frame)
+  [27]     F  rotation X <- F.scale Y, InputType 2, identity map 0..3  (after [26], same frame)
 
 Outputs of rotation entries are radians, so a reader's output of a scale of 1.4 is 1.4 degrees.
 """
@@ -36,8 +36,8 @@ DIR = r"E:/Program/Steam/steamapps/common/MonsterHunterWilds/natives/STM/art/mod
 SRC = DIR + "/xaihi_constraint.jcns.102.orig_20260929"
 
 GAIN = {'X': 0.5, 'Y': 0.8, 'Z': -0.9}
-# (bone, TransformType, Flags, axis, UnknownFloat2, source) ; source = None for L_Thigh.X,
-# else (bone, source_axis, ReadMode, (from), (to)); a scale driver sets its own gain.
+# (bone, TransformElement, AttrFlags, axis, UnknownFloat2, source) ; source = None for L_Thigh.X,
+# else (bone, source_axis, InputType, (from), (to)); a scale driver sets its own gain.
 ENTRIES = [
     ('A', 1, 49, 'X', (0, 0), None),
     ('B', 4, 48, 'X', (0, 0), None), ('B', 4, 48, 'Y', (0, 0), None),
@@ -73,24 +73,24 @@ def main(dst):
     for bone, tt, flags, axis, pf2, src in ENTRIES:
         i = 'XYZ'.index(axis)
         c = copy.deepcopy(tmpl)
-        c.update(ObjectName='TestTgt' + bone, TransformType=tt, Flags=flags, TransformAxis_parent=i,
+        c.update(ObjectName='TestTgt' + bone, TransformElement=tt, AttrFlags=flags, Axis_parent=i,
                  target_axis=i, UnknownByte72=0, UnknownFloat2=tuple(pf2))
         tail = bytearray(c['TailBytes'])
         tail[1], tail[3] = 2, 0
         c['TailBytes'] = bytes(tail)
         s = c['sources'][0]
-        common = dict(CurveMode=0, EulerOrder=0, Interpolation=0, ref_frame_x=0.0, ref_frame_y=0.0,
+        common = dict(AttrFlags=0, RotOrder=0, Interpolation=0, ref_frame_x=0.0, ref_frame_y=0.0,
                       ref_frame_z=0.0, ref_frame_w=1.0, ComplexMapping=[], ComplexMappingInfoCount=0)
         if src is None:
             k = GAIN[axis]
-            s.update(SourceName='L_Thigh', source_axis=0, ReadMode=3, from_start=-90.0, from_kink=0.0,
+            s.update(SourceName='L_Thigh', source_axis=0, InputType=3, from_start=-90.0, from_kink=0.0,
                      from_end=90.0, to_start=-90.0 * k, to_kink=0.0, to_end=90.0 * k, **common)
         elif src == 'scale':
-            s.update(SourceName='L_Thigh', source_axis=0, ReadMode=3, from_start=-90.0, from_kink=0.0,
+            s.update(SourceName='L_Thigh', source_axis=0, InputType=3, from_start=-90.0, from_kink=0.0,
                      from_end=90.0, to_start=1.0 - 0.9, to_kink=1.0, to_end=1.0 + 0.9, **common)
         else:
             name, ax, mode = src
-            s.update(SourceName='TestTgt' + name, source_axis=ax, ReadMode=mode, from_start=0.0, from_kink=1.0,
+            s.update(SourceName='TestTgt' + name, source_axis=ax, InputType=mode, from_start=0.0, from_kink=1.0,
                      from_end=3.0, to_start=0.0, to_kink=1.0, to_end=3.0, **common)
         cons.append(c)
     assert cons is p.constraints and len(cons) == FIRST_OUT + len(ENTRIES)
@@ -108,15 +108,15 @@ def check(dst):
     assert list(q.aim_constraints) == [] and not q.skin_constraints and not q.rot_expressions
     for i, (c, (bone, tt, flags, axis, pf2, src)) in enumerate(zip(back[FIRST_OUT:], ENTRIES)):
         s = c['sources'][0]
-        assert (c['ObjectName'], c['TransformType'], c['Flags'], 'XYZ'[c['target_axis']]) == \
+        assert (c['ObjectName'], c['TransformElement'], c['AttrFlags'], 'XYZ'[c['target_axis']]) == \
             ('TestTgt' + bone, tt, flags, axis), (i, c['ObjectName'])
         assert tuple(round(v, 4) for v in c['UnknownFloat2']) == tuple(pf2), (i, c['UnknownFloat2'])
         if isinstance(src, tuple):
-            assert (s['SourceName'], s['source_axis'], s['ReadMode']) == ('TestTgt' + src[0], src[1], src[2])
+            assert (s['SourceName'], s['source_axis'], s['InputType']) == ('TestTgt' + src[0], src[1], src[2])
         else:
-            assert (s['SourceName'], s['source_axis'], s['ReadMode']) == ('L_Thigh', 0, 3)
-        assert s['EulerOrder'] == 0 and s['Interpolation'] == 0 and s['CurveMode'] == 0
-        print(f"[{FIRST_OUT + i:02}] {c['ObjectName']:<11} TT={tt:<2} F={flags} .{axis} pf2={pf2} <- {s['SourceName']}.{s['source_axis']} rm{s['ReadMode']}")
+            assert (s['SourceName'], s['source_axis'], s['InputType']) == ('L_Thigh', 0, 3)
+        assert s['RotOrder'] == 0 and s['Interpolation'] == 0 and s['AttrFlags'] == 0
+        print(f"[{FIRST_OUT + i:02}] {c['ObjectName']:<11} TT={tt:<2} F={flags} .{axis} pf2={pf2} <- {s['SourceName']}.{s['source_axis']} rm{s['InputType']}")
     return q
 
 

@@ -159,13 +159,13 @@ def main():
     def add(letter, tt, flags, axis, gain):
         i = 'XYZ'.index(axis)
         c = copy.deepcopy(tmpl)
-        c.update(ObjectName='TestTgt' + letter, TransformType=tt, Flags=flags, TransformAxis_parent=i, target_axis=i,
+        c.update(ObjectName='TestTgt' + letter, TransformElement=tt, AttrFlags=flags, Axis_parent=i, target_axis=i,
                  UnknownByte72=0, UnknownFloat2=(0.0, 0.0))
         t = bytearray(c['TailBytes'])
         t[0], t[1], t[3] = 0, 2, 0
         c['TailBytes'] = bytes(t)
         bias = 0.0
-        c['sources'][0].update(SourceName='L_Thigh', source_axis=0, ReadMode=3, CurveMode=0, EulerOrder=0,
+        c['sources'][0].update(SourceName='L_Thigh', source_axis=0, InputType=3, AttrFlags=0, RotOrder=0,
                                Interpolation=0, ref_frame_x=0.0, ref_frame_y=0.0, ref_frame_z=0.0, ref_frame_w=1.0,
                                from_start=-90.0, from_kink=0.0, from_end=90.0, to_start=-90 * gain, to_kink=0.0,
                                to_end=90 * gain, ComplexMapping=[], ComplexMappingInfoCount=0)

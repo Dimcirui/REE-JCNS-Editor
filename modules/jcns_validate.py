@@ -19,13 +19,13 @@ def _count_truncated_sources(parser):
     """Constraints whose declared SourceCount does not match the blocks actually read
     (a SourceCount running past EOF; exporting would drop the missing sources)."""
     return sum(1 for c in parser.constraints
-               if len(c.get('sources', [])) != c.get('SourceCount_parent', 0))
+               if len(c.get('sources', [])) != c.get('JointDriverCount', 0))
 
 
 def _count_unread_cone_info(parser):
-    """Constraints whose ConeDriverInfo list is not fully held by the parser."""
+    """Constraints whose ConeDriver list is not fully held by the parser."""
     return sum(1 for c in parser.constraints
-               if c.get('ConeDriverInfoCount', 0) != len(c.get('ConeDriverInfo') or []))
+               if c.get('ConeDriverCount', 0) != len(c.get('ConeDriver') or []))
 
 
 def _header_count(parser, field):
@@ -49,21 +49,21 @@ def check_exportable(parser):
     n = _count_truncated_sources(parser)
     if n:
         names = [c.get('ObjectName') or '?' for c in parser.constraints
-                 if len(c.get('sources', [])) != c.get('SourceCount_parent', 0)]
+                 if len(c.get('sources', [])) != c.get('JointDriverCount', 0)]
         problems.append(T("core.validate.truncated_sources", n, T("core.list_sep").join(names)))
 
     if in_place:
         return problems
 
-    # The rebuild writer re-emits ConeDrivers and every ConeDriverInfo list, but
+    # The rebuild writer re-emits ConeDrivers and every ConeDriver list, but
     # only what the parser (or Blender) actually holds.
     n = _count_unread_cone_info(parser)
     if n:
         problems.append(T("core.validate.unread_cone_info", n))
-    count = _header_count(parser, 'ConeDriverCount')
-    if count and len(getattr(parser, 'cone_drivers', [])) != count:
+    count = _header_count(parser, 'ConeInputCount')
+    if count and len(getattr(parser, 'cone_inputs', [])) != count:
         problems.append(T("core.validate.cone_count", count,
-                          len(getattr(parser, 'cone_drivers', []))))
+                          len(getattr(parser, 'cone_inputs', []))))
 
     return problems
 
@@ -80,7 +80,7 @@ def check_in_place_edits(parser):
     """
     problems = []
     v = parser.header.get('Version', '?')
-    orig_n = parser.header.get('ConstraintCount', 0)
+    orig_n = parser.header.get('OutputCount', 0)
 
     cns = parser.constraints
     if len(cns) != orig_n or any('_rec' not in c for c in cns):
@@ -94,7 +94,7 @@ def check_in_place_edits(parser):
         if c.get('PropertyName', '') != c.get('_orig_property_name', ''):
             problems.append(T("core.validate.inplace_property", v, label, c.get('PropertyName', '')))
         srcs = c.get('sources', [])
-        if len(srcs) != c['_rec']['SourceCount_parent'] or any('_rec' not in s for s in srcs):
+        if len(srcs) != c['_rec']['JointDriverCount'] or any('_rec' not in s for s in srcs):
             problems.append(T("core.validate.inplace_source_count", v, label))
             continue
         for s in srcs:
@@ -114,7 +114,7 @@ def check_in_place_edits(parser):
                 problems.append(T("core.validate.inplace_mat_bone", v, i))
 
     jxg = getattr(parser, 'joint_export_graph', None)
-    had_jxg = bool(parser.header.get('JointExportGraphInfoEntry', 0))
+    had_jxg = bool(parser.header.get('JointExprGraphInfoEntry', 0))
     if (jxg is not None) != had_jxg or (jxg and jxg.get('path') != jxg.get('_orig_path')):
         problems.append(T("core.validate.inplace_jxg", v))
     return problems

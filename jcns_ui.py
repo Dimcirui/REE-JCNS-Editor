@@ -13,7 +13,7 @@ modules/jcns_kinds.py 决定，预览（驱动器 / 骨骼约束）由 jcns_prev
   2 JCNS_PT_Preview    整个界面唯一的预览入口
   3 JCNS_PT_Edit       分区标签、条目列表（或按骨骼分组）、增删换序
       （jcns_editors.py）选中条目的编辑详情，作为「编辑」的子面板
-  4 JCNS_PT_FileInfo   文件信息（ObjectSettings、ConeDriver 表、读取骨表），默认折叠
+  4 JCNS_PT_FileInfo   文件信息（ObjectSettings、ConeInput 表、读取骨表），默认折叠
 """
 
 import os
@@ -138,7 +138,7 @@ def _target_unit(transform_type):
 
 
 class JCNS_UL_Sources(bpy.types.UIList):
-    """每行对应文件里的一个 ConstraintSource_v2 块。"""
+    """每行对应文件里的一个 JointDriver_v2 块。"""
     bl_idname = "JCNS_UL_sources"
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_prop, index):
@@ -173,7 +173,7 @@ _CONE_NAME_CACHE = {}
 
 
 def _cone_names(rp):
-    """ConeDriver names of a root, from its import cache (parsed once per string)."""
+    """ConeInput names of a root, from its import cache (parsed once per string)."""
     raw = rp.cone_drivers_json if rp else ''
     if not raw:
         return []
@@ -187,7 +187,7 @@ def _cone_names(rp):
 
 
 class JCNS_UL_ConeInfos(bpy.types.UIList):
-    """ConeDriverInfo：这条约束读取的锥形及其输出值。"""
+    """ConeDriver：这条约束读取的锥形及其输出值。"""
     bl_idname = "JCNS_UL_cone_infos"
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_prop, index):

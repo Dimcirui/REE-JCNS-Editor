@@ -28,12 +28,12 @@ Derived data:
     hemisphere.  A file's section table has to list the section (2) for it to run.
   Aim
     * measured (rounds 12 and 14): local Vec1 points at the target and local Vec2 is the axis
-      lined up with "up".  RotationType 0 takes up from world +Y (Vec3 has no effect), 3 from
+      lined up with "up".  WorldUpType 0 takes up from world +Y (Vec3 has no effect), 3 from
       the world direction Vec3, 1 from the up joint's position, 2 from the up joint's own +Y
       axis (tested with Vec3 (0,1,0)), 4 is the shortest arc from the rest pose, 5 the
       shortest arc from the parent's orientation alone (the rest pose is dropped).
       Vec0 is an XYZ Euler offset in radians (Rz*Ry*Rx) multiplied on the right of the look-at result
-      (round 17); with RotationType 2 the up reference is the up joint's local axis Vec3 selects.
+      (round 17); with WorldUpType 2 the up reference is the up joint's local axis Vec3 selects.
       Influence other than 1 is degenerate: type 0 leaves the world rotation almost constant
       (rotated 180 deg between 0.25 and 2.0), types 1 and 4 match no blend model.  Every shipped
       record has 1.0.
@@ -64,7 +64,7 @@ from jcns_schema import ROT_EXPRESSION
 _CONE_DERIVED = ('NameHash',)
 
 
-def cone_drivers_to_json(cones):
+def cone_inputs_to_json(cones):
     out = []
     for cd in cones:
         rec = {}
@@ -76,7 +76,7 @@ def cone_drivers_to_json(cones):
     return json.dumps(out)
 
 
-def cone_drivers_from_json(text):
+def cone_inputs_from_json(text):
     out = []
     for rec in json.loads(text):
         cd = {k: tuple(v) if isinstance(v, list) else v for k, v in rec.items()}

@@ -53,14 +53,14 @@ def main():
     for tgt, axis, k in ENTRIES:
         c = copy.deepcopy(tmpl)
         c['ObjectName'] = tgt
-        c['TransformAxis_parent'] = c['target_axis'] = AXIS[axis]
-        c['Flags'] = 49
-        c['TransformType'] = 1
+        c['Axis_parent'] = c['target_axis'] = AXIS[axis]
+        c['AttrFlags'] = 49
+        c['TransformElement'] = 1
         s = c['sources'][0]
         s['SourceName'] = 'L_Thigh'
         s['source_axis'] = 0
-        s['ReadMode'] = 3
-        s['CurveMode'] = 0            # two-point line
+        s['InputType'] = 3
+        s['AttrFlags'] = 0            # two-point line
         s['from_start'], s['from_kink'], s['from_end'] = -90.0, 0.0, 90.0
         s['to_start'], s['to_kink'], s['to_end'] = -90.0 * k, 0.0, 90.0 * k
         s['ComplexMapping'] = []
@@ -74,7 +74,7 @@ def main():
     for i, c in enumerate(back):
         s = c['sources'][0]
         print(f"[{i:02}] {c['ObjectName']:<14}.{'XYZW'[c['target_axis']]} <- {s['SourceName']}.{'XYZW'[s['source_axis']]}"
-              f" +24={s['CurveMode']} from=({s['from_start']:g},{s['from_end']:g}) to=({s['to_start']:g},{s['to_end']:g})")
+              f" +24={s['AttrFlags']} from=({s['from_start']:g},{s['from_end']:g}) to=({s['to_start']:g},{s['to_end']:g})")
 
 
 if __name__ == '__main__':

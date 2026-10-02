@@ -73,7 +73,7 @@ def _build_stub_parser(root_props):
     parser.skin_constraints   = []
     parser.skin_source_infos  = []
     parser.read_joint_table    = []
-    parser.cone_drivers       = []
+    parser.cone_inputs       = []
     parser.rot_expressions    = []
     parser.rot_expression_map = b''
     parser.material_cns       = []
@@ -93,7 +93,7 @@ def skeleton_of(arm):
 
 def _sync_sections_to_parser(root_obj, root_props, parser):
     """
-    Rebuild parser.skin_* / aim_constraints / rot_expressions / cone_drivers (and,
+    Rebuild parser.skin_* / aim_constraints / rot_expressions / cone_inputs (and,
     for the stub, object_settings) from Blender.  Returns refusals; empty == OK.
 
     Runs only for sections_cached roots in rebuild mode: in-place versions never
@@ -152,12 +152,12 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
         rots, {'map_value': root_props.rot_map_value}, parser.version)
 
     # ConeDrivers are not editable; re-emitted from the import cache.
-    n_cone = parser.header.get('ConeDriverCount', 0)
+    n_cone = parser.header.get('ConeInputCount', 0)
     if root_props.cone_drivers_json:
-        parser.cone_drivers = X.cone_drivers_from_json(root_props.cone_drivers_json)
+        parser.cone_inputs = X.cone_inputs_from_json(root_props.cone_drivers_json)
     elif n_cone:
         return [T("io.export.cone_not_cached", n_cone)]
-    n = len(parser.cone_drivers)
+    n = len(parser.cone_inputs)
     for o in get_constraint_empties(root_obj):
         # before v35 index 255 is a reference to no cone, which shipped files carry
         bad = [k.cone_index for k in o.jcns_cns_props.cone_infos
@@ -288,7 +288,7 @@ def _root_version(rp):
 
 
 def _transform_int(transform_type, default=1):
-    """TransformType byte of an enum identifier (the inverse of TRANSFORM_TYPE_MAP)."""
+    """TransformElement byte of an enum identifier (the inverse of TRANSFORM_TYPE_MAP)."""
     from . import TRANSFORM_TYPE_MAP
     for value, name in TRANSFORM_TYPE_MAP.items():
         if name == transform_type:
@@ -306,17 +306,17 @@ def _make_default_constraint_dict(empty_obj):
     p = empty_obj.jcns_cns_props
     tgt_ax = AXIS_TO_INT.get(p.target_axis, 0)
     return {
-        'ConeDriverInfoOffset':  0,
+        'ConeDriverOffset':  0,
         'PropertyOffset':        0,
         'PropertyHash':          0,
-        'ConeDriverInfoCount':   0,
-        'ConeDriverInfo':        [],
-        'Flags':                 0x30,
-        'TransformType':         _transform_int(p.transform_type),
+        'ConeDriverCount':   0,
+        'ConeDriver':        [],
+        'AttrFlags':                 0x30,
+        'TransformElement':         _transform_int(p.transform_type),
         'ReservedVec4':            (0.0, 0.0, 0.0, 1.0),
         'UnknownFloat2':          (0.0, 0.0),
         'UnknownByte72':        0,
-        'TransformAxis_parent':  tgt_ax,
+        'Axis_parent':  tgt_ax,
         'TailBytes':       b'\x00' * 6,
         'ObjectName':        '',
         'PropertyName':      '',
@@ -354,10 +354,10 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
     if new_target_name:
         parsed_c['ObjectName'] = new_target_name
 
-    # Target axis lives in ConstraintInfo[+73], not in any source block.
-    parsed_c['TransformAxis_parent'] = AXIS_TO_INT.get(p.target_axis, 0)
-    parsed_c['TransformType'] = _transform_int(p.transform_type,
-                                               parsed_c.get('TransformType', 1))
+    # Target axis lives in OutputData[+73], not in any source block.
+    parsed_c['Axis_parent'] = AXIS_TO_INT.get(p.target_axis, 0)
+    parsed_c['TransformElement'] = _transform_int(p.transform_type,
+                                               parsed_c.get('TransformElement', 1))
 
     # Sources are rebuilt whole, so SourceCount always matches the data; opaque
     # fields are carried over from the original source at the same index.
@@ -384,12 +384,12 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
         base['ref_frame_y']     = sp.ref_frame_y
         base['ref_frame_z']     = sp.ref_frame_z
         base['ref_frame_w']     = sp.ref_frame_w
-        base['CurveMode']    = (sp.curve_mode_extra & ~2) | (2 if sp.three_point else 0)
-        base['ReadMode']        = jcns_source_read.read_mode_value(sp.read_mode)
-        base['EulerOrder']      = jcns_source_read.euler_order_value(sp.euler_order)
+        base['AttrFlags']    = (sp.curve_mode_extra & ~2) | (2 if sp.three_point else 0)
+        base['InputType']        = jcns_source_read.read_mode_value(sp.read_mode)
+        base['RotOrder']      = jcns_source_read.euler_order_value(sp.euler_order)
         base['UnknownUInt16_22']   = sp.unknown_uint16_22
         base['Interpolation'] = INTERPOLATION_TO_INT[sp.interpolation]
-        base['ComplexMappingFlag'] = sp.complex_mapping_flag
+        base['CurveType'] = sp.complex_mapping_flag
         if sections_cached:
             # The F-Curve is the data; the count follows it.
             from . import jcns_cm
@@ -401,11 +401,11 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
     parsed_c['sources'] = new_sources
 
 
-    # In DERIVED_BITS_VERSIONS (v36, v102) Flags bits 4 and 5 follow the transform
+    # In DERIVED_BITS_VERSIONS (v36, v102) AttrFlags bits 4 and 5 follow the transform
     # type and are recomputed; v35 does not follow the rule and is written as is.
     from .modules_shim import get_flags
     flags = get_flags()
-    parsed_c['Flags'] = (flags.apply_derived_bits(flags_byte(p), p.transform_type)
+    parsed_c['AttrFlags'] = (flags.apply_derived_bits(flags_byte(p), p.transform_type)
                          if version in flags.DERIVED_BITS_VERSIONS else flags_byte(p))
     parsed_c['ReservedVec4']          = (p.reserved_vec4_x, p.reserved_vec4_y,
                                        p.reserved_vec4_z, p.reserved_vec4_w)
@@ -414,17 +414,17 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
     prop = p.target_property.strip()
     parsed_c['PropertyName']        = prop
     parsed_c['PropertyHash']        = jcns_targets.property_hash(prop, p.property_hash)
-    if jcns_targets.is_direct_target(parsed_c['TransformType']):
+    if jcns_targets.is_direct_target(parsed_c['TransformElement']):
         parsed_c['ObjectHashIndex'] = 0xFFFFFFFF
         parsed_c['ObjectHash']      = jcns_targets.object_hash(parsed_c['ObjectName'], p.object_hash)
         parsed_c['ObjectHashMatchesName'] = not p.object_hash
     else:
         parsed_c['ObjectHashIndex'] = 0
-    parsed_c['ConeDriverInfo'] = [{
+    parsed_c['ConeDriver'] = [{
         'Rest0': k.rest[0], 'Rest123': tuple(k.rest[1:]), 'Value': k.value,
-        'UnkByte0': k.unk_byte0, 'ConeDriverIndex': k.cone_index, 'UnkByte3': k.unk_byte3}
+        'UnkByte0': k.unk_byte0, 'ConeInputIndex': k.cone_index, 'UnkByte3': k.unk_byte3}
         for k in p.cone_infos]
-    parsed_c['ConeDriverInfoCount'] = len(parsed_c['ConeDriverInfo'])
+    parsed_c['ConeDriverCount'] = len(parsed_c['ConeDriver'])
     parsed_c['TailBytes']     = bytes([
         p.unknown_byte_74, p.unknown_byte_75, p.reserved_tail[0],
         p.group_count, p.reserved_tail[1], p.reserved_tail[2],

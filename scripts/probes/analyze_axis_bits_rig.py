@@ -93,7 +93,7 @@ def best(y, k=3):
 
 
 print('frames', n)
-print('== 1. UnkByte2 readers (ReadMode x axis)')
+print('== 1. UnkByte2 readers (InputType x axis)')
 i = 21
 for unk2 in (1, 2, 3):
     for read in (1, 3, 4, 5):
@@ -122,7 +122,7 @@ def bone_x(nm):
     return np.degrees(2 * np.arctan2(q[:, 0], q[:, 3]))
 
 
-print('== 2. Flags bit0 / CurveMode bit0 on the pose (bone X vs output; rest is -2 deg)')
+print('== 2. AttrFlags bit0 / AttrFlags bit0 on the pose (bone X vs output; rest is -2 deg)')
 for nm, o, lab in (('TestTgtB', 11, 'F48 CM0'), ('TestTgtC', 12, 'F49 CM0'), ('TestTgtD', 13, 'F48 CM1'), ('TestTgtE', 14, 'F49 CM1')):
     s, c, e = fit(out[o], bone_x(nm))
     print('  %s %s: bone X = %.4f * Out%d %+.3f  (res %.3f)   Out range %.1f..%.1f' % (nm, lab, s, o, c, e, out[o].min(), out[o].max()))

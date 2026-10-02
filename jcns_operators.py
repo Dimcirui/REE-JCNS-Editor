@@ -36,7 +36,7 @@ _LOC_TYPE   = ['LOC_X',   'LOC_Y',   'LOC_Z']
 _SCALE_TYPE = ['SCALE_X', 'SCALE_Y', 'SCALE_Z']
 
 
-# TransformType name -> (Blender data path, driver variables, quantity driven)
+# TransformElement name -> (Blender data path, driver variables, quantity driven)
 _AXIS_NAME = ['X', 'Y', 'Z', 'W']
 
 _DRIVABLE = {
@@ -80,10 +80,10 @@ def _sources_for_driver(cns_props):
             'curve_mode': get_mapping().curve_mode_value(sp),
             # Interpolation byte +28: how each segment runs between its anchors.
             'interp': get_mapping().source_interpolation(sp),
-            # +25 ReadMode, as its byte value: how the source bone is read
+            # +25 InputType, as its byte value: how the source bone is read
             # (modules/jcns_source_read.py).
             'read_mode': get_mapping().read_mode_value(sp.read_mode),
-            # +27 EulerOrder and the ref_frame reference frame, both only used by
+            # +27 RotOrder and the ref_frame reference frame, both only used by
             # rotation reads (modules/jcns_source_read.py).
             'euler_order': get_mapping().euler_order_value(sp.euler_order),
             'frame': (sp.ref_frame_w, sp.ref_frame_x, sp.ref_frame_y, sp.ref_frame_z),
@@ -463,13 +463,13 @@ def _apply_translation_bone(armature_obj, root_obj, bone, chans):
 
 
 def _replaces(members):
-    """The live (last) entry of a channel writes with Flags bit0 = 0."""
+    """The live (last) entry of a channel writes with AttrFlags bit0 = 0."""
     return not members[-1].jcns_cns_props.additive
 
 
 def _target_mode(members):
     """How the live entry of a channel composes its bone's rotation
-    (jcns_source_read.TARGET_MODES), from its TransformType."""
+    (jcns_source_read.TARGET_MODES), from its TransformElement."""
     from . import jcns_drivers
     from .jcns_exporter import _transform_int
     tt = _transform_int(members[-1].jcns_cns_props.transform_type)

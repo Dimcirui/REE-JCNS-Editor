@@ -1,6 +1,6 @@
 """
 build_small_rig.py -- xaihi test rig, round 16: the small Ranges questions left open.  Round-11 mesh,
-reused as is.  Every entry reads L_Thigh.X (ReadMode 3), joint-group counts 0, all tail / unknown bytes at
+reused as is.  Every entry reads L_Thigh.X (InputType 3), joint-group counts 0, all tail / unknown bytes at
 their usual values (+75 = 2, the rest 0) unless the line says otherwise.  Default map: -90..90 degrees
 to gain * degrees, gains X 0.5, Y 0.8, Z -0.9 (translation cm: 0.03, 0.05, -0.04; scale 1 +- 0.003 * deg).
 
@@ -80,13 +80,13 @@ def main(dst):
         frm, to = anchors(e['tt'], e['axis'])
         frm, to = e.get('frm', frm), e.get('to', to)
         c = copy.deepcopy(tmpl)
-        c.update(ObjectName='TestTgt' + e['bone'], TransformType=e['tt'], Flags=e['flags'],
-                 TransformAxis_parent=i, target_axis=i, UnknownByte72=e.get('b72', 0), UnknownFloat2=(0.0, 0.0))
+        c.update(ObjectName='TestTgt' + e['bone'], TransformElement=e['tt'], AttrFlags=e['flags'],
+                 Axis_parent=i, target_axis=i, UnknownByte72=e.get('b72', 0), UnknownFloat2=(0.0, 0.0))
         tail = bytearray(c['TailBytes'])
         tail[0], tail[1], tail[3] = e.get('b74', 0), e.get('b75', 2), 0
         c['TailBytes'] = bytes(tail)
         c['sources'][0].update(
-            SourceName='L_Thigh', source_axis=0, ReadMode=3, CurveMode=e.get('curve', 0), EulerOrder=0,
+            SourceName='L_Thigh', source_axis=0, InputType=3, AttrFlags=e.get('curve', 0), RotOrder=0,
             Interpolation=e.get('src28', 0), ref_frame_x=0.0, ref_frame_y=0.0, ref_frame_z=0.0, ref_frame_w=1.0,
             from_start=frm[0], from_kink=frm[1], from_end=frm[2], to_start=to[0], to_kink=to[1], to_end=to[2],
             ComplexMapping=[], ComplexMappingInfoCount=0)
@@ -103,11 +103,11 @@ def check(dst):
     assert len(back) == FIRST_OUT + len(ENTRIES) and [c['TailBytes'][3] for c in back] == [0] * len(back)
     for i, (c, e) in enumerate(zip(back[FIRST_OUT:], ENTRIES)):
         s = c['sources'][0]
-        assert (c['ObjectName'], c['TransformType'], c['Flags'], 'XYZ'[c['target_axis']]) == \
+        assert (c['ObjectName'], c['TransformElement'], c['AttrFlags'], 'XYZ'[c['target_axis']]) == \
             ('TestTgt' + e['bone'], e['tt'], e['flags'], e['axis']), i
         assert (c['TailBytes'][0], c['TailBytes'][1], c['UnknownByte72']) == (e.get('b74', 0), e.get('b75', 2), e.get('b72', 0)), i
-        assert s['Interpolation'] == e.get('src28', 0) and s['CurveMode'] == e.get('curve', 0), i
-        print(f"[{FIRST_OUT + i:02}] {c['ObjectName']:<11} TT={e['tt']} F={e['flags']} .{e['axis']} curve={s['CurveMode']} "
+        assert s['Interpolation'] == e.get('src28', 0) and s['AttrFlags'] == e.get('curve', 0), i
+        print(f"[{FIRST_OUT + i:02}] {c['ObjectName']:<11} TT={e['tt']} F={e['flags']} .{e['axis']} curve={s['AttrFlags']} "
               f"src+28={s['Interpolation']} +72/74/75={c['UnknownByte72']}/{c['TailBytes'][0]}/{c['TailBytes'][1]}"
               f" map {s['from_start']:g},{s['from_kink']:g},{s['from_end']:g} -> {s['to_start']:.3g},{s['to_kink']:.3g},{s['to_end']:.3g}")
     return q

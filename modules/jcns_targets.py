@@ -18,7 +18,7 @@ PROPERTY_TYPES = frozenset({7, 8, 9, 10, 11})
 
 
 def is_direct_target(transform_type):
-    """Whether a TransformType byte names its target by ObjectHash instead of a hash-table index."""
+    """Whether a TransformElement byte names its target by ObjectHash instead of a hash-table index."""
     return transform_type in DIRECT_TARGET_TYPES
 
 

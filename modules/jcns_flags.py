@@ -1,5 +1,5 @@
 """
-Meaning of ConstraintInfo's `flags_cns` bits, and which follow from the
+Meaning of OutputData's `flags_cns` bits, and which follow from the
 transform type.
 
     bit 4   the constraint drives a bone, not a material / blend weight
@@ -9,7 +9,7 @@ transform type.
 In v36 and v102 bits 4 and 5 are a pure function of the transform type, so the
 exporter recomputes them; otherwise changing a transform type in the UI would
 leave stale flags.  In v35 the rule does not hold (AxisRotation often has bit 5
-clear), so those files keep their raw bits; older versions have no Flags byte.
+clear), so those files keep their raw bits; older versions have no AttrFlags byte.
 No `bpy` import.
 """
 

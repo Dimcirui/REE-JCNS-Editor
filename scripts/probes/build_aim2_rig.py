@@ -2,7 +2,7 @@
 build_aim2_rig.py -- xaihi test rig, round 17: what Aim's influence, Vec0 and (type 2) Vec3 do, and how
 RotExpression's gain maps the angle.  Round-11 mesh, reused as is.  Section table [1, 3, 0].
 
-  Ranges   [08]  A.X  type 1 F49 <- L_Thigh.X (ReadMode 3) x0.5        input control
+  Ranges   [08]  A.X  type 1 F49 <- L_Thigh.X (InputType 3) x0.5        input control
   Aim      all aimed at R_Hand, Vec1 (1,0,0), Vec2 (0,1,0), Vec3 (0,1,0), Vec0 0, bytes (1,0,5)
            B  type 0  influence 0.25
            C  type 0  influence 2.0
@@ -51,10 +51,10 @@ def main(dst):
         set_count(c, 0)
     c = copy.deepcopy(cons[0])
     c['ObjectName'] = 'TestTgtA'
-    c['TransformAxis_parent'] = c['target_axis'] = 0
-    c['Flags'], c['TransformType'] = 49, 1
+    c['Axis_parent'] = c['target_axis'] = 0
+    c['AttrFlags'], c['TransformElement'] = 49, 1
     set_count(c, 0)
-    c['sources'][0].update(SourceName='L_Thigh', source_axis=0, ReadMode=3, CurveMode=0, EulerOrder=0,
+    c['sources'][0].update(SourceName='L_Thigh', source_axis=0, InputType=3, AttrFlags=0, RotOrder=0,
                            from_start=-90.0, from_kink=0.0, from_end=90.0, to_start=-45.0, to_kink=0.0, to_end=45.0,
                            ComplexMapping=[], ComplexMappingInfoCount=0)
     cons.append(c)

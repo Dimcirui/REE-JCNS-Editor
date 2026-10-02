@@ -81,15 +81,15 @@ def main():
     for bone, axis, k, count in ENTRIES:
         c = copy.deepcopy(tmpl)
         c['ObjectName'] = 'TestTgt' + bone
-        c['TransformAxis_parent'] = c['target_axis'] = AXIS[axis]
-        c['Flags'] = 49
-        c['TransformType'] = 1
+        c['Axis_parent'] = c['target_axis'] = AXIS[axis]
+        c['AttrFlags'] = 49
+        c['TransformElement'] = 1
         set_count(c, count)
         s = c['sources'][0]
         s['SourceName'] = 'L_Thigh'
         s['source_axis'] = 0
-        s['ReadMode'] = 3
-        s['CurveMode'] = 0            # two-point line
+        s['InputType'] = 3
+        s['AttrFlags'] = 0            # two-point line
         s['from_start'], s['from_kink'], s['from_end'] = -90.0, 0.0, 90.0
         s['to_start'], s['to_kink'], s['to_end'] = -90.0 * k, 0.0, 90.0 * k
         s['ComplexMapping'] = []
@@ -109,7 +109,7 @@ def main():
         s = c['sources'][0]
         k = s['to_end'] / s['from_end'] if s['from_end'] else 0
         print(f"[{i:02}] {c['ObjectName']:<14}.{'XYZW'[c['target_axis']]} <- {s['SourceName']}.{'XYZW'[s['source_axis']]}"
-              f"  k={k:+.2f}  group={c['TailBytes'][3]}  F={c['Flags']}")
+              f"  k={k:+.2f}  group={c['TailBytes'][3]}  F={c['AttrFlags']}")
 
 
 if __name__ == '__main__':

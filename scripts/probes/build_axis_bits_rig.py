@@ -2,23 +2,23 @@
 build_axis_bits_rig.py -- xaihi test rig, round 8 (2026-09-30): three raw fields
 every earlier round held fixed at the donor's value.
 
-1. Source +27 EulerOrder (0 in all rounds so far).  In shipped files it follows the
+1. Source +27 RotOrder (0 in all rounds so far).  In shipped files it follows the
    source bone (Thigh / Hand 1, fingers 2, wings 3, most others 0), so it looks like
    an axis for the rotation decomposition.  Readers of TestTgtA (turning on all three
-   axes, as in round 7) for EulerOrder 1..3 x ReadMode 1/3/4/5 x source axis X/Y/Z.
-2. Flags bit0 and CurveMode bit0 (1 and 0 in all rounds; they agree in 93.5% of
+   axes, as in round 7) for RotOrder 1..3 x InputType 1/3/4/5 x source axis X/Y/Z.
+2. AttrFlags bit0 and AttrFlags bit0 (1 and 0 in all rounds; they agree in 93.5% of
    shipped entries).  Singles on B..E (rest -2 deg X) show whether the value lands on
    the rest pose or replaces it; pairs on F..H show whether two writers of a channel
    still resolve to the last one.
 3. Source ref_frame (identity in all rounds; shipped non-identity only as a 90 deg
    turn about Y, on two *_Roll_Val_HJ readers).  Readers of TestTgtA with that
-   quaternion, ReadMode 1/3/4/5 x X/Y/Z.
+   quaternion, InputType 1/3/4/5 x X/Y/Z.
 
   [08]-[10]  A.X/Y/Z <- L_Thigh.X * 0.5 / 0.8 / -0.9          (as rounds 6-7)
-  [11]-[14]  B/C/D/E.X <- L_Thigh.X * 0.5, (Flags, CurveMode) = (48,0) (49,0) (48,1) (49,1)
+  [11]-[14]  B/C/D/E.X <- L_Thigh.X * 0.5, (AttrFlags, AttrFlags) = (48,0) (49,0) (48,1) (49,1)
   [15]-[20]  F/G/H.X, two writers each, k +0.3 then -0.6, with (48,0) (49,1) (48,1)
-  [21]-[56]  EulerOrder in 1..3 x ReadMode (1,3,4,5) x axis X/Y/Z, reading A
-  [57]-[68]  ref_frame = 90 deg about Y, ReadMode (1,3,4,5) x axis X/Y/Z, reading A
+  [21]-[56]  RotOrder in 1..3 x InputType (1,3,4,5) x axis X/Y/Z, reading A
+  [57]-[68]  ref_frame = 90 deg about Y, InputType (1,3,4,5) x axis X/Y/Z, reading A
 
 Readers write TestTgtK.Z through an identity map; only their own outputs matter.
 Every joint-group count is 0.  The round-4 mesh is reused.  Needs the recorder's
@@ -90,16 +90,16 @@ def main():
     for e in ENTRIES:
         c = copy.deepcopy(tmpl)
         c['ObjectName'] = e['tgt']
-        c['TransformAxis_parent'] = c['target_axis'] = AXIS[e['tax']]
-        c['Flags'] = e['flags']
-        c['TransformType'] = 1
+        c['Axis_parent'] = c['target_axis'] = AXIS[e['tax']]
+        c['AttrFlags'] = e['flags']
+        c['TransformElement'] = 1
         set_count(c, 0)
         s = c['sources'][0]
         s['SourceName'] = e['src']
         s['source_axis'] = AXIS[e['sax']]
-        s['ReadMode'] = e['read']
-        s['CurveMode'] = e['curve']            # 0 and 1 are both two-point
-        s['EulerOrder'] = e['unk2']
+        s['InputType'] = e['read']
+        s['AttrFlags'] = e['curve']            # 0 and 1 are both two-point
+        s['RotOrder'] = e['unk2']
         s['ref_frame_x'], s['ref_frame_y'], s['ref_frame_z'], s['ref_frame_w'] = e['rest']
         span, k = e['span'], e['k']
         s['from_start'], s['from_kink'], s['from_end'] = -span, 0.0, span
@@ -116,12 +116,12 @@ def main():
     assert [c['TailBytes'][3] for c in back] == [0] * len(back)
     for i, (c, e) in enumerate(zip(back[8:], ENTRIES), start=8):
         s = c['sources'][0]
-        assert (s['EulerOrder'], s['ReadMode'], s['CurveMode'], c['Flags']) == (e['unk2'], e['read'], e['curve'], e['flags'])
+        assert (s['RotOrder'], s['InputType'], s['AttrFlags'], c['AttrFlags']) == (e['unk2'], e['read'], e['curve'], e['flags'])
         assert abs(s['ref_frame_w'] - e['rest'][3]) < 1e-6
     for i, c in enumerate(back):
         s = c['sources'][0]
         print(f"[{i:02}] {c['ObjectName']:<14}.{'XYZW'[c['target_axis']]} <- {s['SourceName']}.{'XYZW'[s['source_axis']]}"
-              f"  F={c['Flags']} +24={s['CurveMode']} +25={s['ReadMode']} +27={s['EulerOrder']}"
+              f"  F={c['AttrFlags']} +24={s['AttrFlags']} +25={s['InputType']} +27={s['RotOrder']}"
               f" rq_w={s['ref_frame_w']:.3f} to_end={s['to_end']:g}")
 
 

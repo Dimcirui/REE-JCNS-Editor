@@ -442,9 +442,9 @@ def plan_keys(keys, driver, driven, rests, read_mode=None, axis=None, euler_orde
     """The constraints `keys` (a list of Key, start key first, end key last) describe.
 
     `driver` is the driver bone's name, `driven` the list of driven bone names, `rests` maps
-    each of them to its BoneRest.  `read_mode` (ReadMode value or identifier) and `axis`
+    each of them to its BoneRest.  `read_mode` (InputType value or identifier) and `axis`
     (0-2) force the driver's read; None picks it from what moved.  Rotations are written as
-    additive TransformType `rotation_type` (1, 4, 5 or 6), so a bone at rest produces 0.
+    additive TransformElement `rotation_type` (1, 4, 5 or 6), so a bone at rest produces 0.
     `tangent` ('LINEAR' or 'SMOOTH') shapes a ComplexMapping curve.  `complex_ok` says
     whether the file can hold one, `complex_reason` why not.
 
@@ -578,7 +578,7 @@ def can_append(existing, constraint, complex_ok=True):
     """(ok, reason): may `constraint`'s source join the existing entry on its channel?
 
     `existing` is a dict with `additive`, `cone_infos`, `n_sources`, `target_property`.  A source
-    only adds to the entry's sum, so the entry must mean the same thing: the same Flags
+    only adds to the entry's sum, so the entry must mean the same thing: the same AttrFlags
     bit0 (scale ignores it), no ConeDriver inputs, room for one more source.  A ComplexMapping
     source also needs a file that can hold ComplexMapping.
     """

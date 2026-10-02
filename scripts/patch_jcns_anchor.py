@@ -3,7 +3,7 @@ patch_jcns_anchor.py
 ---------------------
 Surgical anchor-value patcher for in-game .jcns testing.
 
-Locates one ConstraintSource by (source bone name, target axis, transform type)
+Locates one JointDriver by (source bone name, target axis, transform type)
 inside a .jcns.102 file, overwrites one anchor field (from_start/from_kink/
 from_end/to_start/to_kink/to_end), backs up the original next to it as
 <name>.bak_<n>, and writes the patched file back to the SAME path (so it can
@@ -39,7 +39,7 @@ def _axis_str(v):
 
 def list_constraints(parser):
     for ci, c in enumerate(parser.constraints):
-        print(f"[{ci}] target={c.get('TargetName')!r} TransformType={c.get('TransformType')} "
+        print(f"[{ci}] target={c.get('TargetName')!r} TransformElement={c.get('TransformElement')} "
               f"target_axis={_axis_str(c.get('target_axis'))}")
         for si, s in enumerate(c.get('sources', [])):
             print(f"      src[{si}] {s.get('SourceName')!r} axis={_axis_str(s.get('source_axis'))} "
@@ -51,7 +51,7 @@ def find_source(parser, source_bone, target_axis, transform_type):
     target_axis_idx = AXIS_NAMES.index(target_axis.upper()) if target_axis else None
     matches = []
     for c in parser.constraints:
-        if transform_type is not None and c.get('TransformType') != transform_type:
+        if transform_type is not None and c.get('TransformElement') != transform_type:
             continue
         if target_axis_idx is not None and c.get('target_axis') != target_axis_idx:
             continue
@@ -79,7 +79,7 @@ def main():
     ap.add_argument('--source-bone', help='SourceName to match, e.g. L_Thigh')
     ap.add_argument('--target-axis', choices=AXIS_NAMES, help='target axis letter, e.g. Z')
     ap.add_argument('--transform-type', type=int, default=None,
-                     help='filter by TransformType (1=Rotation, 0=Translation, 2=Scale)')
+                     help='filter by TransformElement (1=Rotation, 0=Translation, 2=Scale)')
     ap.add_argument('--field', choices=ANCHOR_FIELDS, help='anchor field to overwrite')
     ap.add_argument('--value', type=float, help='new float value for --field')
     ap.add_argument('--out', help='output path (default: overwrite jcns_file in place, after backup)')
@@ -103,13 +103,13 @@ def main():
         print(f'{len(matches)} sources matched — refine with --transform-type. Matches:')
         for c, s in matches:
             print(f"  {s.get('SourceName')} -> target_axis={_axis_str(c.get('target_axis'))} "
-                  f"TransformType={c.get('TransformType')}")
+                  f"TransformElement={c.get('TransformElement')}")
         sys.exit(1)
 
     c, s = matches[0]
     old_value = s.get(args.field)
     print(f"Patching source {s.get('SourceName')!r} (target_axis={args.target_axis}, "
-          f"TransformType={c.get('TransformType')}): {args.field} {old_value} -> {args.value}")
+          f"TransformElement={c.get('TransformElement')}): {args.field} {old_value} -> {args.value}")
     s[args.field] = args.value
 
     out_path = args.out or args.jcns_file

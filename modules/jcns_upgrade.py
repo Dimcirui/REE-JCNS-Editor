@@ -9,7 +9,7 @@ builds), which JCNSWriter rebuilds.  No bpy import.
 
 v29 -> v102 differences, measured on the shipped pairs of the same file:
 
-  ConstraintInfo  gains a hash-table index and a Flags byte.  Flags bit 0 is the old
+  OutputData  gains a hash-table index and a AttrFlags byte.  AttrFlags bit 0 is the old
                   first byte block's first byte; bits 4/5 follow the transform type.
                   The old +2 byte becomes UnknownByte72; the +4 pair and the +73 byte
                   (the joint-group count) move into the tail.  A non-bone target is
@@ -45,7 +45,7 @@ UPGRADE_STEPS = {(29, 102)}
 FILE_CONSTANT = 5
 
 _EMPTY_SECTIONS = ('aim_constraints', 'object_settings', 'skin_constraints', 'skin_source_infos',
-                   'read_joint_table', 'cone_drivers', 'rot_expressions', 'material_cns')
+                   'read_joint_table', 'cone_inputs', 'rot_expressions', 'material_cns')
 
 
 def can_upgrade(src_version, dst_version):
@@ -78,7 +78,7 @@ def upgrade(parser, dst_version=102, parent=None, names=None):
 
 
 def _upgrade_29_to_102(p, parent, names):
-    if p.cone_drivers:
+    if p.cone_inputs:
         raise UpgradeError(T("io.upgrade.v29_cone"))
     const = FILE_CONSTANT
 
@@ -177,15 +177,15 @@ def _read_joint_table(records, aim_joints, parent, names):
 
 def _upgrade_constraint(c, const):
     keep = ('ObjectName', 'PropertyName', 'ObjectHash', 'PropertyHash', 'ObjectHashMatchesName',
-            'ReservedVec4', 'UnknownFloat2', 'TransformType', 'ConeDriverInfo',
+            'ReservedVec4', 'UnknownFloat2', 'TransformElement', 'ConeDriver',
             'sources', 'TargetHash')
     d = {k: c[k] for k in keep if k in c}
     d['sources'] = [_upgrade_source(s) for s in c['sources']]
-    d['TransformAxis_parent'] = d['target_axis'] = c['TransformAxis_pre35']
-    d['SourceCount_parent'] = len(c['sources'])
+    d['Axis_parent'] = d['target_axis'] = c['Axis_pre35']
+    d['JointDriverCount'] = len(c['sources'])
     d['UnknownByte72'] = c['UnkByte_Pre35_2']
-    name = TRANSFORM_TYPE_NAMES.get(c['TransformType'])
-    d['Flags'] = jcns_flags.apply_derived_bits(c['UnkByte_Pre35_0'], name)
+    name = TRANSFORM_TYPE_NAMES.get(c['TransformElement'])
+    d['AttrFlags'] = jcns_flags.apply_derived_bits(c['UnkByte_Pre35_0'], name)
     # A target that is not a bone (blend shape, material, component property) is named by
     # its raw hash, not a hash-list index.
     expected = jcns_flags.expected_bits(name)

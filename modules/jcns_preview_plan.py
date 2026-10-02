@@ -90,7 +90,7 @@ def plan_aim(bone, target, vec1, influence, up_bone='', rotation_type=4, offset=
     """Aim `bone` at `target`: a Damped Track along the record's aim axis (Vec1).
 
     Damped Track is the shortest-arc turn from the rest pose, which is what
-    RotationType 4 does.  Types 0-3 also fix the roll around the aim axis, and
+    WorldUpType 4 does.  Types 0-3 also fix the roll around the aim axis, and
     type 5 drops the rest pose, so the preview differs; the up bone is not previewed.
     """
     if not bone:

@@ -45,7 +45,7 @@ def load():
                 continue
             keep = []
             for c in cs:
-                d = {k: v for k, v in c.items() if not k.startswith('_') and k != 'ConeDriverInfo'}
+                d = {k: v for k, v in c.items() if not k.startswith('_') and k != 'ConeDriver'}
                 d['sources'] = [{k: v for k, v in s.items() if not k.startswith('_') and k != 'ComplexMapping'}
                                 for s in c['sources']]
                 keep.append(d)
@@ -90,12 +90,12 @@ def crosstab(label, rows, fn, top=12):
 
 
 SOURCE_FEATURES = {
-    'ReadMode': lambda r: r[3]['ReadMode'],
-    'CurveMode': lambda r: r[3]['CurveMode'],
+    'InputType': lambda r: r[3]['InputType'],
+    'AttrFlags': lambda r: r[3]['AttrFlags'],
     'source_axis': lambda r: r[3]['source_axis'],
     'source bone': lambda r: r[3].get('SourceName'),
-    'TransformType': lambda r: r[1]['TransformType'],
-    'Flags': lambda r: r[1]['Flags'],
+    'TransformElement': lambda r: r[1]['TransformElement'],
+    'AttrFlags': lambda r: r[1]['AttrFlags'],
     'file': lambda r: r[0],
 }
 
@@ -103,21 +103,21 @@ SOURCE_FEATURES = {
 def main():
     C, S = load()
     print('files %d  constraints %d  sources %d' % (len({f for f, _ in C}), len(C), len(S)))
-    print('--- ConstraintInfo')
+    print('--- OutputData')
     for name, fn in (('PropertyName', lambda c: c['PropertyName']),
-                     ('SourceCount', lambda c: c['SourceCount_parent']),
-                     ('Flags', lambda c: c['Flags']), ('TransformType', lambda c: c['TransformType']),
+                     ('SourceCount', lambda c: c['JointDriverCount']),
+                     ('AttrFlags', lambda c: c['AttrFlags']), ('TransformElement', lambda c: c['TransformElement']),
                      ('ReservedVec4', lambda c: c['ReservedVec4']), ('UnknownFloat2', lambda c: c['UnknownFloat2']),
                      ('UnknownByte72', lambda c: c['UnknownByte72']),
-                     ('TransformAxis', lambda c: c['TransformAxis_v35'])):
+                     ('TransformAxis', lambda c: c['Axis_v35'])):
         dist(name, [fn(c) for _, c in C], 12)
     for k in range(6):
         dist('Tail[%d] (+%d)' % (k, 74 + k), [c['TailBytes'][k] for _, c in C])
     print('--- Source')
-    for name in ('ComplexMappingInfoCount', 'UnknownUInt16_22', 'CurveMode', 'ReadMode', 'source_axis', 'EulerOrder'):
+    for name in ('ComplexMappingInfoCount', 'UnknownUInt16_22', 'AttrFlags', 'InputType', 'source_axis', 'RotOrder'):
         dist(name, [s[name] for _, _, _, s in S])
     for k in range(4):
-        dist('+%d (Interpolation / ComplexMappingFlag / ReservedWord30 byte %d)' % (28 + k, k), [((s['Interpolation'] | (s['ComplexMappingFlag'] << 8) | (s['ReservedWord30'] << 16)) >> (8 * k)) & 0xFF for *_, s in S])
+        dist('+%d (Interpolation / CurveType / ReservedWord30 byte %d)' % (28 + k, k), [((s['Interpolation'] | (s['CurveType'] << 8) | (s['ReservedWord30'] << 16)) >> (8 * k)) & 0xFF for *_, s in S])
     dist('ref_frame', [(s['ref_frame_x'], s['ref_frame_y'], s['ref_frame_z'], s['ref_frame_w']) for *_, s in S])
     if len(sys.argv) > 1:
         field = sys.argv[1]

@@ -142,7 +142,7 @@ def readings(q):
     out['half_angle_atan(q_k/w)'] = 2 * np.arctan2(qq[:, :3], qq[:, 3:4])
     out['asin(q_k)*2'] = 2 * np.arcsin(np.clip(qq[:, :3], -1, 1))
     out['q_k*2'] = 2 * qq[:, :3]
-    # swing-twist about X as the ReadMode 3 / 4 definitions
+    # swing-twist about X as the InputType 3 / 4 definitions
     for mode, first in (('swing_twist', True), ('twist_swing', False)):
         x, w = qq[:, 0], qq[:, 3]
         n = np.hypot(x, w)

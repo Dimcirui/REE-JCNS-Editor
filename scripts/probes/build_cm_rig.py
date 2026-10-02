@@ -24,7 +24,7 @@ and gives A-D and I-K one shadow-mesh vertex at weight 0.1 (E-H stay unweighted)
 see whether writes to unweighted test bones are what lands on the wrong joint.
 
 Hidden fields follow the rotation settings earlier rounds proved live
-(Flags 49, ReadMode 3 = rotation, CurveMode 3 = three-point).
+(AttrFlags 49, InputType 3 = rotation, AttrFlags 3 = three-point).
 """
 import copy
 import io
@@ -82,14 +82,14 @@ def main():
     for tgt, src, geo, cm in ENTRIES:
         c = copy.deepcopy(tmpl)
         c['ObjectName'] = tgt
-        c['TransformAxis_parent'] = c['target_axis'] = 0
-        c['Flags'] = 49
-        c['TransformType'] = 1
+        c['Axis_parent'] = c['target_axis'] = 0
+        c['AttrFlags'] = 49
+        c['TransformElement'] = 1
         s = c['sources'][0]
         s['SourceName'] = src
         s['source_axis'] = 0
-        s['ReadMode'] = 3
-        s['CurveMode'] = 3
+        s['InputType'] = 3
+        s['AttrFlags'] = 3
         if cm is None:
             (s['from_start'], s['from_kink'], s['from_end'],
              s['to_start'], s['to_kink'], s['to_end']) = geo
@@ -110,7 +110,7 @@ def main():
     for i, c in enumerate(back):
         s = c['sources'][0]
         cm = s.get('ComplexMapping') or []
-        print(f"[{i:02}] {c['ObjectName']:<14} <- {s['SourceName']:<26} F{c['Flags']} +24={s['CurveMode']} +25={s['ReadMode']}"
+        print(f"[{i:02}] {c['ObjectName']:<14} <- {s['SourceName']:<26} F{c['AttrFlags']} +24={s['AttrFlags']} +25={s['InputType']}"
               f" from=({s['from_start']:g},{s['from_kink']:g},{s['from_end']:g}) to=({s['to_start']:g},{s['to_kink']:g},{s['to_end']:g})"
               + (" CM " + " ".join(f"[{r['FromX']:g},{r['ToX']:g} in({r['FromY']:g},{r['ToY']:g}) out({r['FromZ']:g},{r['ToZ']:g}) f{r['UnknownUInt32']}]" for r in cm) if cm else ""))
 

@@ -4,22 +4,22 @@ import sys
 
 from jcns_i18n import T
 from jcns_schema import (
-    HEADER, CONSTRAINT_INFO, SOURCE_V2, AIM, AIM_TARGET, MATERIAL,
-    COMPLEX_MAPPING, OBJECT_SETTING, SKIN, SKIN_SOURCE, SKIN_SOURCE_INFO,
-    CONE_DRIVER, CONE_DRIVER_INFO, source_struct, transform_axis_key,
+    HEADER, OUTPUT_DATA, JOINT_DRIVER_V2, AIM, AIM_TARGET, MATERIAL,
+    COMPLEX_MAPPING, OBJECT_SETTING, MULTI, MULTI_SOURCE, MULTI_SOURCE_INFO,
+    CONE_INPUT, CONE_DRIVER, source_struct, output_axis_key,
     reconcile_section_table, cone_struct, neutral_to_pre35,
 )
 from jcns_parser import header_field_offset
 
 
-# ConstraintInfo / ConstraintSource fields the in-place writer takes from the
+# OutputData / JointDriver fields the in-place writer takes from the
 # edited dicts.  Everything else — pointers, hashes, hash indices, counts — is
 # re-packed from the original record, because in place the surrounding data
 # (strings, source arrays, hash table) does not move.
-INPLACE_CNS_FIELDS = ('Flags', 'TransformType', 'ReservedVec4', 'UnknownFloat2',
+INPLACE_CNS_FIELDS = ('AttrFlags', 'TransformElement', 'ReservedVec4', 'UnknownFloat2',
                       'UnknownByte72', 'PropertyHash', 'TailBytes')
-INPLACE_SRC_FIELDS = ('CurveMode', 'ReadMode', 'source_axis', 'EulerOrder',
-                      'UnknownUInt16_22', 'Interpolation', 'ComplexMappingFlag', 'ReservedWord30',
+INPLACE_SRC_FIELDS = ('AttrFlags', 'InputType', 'source_axis', 'RotOrder',
+                      'UnknownUInt16_22', 'Interpolation', 'CurveType', 'ReservedWord30',
                       'from_start', 'from_kink', 'from_end',
                       'to_start', 'to_kink', 'to_end',
                       'ref_frame_x', 'ref_frame_y', 'ref_frame_z', 'ref_frame_w')
@@ -164,13 +164,13 @@ class JCNSWriter:
 
             A bone / blendshape target is filed under its own hash.  A target with
             a property is filed under the hash of "object<sep>property": '.' for
-            materials ('face.Blend_A', TransformType 7-10) and ':' for RSZ component
-            properties ('via.motion.Chain:BlendRate', TransformType 11).
+            materials ('face.Blend_A', TransformElement 7-10) and ':' for RSZ component
+            properties ('via.motion.Chain:BlendRate', TransformElement 11).
             """
             prop = c.get('PropertyName', '')
             if not prop:
                 return tgt_h
-            sep = ':' if c.get('TransformType') == 11 else '.'
+            sep = ':' if c.get('TransformElement') == 11 else '.'
             return hashUTF16(c.get('ObjectName', '') + sep + prop) & 0xFFFFFFFF
 
         # ── Phase 2: layout constants ───────────────────────────────────
@@ -184,16 +184,16 @@ class JCNSWriter:
             from jcns_parser import read_header
             hdr = read_header(orig, check_layout=False)
 
-        # The header ends 16-aligned.  The blocks below follow it in this order: ConeDriver[] and their names, ConstraintInfo[], every
-        # constraint's ConeDriverInfo[] (16-aligned each), ConstraintSource[].
-        # Without ConeDrivers ConstraintInfo starts right at the header's end.
+        # The header ends 16-aligned.  The blocks below follow it in this order: ConeInput[] and their names, OutputData[], every
+        # constraint's ConeDriver[] (16-aligned each), JointDriver[].
+        # Without ConeDrivers OutputData starts right at the header's end.
         HEADER_END     = hdr['HeaderEnd']
-        SRC_SIZE       = SOURCE_V2.size(version)
-        CNS_INFO_SIZE  = N * CONSTRAINT_INFO.size(version)
-        axis_key       = transform_axis_key(version)
+        SRC_SIZE       = JOINT_DRIVER_V2.size(version)
+        CNS_INFO_SIZE  = N * OUTPUT_DATA.size(version)
+        axis_key       = output_axis_key(version)
 
-        # ── Phase 2b: ConeDriver table + names ──────────────────────────
-        cones = getattr(p, 'cone_drivers', [])
+        # ── Phase 2b: ConeInput table + names ──────────────────────────
+        cones = getattr(p, 'cone_inputs', [])
         N_CONE = len(cones)
         CONE_START = HEADER_END
         cone_blob = bytearray()
@@ -236,12 +236,12 @@ class JCNSWriter:
             cone_blob.extend(name_blob)
         CNS_INFO_START = _align(CONE_START + len(cone_blob), 16)
 
-        # ── Phase 2c: every constraint's ConeDriverInfo[] ───────────────
+        # ── Phase 2c: every constraint's ConeDriver[] ───────────────
         cone_info_blob = bytearray()
         cone_info_at = []
         CONE_INFO_START = CNS_INFO_START + CNS_INFO_SIZE
         for c in p.constraints:
-            infos = c.get('ConeDriverInfo') or []
+            infos = c.get('ConeDriver') or []
             if not infos:
                 cone_info_at.append(0)
                 continue
@@ -250,16 +250,16 @@ class JCNSWriter:
             cone_info_at.append(CONE_INFO_START + len(cone_info_blob))
             for ci in infos:
                 # Index 255 is a reference to no cone, which v22 files carry.
-                if not (0 <= ci['ConeDriverIndex'] < N_CONE or (version < 35 and ci['ConeDriverIndex'] == 255)):
+                if not (0 <= ci['ConeInputIndex'] < N_CONE or (version < 35 and ci['ConeInputIndex'] == 255)):
                     raise ValueError(T("core.writer.cone_index", c.get('ObjectName', ''),
-                                       ci['ConeDriverIndex'], N_CONE))
-                cone_info_blob.extend(CONE_DRIVER_INFO.pack(ci, version))
+                                       ci['ConeInputIndex'], N_CONE))
+                cone_info_blob.extend(CONE_DRIVER.pack(ci, version))
 
-        # ConstraintSource_v2 section starts after that, 16-aligned.
+        # JointDriver_v2 section starts after that, 16-aligned.
         raw_src_start = CONE_INFO_START + len(cone_info_blob)
         SRC_START = _align(raw_src_start, 16)
 
-        # ── Phase 3: build ConstraintSource_v2 blobs ───────────────────
+        # ── Phase 3: build JointDriver_v2 blobs ───────────────────
         # Layout per constraint:
         #
         #     [Source_v2 #0][Source_v2 #1]…[name #0][name #1]…[pad to 8]
@@ -316,9 +316,9 @@ class JCNSWriter:
                 rec['ComplexMappingInfoOffset'] = cm_off
                 # Byte +29 is 1 exactly when the source has ComplexMapping; a source
                 # without one may also hold 2, so only a 1 is cleared.
-                flag = rec['ComplexMappingFlag']
-                rec['ComplexMappingFlag'] = 1 if cm_off else (0 if flag == 1 else flag)
-                src_blob.extend(SOURCE_V2.pack(rec, version))
+                flag = rec['CurveType']
+                rec['CurveType'] = 1 if cm_off else (0 if flag == 1 else flag)
+                src_blob.extend(JOINT_DRIVER_V2.pack(rec, version))
 
             src_blob.extend(name_blob)
             src_blob.extend(cm_blob)
@@ -379,10 +379,10 @@ class JCNSWriter:
                 if src_h not in bucket:
                     bucket.append(src_h)
             # A cone-driven constraint depends on each cone's joint.
-            for ci in c.get('ConeDriverInfo') or []:
-                if ci['ConeDriverIndex'] >= N_CONE:
+            for ci in c.get('ConeDriver') or []:
+                if ci['ConeInputIndex'] >= N_CONE:
                     continue
-                h = cones[ci['ConeDriverIndex']]['JointHash']
+                h = cones[ci['ConeInputIndex']]['JointHash']
                 if h not in bucket:
                     bucket.append(h)
 
@@ -440,7 +440,7 @@ class JCNSWriter:
         for h in new_hash_list:
             hash_blob.extend(struct.pack('<I', h))
 
-        # ── Phase 8: build ConstraintInfo array ────────────────────────
+        # ── Phase 8: build OutputData array ────────────────────────
         cns_info_blob = bytearray()
         group_counts = tail_group_counts(p.constraints)
         for i, c in enumerate(p.constraints):
@@ -460,14 +460,14 @@ class JCNSWriter:
                 'ObjectNameOffset': tgt_name_off,
                 'ObjectHashIndex':      tgt_idx,
                 'ObjectHash':           tgt_h,
-                'ConeDriverInfoOffset': cone_info_at[i],
-                'ConeDriverInfoCount':  len(c.get('ConeDriverInfo') or []),
+                'ConeDriverOffset': cone_info_at[i],
+                'ConeDriverCount':  len(c.get('ConeDriver') or []),
                 'PropertyOffset':       (tgt_name_to_offset[c['PropertyName']]
                                          if c.get('PropertyName') else 0),
                 # Derived from the source list, never copied: a stale count makes
                 # the engine read past the constraint's own sources.
-                'SourceCount_parent':   len(c.get('sources', [])),
-                axis_key:               c.get('TransformAxis_parent', 0),
+                'JointDriverCount':   len(c.get('sources', [])),
+                axis_key:               c.get('Axis_parent', 0),
             })
             tail = bytearray(rec['TailBytes'])
             if len(tail) >= 4:
@@ -475,7 +475,7 @@ class JCNSWriter:
             rec['TailBytes'] = bytes(tail)
             if version < 35:
                 rec.update(neutral_to_pre35(rec))
-            cns_info_blob.extend(CONSTRAINT_INFO.pack(rec, version))
+            cns_info_blob.extend(OUTPUT_DATA.pack(rec, version))
 
         # ── Phase 8b: build RotExpression section ───────────────────────
         rot_list = getattr(p, 'rot_expressions', [])
@@ -580,20 +580,20 @@ class JCNSWriter:
             else:
                 _prev_end = HASH_TABLE_START + len(hash_blob)
             SKIN_START = _align(_prev_end, 16)
-            lists_at = SKIN_START + N_SKIN * SKIN.size(version)
+            lists_at = SKIN_START + N_SKIN * MULTI.size(version)
             lists = bytearray()
             recs = bytearray()
             for sk in skins:
-                recs.extend(SKIN.pack(dict(sk, SourceListOffset=lists_at + len(lists),
+                recs.extend(MULTI.pack(dict(sk, SourceListOffset=lists_at + len(lists),
                                            SourceCount=len(sk['sources'])), version))
                 for src in sk['sources']:
-                    lists.extend(SKIN_SOURCE.pack(src, version))
+                    lists.extend(MULTI_SOURCE.pack(src, version))
             skin_blob.extend(recs + lists)
             if skin_infos:
                 SKIN_INFO_START = _align(SKIN_START + len(skin_blob), 16)
                 skin_blob.extend(b'\x00' * (SKIN_INFO_START - SKIN_START - len(skin_blob)))
                 for si in skin_infos:
-                    skin_blob.extend(SKIN_SOURCE_INFO.pack(si, version))
+                    skin_blob.extend(MULTI_SOURCE_INFO.pack(si, version))
             if read_joints:
                 READ_JOINT_START = _align(SKIN_START + len(skin_blob), 16)
                 skin_blob.extend(b'\x00' * (READ_JOINT_START - SKIN_START - len(skin_blob)))
@@ -606,11 +606,11 @@ class JCNSWriter:
             'DependencyTableEntry': DEP_TABLE_START,
             'SectionTableEntry':    SEC_TABLE_START,
             'HashListOffset':       HASH_TABLE_START,
-            'ConstraintInfoEntry':  CNS_INFO_START,
-            'ConeDriverTableEntry': CONE_START,
-            'ConeDriverCount':      N_CONE,
+            'OutputEntry':  CNS_INFO_START,
+            'ConeInputTableEntry': CONE_START,
+            'ConeInputCount':      N_CONE,
             'HashCount':            len(new_hash_list),
-            'ConstraintCount':      N,
+            'OutputCount':      N,
             'DependencyCount':      M,
         }
         # ObjectSettingEntry: when the count is 0 it marks Section 0's end boundary
@@ -636,14 +636,14 @@ class JCNSWriter:
         if N_MAT > 0:
             patch['MaterialConstraintInfoEntry'] = MAT_START
         if jxg is not None:
-            patch['JointExportGraphInfoEntry'] = JXG_START
-        patch['SkinConstraintCount'] = N_SKIN
-        patch['SkinConstraintSourceCount'] = len(skin_infos) if N_SKIN else 0
+            patch['JointExprGraphInfoEntry'] = JXG_START
+        patch['MultiConstraintCount'] = N_SKIN
+        patch['MultiConstraintSourceCount'] = len(skin_infos) if N_SKIN else 0
         patch['ReadJointTableItemCount'] = len(read_joints) if N_SKIN else 0
         if N_SKIN:
-            patch['SkinConstraintTableEntry'] = SKIN_START
+            patch['MultiConstraintTableEntry'] = SKIN_START
             if skin_infos:
-                patch['SkinConstraintSourceTableEntry'] = SKIN_INFO_START
+                patch['MultiConstraintSourceTableEntry'] = SKIN_INFO_START
             if read_joints:
                 patch['ReadJointTableEntry'] = READ_JOINT_START
         # A v102 file with nothing in it is the header alone: every table offset is 0 except
@@ -652,11 +652,11 @@ class JCNSWriter:
                                             or jxg is not None or new_hash_list or N_OBJSET or sec_table))
         if is_empty:
             patch = dict.fromkeys(list(patch) + [
-                'AimConstraintTableEntry', 'MaterialConstraintInfoEntry', 'JointExportGraphInfoEntry',
+                'AimConstraintTableEntry', 'MaterialConstraintInfoEntry', 'JointExprGraphInfoEntry',
                 'RotExpressionInfoEntry', 'RotExpressionMapEntry', 'RotExpressionSourceHashIndicesEntry',
-                'RotExpressionHashIndicesEntry', 'SkinConstraintTableEntry',
-                'SkinConstraintSourceTableEntry', 'ReadJointTableEntry'], 0)
-            patch['ConeDriverTableEntry'] = patch['ObjectSettingEntry'] = CONE_START
+                'RotExpressionHashIndicesEntry', 'MultiConstraintTableEntry',
+                'MultiConstraintSourceTableEntry', 'ReadJointTableEntry'], 0)
+            patch['ConeInputTableEntry'] = patch['ObjectSettingEntry'] = CONE_START
         HEADER.pack_into(header, hdr['DataEntry'], patch, version)
 
         # ── Phase 10: assemble ──────────────────────────────────────────
@@ -667,10 +667,10 @@ class JCNSWriter:
                 f.write(out)
             print(f'[JCNS] Written {len(out)} bytes → {self.filepath} (empty)')
             return True
-        out.extend(cone_blob)                          # ConeDriver[] + names
+        out.extend(cone_blob)                          # ConeInput[] + names
         _pad_to(out, CNS_INFO_START)
-        out.extend(cns_info_blob)                      # ConstraintInfo[]
-        out.extend(cone_info_blob)                     # ConeDriverInfo[] per constraint
+        out.extend(cns_info_blob)                      # OutputData[]
+        out.extend(cone_info_blob)                     # ConeDriver[] per constraint
         _pad_to(out, SRC_START)
         out.extend(src_blob)                           # Source_v2 + source WStrings
         out.extend(tgt_pool_blob)                      # Target WString pool
@@ -718,7 +718,7 @@ class JCNSWriter:
     def _build_in_place(self):
         """
         Every version except v102: copy the original file and re-pack each
-        ConstraintInfo / ConstraintSource / MatCnsInfo record at its original
+        OutputData / JointDriver / MatCnsInfo record at its original
         offset.  Pointers, hashes and hash indices come from the original record,
         so the file layout is untouched and every section this editor does not
         model (ConeDrivers, SkinConstraints, ObjectSettings, ComplexMapping ...)
@@ -733,16 +733,16 @@ class JCNSWriter:
 
         v = p.version
         out = bytearray(p.original_bytes)
-        axis_key = transform_axis_key(v)
+        axis_key = output_axis_key(v)
         src_struct = source_struct(v)
 
         for c in p.constraints:
             rec = dict(c['_rec'])
             rec.update({k: c[k] for k in INPLACE_CNS_FIELDS if k in rec and k in c})
-            rec[axis_key] = c.get('TransformAxis_parent', rec[axis_key])
+            rec[axis_key] = c.get('Axis_parent', rec[axis_key])
             if 'TailBytes' in rec:
                 rec['TailBytes'] = bytes(rec['TailBytes'])
-            CONSTRAINT_INFO.pack_into(out, c['ParentSetOffset'], rec, v)
+            OUTPUT_DATA.pack_into(out, c['ParentSetOffset'], rec, v)
             for s in c['sources']:
                 srec = dict(s['_rec'])
                 srec.update({k: s[k] for k in INPLACE_SRC_FIELDS if k in srec and k in s})
@@ -761,15 +761,15 @@ class JCNSWriter:
 
 # Defaults for fields a newly created constraint / source has no value for.
 _CNS_DEFAULTS = {
-    'ConeDriverInfoOffset': 0, 'PropertyOffset': 0, 'PropertyHash': 0,
-    'ConeDriverInfoCount': 0, 'Flags': 0x30, 'TransformType': 1,
+    'ConeDriverOffset': 0, 'PropertyOffset': 0, 'PropertyHash': 0,
+    'ConeDriverCount': 0, 'AttrFlags': 0x30, 'TransformElement': 1,
     'ReservedVec4': (0.0, 0.0, 0.0, 1.0), 'UnknownFloat2': (0.0, 0.0),
     'UnknownByte72': 0, 'TailBytes': bytes(6),
 }
 _SOURCE_DEFAULTS = {
     'ComplexMappingInfoOffset': 0, 'SourceHashIndex': 0, 'ComplexMappingInfoCount': 0,
-    'UnknownUInt16_22': 0, 'CurveMode': 3, 'ReadMode': 3, 'source_axis': 0,
-    'EulerOrder': 0, 'Interpolation': 0, 'ComplexMappingFlag': 0, 'ReservedWord30': 0,
+    'UnknownUInt16_22': 0, 'AttrFlags': 3, 'InputType': 3, 'source_axis': 0,
+    'RotOrder': 0, 'Interpolation': 0, 'CurveType': 0, 'ReservedWord30': 0,
     'from_start': 0.0, 'from_kink': 0.0, 'from_end': 0.0,
     'to_start': 0.0, 'to_kink': 0.0, 'to_end': 0.0,
     'ref_frame_x': 0.0, 'ref_frame_y': 0.0, 'ref_frame_z': 0.0, 'ref_frame_w': 1.0,
@@ -784,13 +784,13 @@ def tail_group_counts(constraints):
 
     The engine writes a whole group to the *first* entry's target, whatever the others
     name, so a stale count makes neighbours land on the wrong bone.  Counts that
-    already form valid groups (members share target, property and TransformType and
+    already form valid groups (members share target, property and TransformElement and
     carry 0) are kept; otherwise all are re-derived as the length of each run of
-    consecutive entries sharing target, property, TransformType and Flags, minus one,
+    consecutive entries sharing target, property, TransformElement and AttrFlags, minus one,
     and 0 on the rest.
     """
     def ident(c):
-        return (c.get('ObjectName', ''), c.get('PropertyName', ''), c.get('TransformType'))
+        return (c.get('ObjectName', ''), c.get('PropertyName', ''), c.get('TransformElement'))
 
     def given(c):
         tb = c.get('TailBytes') or b''
@@ -812,9 +812,9 @@ def tail_group_counts(constraints):
     counts = []
     i = 0
     while i < n:
-        key = ident(constraints[i]) + (constraints[i].get('Flags'),)
+        key = ident(constraints[i]) + (constraints[i].get('AttrFlags'),)
         j = i
-        while j + 1 < n and ident(constraints[j + 1]) + (constraints[j + 1].get('Flags'),) == key:
+        while j + 1 < n and ident(constraints[j + 1]) + (constraints[j + 1].get('AttrFlags'),) == key:
             j += 1
         counts += [j - i] + [0] * (j - i)
         i = j + 1

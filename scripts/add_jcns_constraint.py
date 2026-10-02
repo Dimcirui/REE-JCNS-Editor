@@ -6,7 +6,7 @@ authoring fresh engine-behaviour test cases (see .claude/skills/engine-behavior-
 
 Works by deep-copying an existing constraint as a template (so all the
 "unknown, preserved verbatim" auxiliary fields carry known-good real values)
-and only overriding: ObjectName, TransformAxis_parent, and the single
+and only overriding: ObjectName, Axis_parent, and the single
 source's SourceName/source_axis/from_*/to_* anchors. JCNSWriter re-derives
 hashes/indices from the names on write, so no hash bookkeeping is needed here.
 
@@ -74,7 +74,7 @@ _ROUND9 = [
     ('TestTgtF', 'X', 'L_Thigh', 'X', (0.0, 0.0, 0.0, -10.0, 0.0, 25.0)),
     # G: from 区间降序（C 的镜像），验证 eval_piecewise 的降序分支
     ('TestTgtG', 'X', 'L_Thigh', 'X', (45.0, 0.0, -45.0, 40.0, 0.0, -20.0)),
-    # I1/I2: 两条独立 ConstraintInfo 抢同一个 (TestTgtI, X) 通道，数值正负相反。
+    # I1/I2: 两条独立 OutputData 抢同一个 (TestTgtI, X) 通道，数值正负相反。
     # 按 jcns-combine-rules，后面那条应该整条胜出、I1 被完全丢弃。
     ('TestTgtI', 'X', 'L_Thigh', 'X', (-45.0, 0.0, 45.0, -20.0, 0.0, 20.0)),   # I1，应被丢弃
     ('TestTgtI', 'X', 'L_Thigh', 'X', (-45.0, 0.0, 45.0, 20.0, 0.0, -20.0)),   # I2，应胜出
@@ -91,27 +91,27 @@ _ROUND9_MULTI = [
 
 # ---------------------------------------------------------------------------
 # Round 11：之前所有合成条目都深拷贝 constraints[0] 当模板，于是清一色继承了
-# Flags=48 / ReadMode=1 / CurveMode=0 —— 而语料库统计(884 文件 / 23031 源)
-# 显示 Flags bit0=1 占 86.5%，也就是**出货数据的主流配置我们一条都没测过**。
+# CnsAttrFlags=48 / InputType=1 / AttrFlags=0 —— 而语料库统计(884 文件 / 23031 源)
+# 显示 AttrFlags bit0=1 占 86.5%，也就是**出货数据的主流配置我们一条都没测过**。
 #
 # 这一轮做因子对照：同一套几何(= [09] TestTgtC 的几何)，逐个改动那三个辅助字段，
-# 看谁真正改变行为。第 6 个元素是覆盖字典：Flags 写到约束上，另两个写到源上。
+# 看谁真正改变行为。第 6 个元素是覆盖字典：CnsAttrFlags 写到约束的 AttrFlags 上，另两个写到源上。
 #   [20] 主流配置基准    49 / 3 / 3
 #   [21] = [20] 但 to_kink 0->30   → 主流配置下折点到底有没有用
-#   [22] = [20] 但 Flags 49->48    → 单独隔离 Flags
-#   [23] = [20] 但 ReadMode 3->1 → 单独隔离 ReadMode(疑似决定"源读什么量")
-#   [24] = [20] 但 CurveMode 3->0   → 单独隔离 CurveMode
+#   [22] = [20] 但 CnsAttrFlags 49->48    → 单独隔离约束 AttrFlags
+#   [23] = [20] 但 InputType 3->1 → 单独隔离 InputType(疑似决定"源读什么量")
+#   [24] = [20] 但 AttrFlags 3->0   → 单独隔离 AttrFlags
 # 再跟已有的 [09](48/1/0，同几何)对比，就能看出两套配置整体差多少。
-_MAIN = {'Flags': 49, 'ReadMode': 3, 'CurveMode': 3}
+_MAIN = {'CnsAttrFlags': 49, 'InputType': 3, 'AttrFlags': 3}
 _GEO = (-45.0, 0.0, 45.0, -20.0, 0.0, 40.0)
 _GEO_KINK = (-45.0, 0.0, 45.0, -20.0, 30.0, 40.0)   # 只改 to_kink
 
 ROUND11 = [
     ('TestTgtD', 'X', 'L_Thigh', 'X', _GEO,      dict(_MAIN)),
     ('TestTgtE', 'X', 'L_Thigh', 'X', _GEO_KINK, dict(_MAIN)),
-    ('TestTgtF', 'X', 'L_Thigh', 'X', _GEO,      dict(_MAIN, Flags=48)),
-    ('TestTgtG', 'X', 'L_Thigh', 'X', _GEO,      dict(_MAIN, ReadMode=1)),
-    ('TestTgtH', 'X', 'L_Thigh', 'X', _GEO,      dict(_MAIN, CurveMode=0)),
+    ('TestTgtF', 'X', 'L_Thigh', 'X', _GEO,      dict(_MAIN, CnsAttrFlags=48)),
+    ('TestTgtG', 'X', 'L_Thigh', 'X', _GEO,      dict(_MAIN, InputType=1)),
+    ('TestTgtH', 'X', 'L_Thigh', 'X', _GEO,      dict(_MAIN, AttrFlags=0)),
 ]
 
 # ---------------------------------------------------------------------------
@@ -121,8 +121,8 @@ ROUND11 = [
 #       +24=0(两点直线)下做的，而那种模式下一切本来就是直线，等于没测
 #   (c) 降序区间、双源求和，同样在三点模式下重测
 # 全部固定 +25=1，这样 Out0(+24=0,+25=1)的自校准 x 对所有条目都适用。
-_M2 = {'ReadMode': 1, 'CurveMode': 2}   # 出货组合 (2,1)，未测模式
-_M3 = {'ReadMode': 1, 'CurveMode': 3}   # 三点分段，已证实
+_M2 = {'InputType': 1, 'AttrFlags': 2}   # 出货组合 (2,1)，未测模式
+_M3 = {'InputType': 1, 'AttrFlags': 3}   # 三点分段，已证实
 _GEO_C = (-45.0, 0.0, 45.0, -20.0, 0.0, 40.0)
 
 ROUND12 = [
@@ -156,8 +156,8 @@ ROUND12_MULTI = [
 #       纯测试骨在 on_frame 时机读到的值跟自己的约束对不上——2026-09-30 查明是关节组
 #       计数照抄造成的写入错位，不是读取时机)，但**真实裙骨的姿态是能正常读到的**。R_Dress_HJ_00 的 X 轴目前没人占，拿它做抢占实验。
 #       两条数值正负相反，读骨头 X 就知道谁胜出。用 +24=0(直线)让预期值最简单。
-_M2 = {'ReadMode': 1, 'CurveMode': 2}
-_M0 = {'ReadMode': 1, 'CurveMode': 0}
+_M2 = {'InputType': 1, 'AttrFlags': 2}
+_M0 = {'InputType': 1, 'AttrFlags': 0}
 
 ROUND13 = [
     # (a) +24=2 的退化组，几何与 Round 12 的 [27]~[31] 一一对应
@@ -179,8 +179,8 @@ ROUND13 = [
 #       模型预测："折点只是 x 轴上一把刀，哪段的定义域落在刀口错误一侧，
 #       哪段就永远够不到自己、塌成常数 to_kink"。判据是那段独占的 to 端点从不出现。
 #       B2/B3 只差 to_start(-10 vs 80)，若逐帧相同 → to_start 确实完全无效。
-_M1 = {'ReadMode': 1, 'CurveMode': 1}
-_M3 = {'ReadMode': 1, 'CurveMode': 3}
+_M1 = {'InputType': 1, 'AttrFlags': 1}
+_M3 = {'InputType': 1, 'AttrFlags': 3}
 
 ROUND14 = [
     # (A) +24 == 1 是什么模式
@@ -221,9 +221,9 @@ def main():
 
         c = copy.deepcopy(template)
         c['ObjectName'] = tgt_bone
-        c['TransformAxis_parent'] = AXIS[tgt_axis]
+        c['Axis_parent'] = AXIS[tgt_axis]
         c['target_axis'] = AXIS[tgt_axis]
-        c['TransformType'] = 1  # Rotation
+        c['TransformElement'] = 1  # Rotation
 
         s = copy.deepcopy(src_template)
         s['SourceName'] = src_bone
@@ -232,10 +232,10 @@ def main():
         s['from_start'], s['from_kink'], s['from_end'] = fs, fk, fe
         s['to_start'], s['to_kink'], s['to_end'] = ts, tk, te
 
-        # Flags 属于约束本体，ReadMode / CurveMode 属于源。
-        if 'Flags' in overrides:
-            c['Flags'] = overrides['Flags']
-        for k in ('ReadMode', 'CurveMode'):
+        # CnsAttrFlags 属于约束本体，InputType / AttrFlags 属于源。
+        if 'CnsAttrFlags' in overrides:
+            c['AttrFlags'] = overrides['CnsAttrFlags']
+        for k in ('InputType', 'AttrFlags'):
             if k in overrides:
                 s[k] = overrides[k]
         c['sources'] = [s]
@@ -252,9 +252,9 @@ def main():
         overrides = entry[3] if len(entry) > 3 else {}
         c = copy.deepcopy(template)
         c['ObjectName'] = tgt_bone
-        c['TransformAxis_parent'] = AXIS[tgt_axis]
+        c['Axis_parent'] = AXIS[tgt_axis]
         c['target_axis'] = AXIS[tgt_axis]
-        c['TransformType'] = 1  # Rotation
+        c['TransformElement'] = 1  # Rotation
 
         src_list = []
         for src_bone, src_axis, anchors in sources:
@@ -264,14 +264,14 @@ def main():
             fs, fk, fe, ts, tk, te = anchors
             s['from_start'], s['from_kink'], s['from_end'] = fs, fk, fe
             s['to_start'], s['to_kink'], s['to_end'] = ts, tk, te
-            for k in ('ReadMode', 'CurveMode'):
+            for k in ('InputType', 'AttrFlags'):
                 if k in overrides:
                     s[k] = overrides[k]
             src_list.append(s)
             print(f"Added (multi-source): {tgt_bone}.{tgt_axis} <- {src_bone}.{src_axis}  "
                   f"from=({fs},{fk},{fe}) to=({ts},{tk},{te})")
-        if 'Flags' in overrides:
-            c['Flags'] = overrides['Flags']
+        if 'CnsAttrFlags' in overrides:
+            c['AttrFlags'] = overrides['CnsAttrFlags']
         c['sources'] = src_list
         parser.constraints.append(c)
 

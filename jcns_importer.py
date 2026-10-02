@@ -188,7 +188,7 @@ def do_import(filepath, context, armature_obj=None):
 
         tgt_ax_str = INT_TO_AXIS.get(min(c.get('target_axis', 0), 3), 'X')
 
-        transform_int = c.get('TransformType', 1)
+        transform_int = c.get('TransformElement', 1)
         transform_str = TRANSFORM_TYPE_MAP.get(transform_int, 'Unknown')
 
         first = file_sources[0] if file_sources else {}
@@ -196,7 +196,7 @@ def do_import(filepath, context, armature_obj=None):
             idx, first.get('SourceName', ''), target_bone, tgt_ax_str,
             INT_TO_AXIS.get(min(first.get('source_axis', 0), 3), 'X'),
             max(0, len(file_sources) - 1),
-            len(c.get('ConeDriverInfo') or []),
+            len(c.get('ConeDriver') or []),
         )
 
         obj = bpy.data.objects.new(empty_name, None)
@@ -227,20 +227,20 @@ def do_import(filepath, context, armature_obj=None):
             sp.ref_frame_y = s.get('ref_frame_y', 0.0)
             sp.ref_frame_z = s.get('ref_frame_z', 0.0)
             sp.ref_frame_w = s.get('ref_frame_w', 1.0)
-            cm_value = s.get('CurveMode', 3)
+            cm_value = s.get('AttrFlags', 3)
             sp.three_point, sp.curve_mode_extra = bool(cm_value & 2), cm_value & ~2
-            mode = jcns_source_read.read_mode_id(s.get('ReadMode', 3))
+            mode = jcns_source_read.read_mode_id(s.get('InputType', 3))
             if mode is None:
                 # The enum cannot hold an unknown mode.
-                print("[JCNS] %s <- %s: ReadMode %r is unknown, read as SWING_TWIST"
-                      % (c.get('ObjectName', '?'), s.get('SourceName', '?'), s.get('ReadMode')))
+                print("[JCNS] %s <- %s: InputType %r is unknown, read as SWING_TWIST"
+                      % (c.get('ObjectName', '?'), s.get('SourceName', '?'), s.get('InputType')))
                 mode = 'SWING_TWIST'
             sp.read_mode = mode
-            order = jcns_source_read.EULER_ORDER_NAMES.get(s.get('EulerOrder', 0))
+            order = jcns_source_read.EULER_ORDER_NAMES.get(s.get('RotOrder', 0))
             if order is None:
                 # The enum holds only orders 0-3.
-                print("[JCNS] %s <- %s: EulerOrder %r is unknown, read as XYZ"
-                      % (c.get('ObjectName', '?'), s.get('SourceName', '?'), s.get('EulerOrder')))
+                print("[JCNS] %s <- %s: RotOrder %r is unknown, read as XYZ"
+                      % (c.get('ObjectName', '?'), s.get('SourceName', '?'), s.get('RotOrder')))
                 order = 'XYZ'
             sp.euler_order = order
             sp.complex_mapping_info_count = s.get('ComplexMappingInfoCount', 0)
@@ -251,11 +251,11 @@ def do_import(filepath, context, armature_obj=None):
                       % (c.get('ObjectName', '?'), s.get('SourceName', '?'), s.get('Interpolation')))
                 interp = 'LINEAR'
             sp.interpolation = interp
-            sp.complex_mapping_flag = s.get('ComplexMappingFlag', 0)
+            sp.complex_mapping_flag = s.get('CurveType', 0)
             if s.get('ComplexMapping'):
                 jcns_cm.load(sp, s['ComplexMapping'])
 
-        flags = c.get('Flags', 0x30)
+        flags = c.get('AttrFlags', 0x30)
         p.additive, p.flags_other = bool(flags & 1), flags & 0xFE
         vec4                    = c.get('ReservedVec4', (0.0, 0.0, 0.0, 1.0))
         p.reserved_vec4_x, p.reserved_vec4_y, p.reserved_vec4_z, p.reserved_vec4_w = vec4
@@ -268,9 +268,9 @@ def do_import(filepath, context, armature_obj=None):
         if jcns_targets.is_direct_target(transform_int):
             p.object_hash       = jcns_targets.object_hash_override(
                 c.get('ObjectHash', 0) & 0xFFFFFFFF, target_bone)
-        for ci in c.get('ConeDriverInfo') or []:
+        for ci in c.get('ConeDriver') or []:
             k = p.cone_infos.add()
-            k.cone_index, k.value = ci['ConeDriverIndex'], ci['Value']
+            k.cone_index, k.value = ci['ConeInputIndex'], ci['Value']
             k.rest = (ci['Rest0'],) + tuple(ci.get('Rest123', (0.0, 0.0, 0.0)))
             k.unk_byte0, k.unk_byte3 = ci['UnkByte0'], ci['UnkByte3']
         if len(p.cone_infos):
@@ -287,7 +287,7 @@ def do_import(filepath, context, armature_obj=None):
     # raw hash (the exporter reads a "0x1234ABCD" name back as that hash).
     import json
     from jcns_sections import (skin_editable, read_joint_signature, aim_editable, rot_editable,
-                               cone_drivers_to_json)
+                               cone_inputs_to_json)
     from jcns_names import name_of
     from . import section_empty_name
     names = {}
@@ -340,7 +340,7 @@ def do_import(filepath, context, armature_obj=None):
         p2.aim_offset, p2.aim_axis, p2.aim_up_axis, p2.aim_up_dir = a['vectors']
         aim_type = INT_TO_AIM_TYPE.get(a['rotation_type'])
         if aim_type is None:
-            print("[JCNS] Aim %d: RotationType %r is unknown, read as 0" % (idx, a['rotation_type']))
+            print("[JCNS] Aim %d: WorldUpType %r is unknown, read as 0" % (idx, a['rotation_type']))
             aim_type = 'WORLD_UP'
         p2.aim_type = aim_type
         p2.aim_bytes = a['bytes']
@@ -365,7 +365,7 @@ def do_import(filepath, context, armature_obj=None):
     if not rot_meta['map_uniform']:
         print("[JCNS] RotExpressionMap holds different values, using the first (%d)" % rot_meta['map_value'])
 
-    rp.cone_drivers_json = cone_drivers_to_json(parser.cone_drivers) if getattr(parser, 'cone_drivers', []) else ''
+    rp.cone_drivers_json = cone_inputs_to_json(parser.cone_inputs) if getattr(parser, 'cone_inputs', []) else ''
     rp.object_settings_json = json.dumps([
         {'UnkBytes': o['UnkBytes'].hex(), 'UnknownDWORD': o['UnknownDWORD'],
          'ObjectNameHash': o['ObjectNameHash']} for o in parser.object_settings])

@@ -15,9 +15,9 @@ Engine rules the reads follow:
     this entry or a later one reads its rest value and gets no variable.
 
 A bone's three rotation_euler drivers are built as one group, each evaluating the
-whole bone (jcns_source_read.target_basis), when its rotation TransformType is not
+whole bone (jcns_source_read.target_basis), when its rotation TransformElement is not
 1 (4 / 5 / 6 compose by swing-twist, twist-swing and rotation vector; 13 / 14 hold
-one rotation about the last written axis), or when a target entry with Flags
+one rotation about the last written axis), or when a target entry with AttrFlags
 bit0 = 0 lands on a bone with a rest rotation (it replaces the rest pose).
 """
 
@@ -42,7 +42,7 @@ import jcns_source_read  # noqa: E402
 #                                 one variable per axis in `live` (XYZ Euler, radians,
 #                                 the others read 0); rest and frame are (w, x, y, z);
 #                                 mode is a jcns_source_read.ROTATION_MODES value and
-#                                 order the source's +27 EulerOrder
+#                                 order the source's +27 RotOrder
 #   ('loc', axis, rest, offset, live)
 #                                 one variable per axis in `live` (location, metres);
 #                                 offset is the rest offset from the parent, metres
@@ -346,7 +346,7 @@ def _on_save_post(*_args):
 
 
 def transform_path(transform):
-    """The pose-bone data path a TransformType drives, or None."""
+    """The pose-bone data path a TransformElement drives, or None."""
     from .jcns_operators import _DRIVABLE
     entry = _DRIVABLE.get(transform)
     return entry[0] if entry else None

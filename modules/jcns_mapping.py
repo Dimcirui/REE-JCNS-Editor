@@ -16,7 +16,7 @@ Segment 1 maps [A.x -> B.x] onto [A.y -> B.y], segment 2 [B.x -> C.x] onto
 [B.y -> C.y]; both are strictly linear, and outside the range the output clamps
 to the nearer segment's bound.
 
-The per-source byte at +24 (`CurveMode`; RE_Engine_JCNS.bt misnames it
+The per-source byte at +24 (`AttrFlags`; RE_Engine_JCNS.bt misnames it
 UpdateTiming) selects the shape:
 
     0, 1  two-point: the kink is ignored; straight line A -> C
@@ -38,12 +38,12 @@ Degenerate anchors:
 from jcns_source_read import read_quantity, read_mode_value, euler_order_value  # noqa: F401
 
 
-# +25 (ReadMode), see jcns_source_read.READ_MODES: 0 reads position, 2 scale,
+# +25 (InputType), see jcns_source_read.READ_MODES: 0 reads position, 2 scale,
 # the rest are four decompositions of the rotation.
 
 
 def source_quantity(read_mode):
-    """'Translation', 'Rotation' or 'Scale' for a +25 ReadMode (value or
+    """'Translation', 'Rotation' or 'Scale' for a +25 InputType (value or
     identifier; None -> Rotation)."""
     if read_mode is None:
         return 'Rotation'
@@ -53,7 +53,7 @@ def source_quantity(read_mode):
 def source_quantity_of(source):
     """source_quantity() of a parser dict or a JCNSSourceProperties instance."""
     if isinstance(source, dict):
-        v = source.get('ReadMode', source.get('read_mode'))
+        v = source.get('InputType', source.get('read_mode'))
     else:
         v = getattr(source, 'read_mode', None)
     return source_quantity(v)
@@ -138,7 +138,7 @@ def driver_anchors(values, source_quantity, target_quantity):
 
 
 def is_two_point(curve_mode):
-    """Does this +24 CurveMode value select the two-point curve?
+    """Does this +24 AttrFlags value select the two-point curve?
 
     Matches the known values 0 and 1 rather than testing bit 1, since 4 and 5
     are unknown.
@@ -147,10 +147,10 @@ def is_two_point(curve_mode):
 
 
 def curve_mode_value(source):
-    """The CurveMode byte of a source: the parser dict's `CurveMode` / `curve_mode`, or the
+    """The AttrFlags byte of a source: the parser dict's `AttrFlags` / `curve_mode`, or the
     Blender PropertyGroup's `three_point` (bit 1) plus `curve_mode_extra` (the other bits)."""
     if isinstance(source, dict):
-        return source.get('CurveMode', source.get('curve_mode', 3))
+        return source.get('AttrFlags', source.get('curve_mode', 3))
     return (int(source.curve_mode_extra) & ~2) | (2 if source.three_point else 0)
 
 

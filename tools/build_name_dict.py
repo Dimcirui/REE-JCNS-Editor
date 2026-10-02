@@ -8,7 +8,7 @@ stores the hash (Skin / Aim / RotExpression joints, Material joints, the
 ReadJointTable, ...).
 
 Names are collected from
-  * .jcns files: constraint targets, sources, property names, ConeDriver names
+  * .jcns files: constraint targets, sources, property names, ConeInput names
   * .mesh files: the name table (joints and materials)
   * .motlist / .mot files: bone header names
 read from the vanilla paks of one game (MH Wilds here; needs its file list) and
@@ -91,7 +91,7 @@ def names_from_jcns(data, path, out):
         out.add('jcns', c.get('PropertyName'))
         for s in c.get('sources', []):
             out.add('jcns', s.get('SourceName'))
-    for cd in getattr(p, 'cone_drivers', []):
+    for cd in getattr(p, 'cone_inputs', []):
         out.add('jcns', cd.get('Name'))
 
 
