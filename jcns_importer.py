@@ -100,7 +100,7 @@ def do_import(filepath, context, armature_obj=None):
     """
     from . import (
         AXIS_TO_INT, INT_TO_AXIS, TRANSFORM_ELEMENT_MAP, INT_TO_WORLD_UP_TYPE, INT_TO_ROT_REST, INT_TO_INTERPOLATION,
-        make_constraint_empty_name,
+        INT_TO_MAT_APPLY_MODE, make_constraint_empty_name,
     )
 
     _ensure_modules_path()
@@ -383,23 +383,21 @@ def do_import(filepath, context, armature_obj=None):
         p2.constraint_type = 'Material'
         p2.target_bone = jnt_name
         import struct as _ms
-        raw = mc['raw_body']        # 12 bytes: NameHash(4) + PropHash(4) + TransformID(1) + tail(3)
-        p2.mat_name_hash        = f"0x{_ms.unpack_from('<I', raw, 0)[0]:08X}"
-        p2.mat_property_hash    = f"0x{_ms.unpack_from('<I', raw, 4)[0]:08X}"
-        p2.mat_transform_element_raw = raw[8]
+        raw = mc['raw_body']        # 12 bytes: NameHash(4) + PropHash(4) + ApplyMode(1) + tail(3)
+        name_h, prop_h = _ms.unpack_from('<II', raw, 0)
+        p2.mat_name_hash        = f"0x{name_h:08X}"
+        p2.mat_property_hash    = f"0x{prop_h:08X}"
+        # the names are only known when the dictionary has them
+        p2.mat_name             = names.get(name_h) or name_of(name_h) or ""
+        p2.mat_property         = names.get(prop_h) or name_of(prop_h) or ""
+        apply_mode = INT_TO_MAT_APPLY_MODE.get(raw[8])
+        if apply_mode is None:
+            print("[JCNS] Material %d: ApplyMode %r is unknown, read as 0" % (idx, raw[8]))
+        p2.mat_apply_mode = apply_mode or 'TRANS'
         p2.mat_tail_0, p2.mat_tail_1, p2.mat_tail_2 = raw[9], raw[10], raw[11]
+        obj.name = section_empty_name('Material', idx, p2)
 
-    if parser.joint_export_graph is not None:
-        path = parser.joint_export_graph['path']
-        obj = bpy.data.objects.new(f"[JXG] {path or '(empty)'}", None)
-        obj.empty_display_type = 'IMAGE'
-        obj.empty_display_size = 0.02
-        obj.parent = root
-        coll.objects.link(obj)
-        p2 = obj.jcns_cns_props
-        p2.is_jcns_constraint = True
-        p2.constraint_type = 'JointExprGraph'
-        p2.jxg_path = path
+    rp.jxg_path = (parser.joint_export_graph or {}).get('path', '') or ''
 
     # Every bone name the Ranges spell out: the choices offered for source_bone.
     all_bone_names = set()

@@ -630,7 +630,12 @@ class JCNS_PT_Ed_Material(_EditorMain, Panel):
         c = _begin(self.layout, context)
         if c is None:
             return
-        _field_row(c.body.box().column(align=True), T("editors.field.bone"), c.p, "target_bone", icon='BONE_DATA')
+        col = c.body.box().column(align=True)
+        _field_row(col, T("editors.field.bone"), c.p, "target_bone", icon='BONE_DATA')
+        _field_row(col, T("editors.mat.name"), c.p, "mat_name", icon='MATERIAL')
+        _field_row(col, T("editors.mat.property"), c.p, "mat_property", icon='PROPERTIES')
+        _field_row(col, T("editors.mat.apply_mode"), c.p, "mat_apply_mode")
+        _wrap_label(c.body, context, T("editors.mat.untested"), icon='QUESTION')
 
 
 class JCNS_PT_Ed_Material_Raw(_Editor, _Sub, Panel):
@@ -648,27 +653,10 @@ class JCNS_PT_Ed_Material_Raw(_Editor, _Sub, Panel):
         _draw_raw_group(c.body, T("editors.mat.hashes_title"), 'PREFERENCES', [
             (p, [("mat_name_hash", T("editors.mat.name_hash")),
                  ("mat_property_hash", T("editors.mat.property_hash"))]),
-            (p, [("mat_transform_element_raw", T("editors.mat.transform_id")),
-                 ("mat_tail_0", T("editors.mat.tail0")),
+            (p, [("mat_tail_0", T("editors.mat.tail0")),
                  ("mat_tail_1", T("editors.mat.tail1")),
                  ("mat_tail_2", T("editors.mat.tail2"))]),
         ])
-
-
-# ---------------------------------------------------------------------------
-# JointExportGraph
-# ---------------------------------------------------------------------------
-
-class JCNS_PT_Ed_JXG(_EditorMain, Panel):
-    bl_label  = T("editors.panel.jxg")
-    bl_idname = "JCNS_PT_ed_jxg"
-    KIND = 'JointExprGraph'
-
-    def draw(self, context):
-        c = _begin(self.layout, context)
-        if c is None:
-            return
-        _field_row(c.body.box().column(align=True), T("editors.field.path"), c.p, "jxg_path", icon='FILE_FOLDER')
 
 
 # ---------------------------------------------------------------------------
@@ -706,7 +694,6 @@ _classes = [
     JCNS_PT_Ed_RotExpr_Raw,
     JCNS_PT_Ed_Material,
     JCNS_PT_Ed_Material_Raw,
-    JCNS_PT_Ed_JXG,
     JCNS_PT_Ed_Unknown,
 ]
 

@@ -1464,7 +1464,7 @@ class JCNS_OT_AddSectionEntry(Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     kind: EnumProperty(items=[('Multi', "MultiConstraint", ""), ('Aim', "Aim", ""),
-                              ('RotExpression', "RotExpression", "")])
+                              ('RotExpression', "RotExpression", ""), ('Material', "Material", "")])
 
     @classmethod
     def poll(cls, context):
@@ -1482,7 +1482,8 @@ class JCNS_OT_AddSectionEntry(Operator):
             self.report({'ERROR'}, caps.reason('add') or T("ops.section.cannot_add"))
             return {'CANCELLED'}
         idx = len(section_empties(root, self.kind))
-        display = {'Multi': 'SINGLE_ARROW', 'Aim': 'SPHERE', 'RotExpression': 'CIRCLE'}[self.kind]
+        display = {'Multi': 'SINGLE_ARROW', 'Aim': 'SPHERE', 'RotExpression': 'CIRCLE',
+                   'Material': 'CUBE'}[self.kind]
         obj = bpy.data.objects.new("__jcns_new_section", None)
         obj.empty_display_type = display
         obj.empty_display_size = 0.03
@@ -1499,6 +1500,8 @@ class JCNS_OT_AddSectionEntry(Operator):
             import jcns_sections
             p.multi_tail = tuple(jcns_sections.multi_default_tail(
                 [{'tail': tuple(o.jcns_cns_props.multi_tail)} for o in section_empties(root, 'Multi') if o is not obj]))
+        elif self.kind == 'Material':
+            p.mat_tail_1 = 1                     # 00 01 00, what most shipped records carry
         obj.name = section_empty_name(self.kind, idx, p)
         for o in context.selected_objects:
             o.select_set(False)

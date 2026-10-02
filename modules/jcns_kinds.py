@@ -57,7 +57,7 @@ KINDS = (
          preview='constraint', confidence="中高（统计推断）",  # ui-copy: internal
          summary_fn=lambda: T("core.kinds.rotexpr.summary")),
     Kind('Material', lambda: T("core.kinds.material.label"), 'MATERIAL', tab=True, ordered=False,
-         addable=False,
+         addable=True,
          preview='', confidence="低",  # ui-copy: internal
          summary_fn=lambda: T("core.kinds.material.summary")),
     Kind('JointExprGraph', lambda: T("core.kinds.jxg.label"), 'FILE_FOLDER', tab=True, ordered=False,
@@ -172,17 +172,14 @@ def capabilities(kind_id, st):
             msg = T("core.kinds.material_hash_only", v)
             return _caps(True, False, False, False, msg,
                          add=msg, remove=msg, move=msg)
-        return _caps(True, False, True, False, '',
-                     add=T("core.kinds.no_create"),
-                     move=T("core.kinds.no_reorder"))
+        return _caps(True, True, True, False, '', move=T("core.kinds.no_reorder"))
 
     if k.id == 'JointExprGraph':
         if not st.rebuild:
             msg = T("core.kinds.jxg_locked", v)
             return _caps(False, False, False, False, msg,
                          edit=msg, add=msg, remove=msg, move=msg)
-        return _caps(True, False, True, False, '',
-                     add=T("core.kinds.no_create"),
-                     move=T("core.kinds.jxg_single"))
+        # one path on the root, not an entry list: nothing to add, remove or move
+        return _caps(True, False, False, False, '')
 
     raise AssertionError(k.id)      # KINDS and this function must stay in step

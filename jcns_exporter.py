@@ -180,6 +180,7 @@ def _sync_non_range_to_parser(root_obj, parser):
     stub too and a deleted Empty is dropped from the export.
     """
     import struct
+    from . import MAT_APPLY_MODE_TO_INT
 
     hashing_dir = os.path.join(os.path.dirname(__file__), "modules", "hashing")
     if hashing_dir not in sys.path:
@@ -230,7 +231,7 @@ def _sync_non_range_to_parser(root_obj, parser):
             struct.pack_into('<I', raw, 4, int(p.mat_property_hash, 16) & 0xFFFFFFFF)
         except (ValueError, TypeError):
             pass
-        raw[8]  = p.mat_transform_element_raw & 0xFF
+        raw[8]  = MAT_APPLY_MODE_TO_INT[p.mat_apply_mode]
         raw[9]  = p.mat_tail_0 & 0xFF
         raw[10] = p.mat_tail_1 & 0xFF
         raw[11] = p.mat_tail_2 & 0xFF
@@ -246,13 +247,10 @@ def _sync_non_range_to_parser(root_obj, parser):
         mat_entries.append(entry)
     parser.material_cns = mat_entries
 
-    jxg_obj = next((o for o in root_obj.children
-                     if getattr(o, 'jcns_cns_props', None)
-                     and o.jcns_cns_props.constraint_type == 'JointExprGraph'), None)
+    path = root_obj.jcns_root_props.jxg_path.strip()
     orig_jxg = getattr(parser, 'joint_export_graph', None) or {}
-    parser.joint_export_graph = ({'path': jxg_obj.jcns_cns_props.jxg_path,
-                                  '_orig_path': orig_jxg.get('_orig_path')}
-                                 if jxg_obj else None)
+    parser.joint_export_graph = ({'path': path, '_orig_path': orig_jxg.get('_orig_path')}
+                                 if path else None)
 
 
 def format_problems_early(problems, filename):

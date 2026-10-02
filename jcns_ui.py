@@ -452,10 +452,17 @@ class JCNS_PT_Edit(_RootPanel, Panel):
 
         _draw_tabs(layout, rp)
 
-        n = counts.get(kind.id, 0)
+        n = counts.get(kind.id, 0) if kind.id != 'JointExprGraph' else int(bool(rp.jxg_path.strip()))
         layout.label(text="%s · %d" % (kind.label, n), icon=kind.icon)
         if caps.banner:
             layout.label(text=caps.banner, icon='LOCKED')
+
+        if kind.id == 'JointExprGraph':
+            # one path per file, kept on the root: empty means the file has no JXG section
+            row = layout.row()
+            row.enabled = caps.can_edit
+            row.prop(rp, "jxg_path", text="", icon='FILE_FOLDER')
+            return
 
         # 选中的条目不在当前分区时，详情仍会显示它；这里给一个跳过去的按钮。
         obj, p = get_jcns_constraint(context)

@@ -24,7 +24,6 @@ STRINGS = {
     "editors.panel.rotexpr": {"ZH": "RotExpr 旋转表达式", "EN": "RotExpr"},
     "editors.panel.material": {"ZH": "Material 材质", "EN": "Material"},
     "editors.panel.raw_fields": {"ZH": "原始字段", "EN": "Raw Fields"},
-    "editors.panel.jxg": {"ZH": "JXG 表达式图", "EN": "JXG Expression Graph"},
     "editors.panel.unrecognized": {"ZH": "未知类型", "EN": "Unknown Type"},
 
     # --- shared words ---------------------------------------------------------------
@@ -52,7 +51,6 @@ STRINGS = {
     "editors.field.type": {"ZH": "类型：", "EN": "Type:"},
     "editors.field.up_bone": {"ZH": "辅助骨骼：", "EN": "Helper bone:"},
     "editors.field.influence": {"ZH": "影响：", "EN": "Influence:"},
-    "editors.field.path": {"ZH": "路径：", "EN": "Path:"},
 
     # --- framework ------------------------------------------------------------------
     "editors.no_root": {
@@ -196,8 +194,11 @@ STRINGS = {
     # --- Material -------------------------------------------------------------------
     "editors.mat.hashes_title": {"ZH": "哈希与变换 ID", "EN": "Hashes and transform ID"},
     "editors.mat.name_hash": {"ZH": "材质名哈希", "EN": "Material name hash"},
+    "editors.mat.name": {"ZH": "材质名", "EN": "Material"},
+    "editors.mat.property": {"ZH": "参数名", "EN": "Parameter"},
+    "editors.mat.apply_mode": {"ZH": "写入方式", "EN": "Apply mode"},
+    "editors.mat.untested": {"ZH": "材质名和参数名填模型 mdf2 里的原文；在游戏里的具体效果未知", "EN": "Use the names exactly as they appear in the model's mdf2; the in-game effect is not known"},
     "editors.mat.property_hash": {"ZH": "属性哈希", "EN": "Property hash"},
-    "editors.mat.transform_id": {"ZH": "变换ID", "EN": "Transform ID"},
     "editors.mat.tail0": {"ZH": "尾0", "EN": "Tail 0"},
     "editors.mat.tail1": {"ZH": "尾1", "EN": "Tail 1"},
     "editors.mat.tail2": {"ZH": "尾2", "EN": "Tail 2"},

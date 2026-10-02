@@ -69,11 +69,9 @@ STRINGS = {
     "core.kinds.material_hash_only": {
         "ZH": "v%s 只能改哈希和变换 ID",
         "EN": "v%s allows editing hashes and transform IDs only"},
-    "core.kinds.no_create": {"ZH": "暂不支持新建", "EN": "Creating new entries is not supported yet"},
     "core.kinds.jxg_locked": {
         "ZH": "v%s 就地回写，路径已锁定",
         "EN": "v%s is written in place; the path is locked"},
-    "core.kinds.jxg_single": {"ZH": "JXG 每个文件只有一条", "EN": "A file has only one JXG entry"},
 
     # ── jcns_preview_plan ─────────────────────────────────────────────────
     "core.plan.multi_no_bone": {"ZH": "没有对象骨骼", "EN": "No target bone"},

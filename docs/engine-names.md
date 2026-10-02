@@ -159,7 +159,9 @@ jcns 资源在运行时叫 `JointExMultiRemapValue`，资源类型是 `via.motio
 
 ### 其他
 
-- `MaterialConstraintData.ApplyMode`：0 Trans / 1 Euler / 2 Scale / 3 Rot
+- `MaterialConstraintData.ApplyMode`：0 Trans / 1 Euler / 2 Scale / 3 Rot。就是 Material 记录的第 8 字节：
+  语料里 `*_Pos`/`Shrink_Start` 参数全是 0，`Shrink_Scale` 是 2，RE9 有一条 3。
+  同一记录的 NameHash / PropertyHash 是 mdf2 材质名、参数名的 murmur3 UTF-16（区分大小写）。
 - `JointConstraintsResource.LegacyVersion`：0 Latest / 1 Legacy1
 
 ## 2. 托管原型 `via.motion.JointRemapValue`（Behavior）

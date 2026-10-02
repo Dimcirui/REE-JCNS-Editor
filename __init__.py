@@ -98,6 +98,59 @@ WORLD_UP_TYPE_ITEMS = [
     ('NONE_MAYA_LIKE', T("props.world_up_type.none_maya_like"), T("props.world_up_type.none_maya_like_desc")),
 ]
 WORLD_UP_TYPE_TO_INT = {item[0]: i for i, item in enumerate(WORLD_UP_TYPE_ITEMS)}
+
+# MaterialConstraintData.ApplyMode, the Material record's byte 8
+MAT_APPLY_MODE_ITEMS = [
+    ('TRANS', T("props.mat_apply.trans"), T("props.mat_apply.trans_desc")),
+    ('EULER', T("props.mat_apply.euler"), T("props.mat_apply.euler_desc")),
+    ('SCALE', T("props.mat_apply.scale"), T("props.mat_apply.scale_desc")),
+    ('ROT', T("props.mat_apply.rot"), T("props.mat_apply.rot_desc")),
+]
+MAT_APPLY_MODE_TO_INT = {item[0]: i for i, item in enumerate(MAT_APPLY_MODE_ITEMS)}
+INT_TO_MAT_APPLY_MODE = {i: ident for ident, i in MAT_APPLY_MODE_TO_INT.items()}
+
+
+def mat_name_hash(name):
+    """'0x%08X' of the murmur3 of a UTF-16 material or parameter name."""
+    from .modules_shim import ensure_path
+    ensure_path()
+    import os, sys
+    hashing = os.path.join(os.path.dirname(__file__), "modules", "hashing")
+    if hashing not in sys.path:
+        sys.path.insert(0, hashing)
+    from mmh3.pymmh3 import hashUTF16
+    return "0x%08X" % (hashUTF16(name) & 0xFFFFFFFF)
+
+
+def _sync_mat(self, name_attr, hash_attr):
+    name = getattr(self, name_attr).strip()
+    if name and getattr(self, hash_attr) != mat_name_hash(name):
+        setattr(self, hash_attr, mat_name_hash(name))
+    _sync_constraint_name(self)
+
+
+def _update_mat_name(self, context):
+    _sync_mat(self, 'mat_name', 'mat_name_hash')
+
+
+def _update_mat_property(self, context):
+    _sync_mat(self, 'mat_property', 'mat_property_hash')
+
+
+def _unsync_mat(self, name_attr, hash_attr):
+    # A hash typed in by hand no longer belongs to the name shown
+    name = getattr(self, name_attr).strip()
+    if name and getattr(self, hash_attr) != mat_name_hash(name):
+        setattr(self, name_attr, "")
+    _sync_constraint_name(self)
+
+
+def _update_mat_name_hash(self, context):
+    _unsync_mat(self, 'mat_name', 'mat_name_hash')
+
+
+def _update_mat_property_hash(self, context):
+    _unsync_mat(self, 'mat_property', 'mat_property_hash')
 INT_TO_WORLD_UP_TYPE = {i: ident for ident, i in WORLD_UP_TYPE_TO_INT.items()}
 
 # RotExpression byte[1]: whether the result lies on the rest pose.
@@ -197,8 +250,7 @@ def _sync_constraint_name(self):
     if p is None or not p.is_jcns_constraint:
         return
     # Section Empties keep their '[AimNN] …' prefix (see SECTION_PREFIX).
-    # Material / JXG labels never change.
-    if p.constraint_type in ('Multi', 'Aim', 'RotExpression'):
+    if p.constraint_type in ('Multi', 'Aim', 'RotExpression', 'Material'):
         obj.name = section_empty_name(p.constraint_type, section_index(obj), p)
         return
     if p.constraint_type not in ('Outputs', ''):
@@ -235,6 +287,8 @@ def section_empty_name(kind, idx, p):
         label = f"{p.target_bone or '?'} → {p.aim_target_bone or '?'}"
     elif kind == 'RotExpression':
         label = f"{p.rot_source_bone or '?'} → {p.target_bone or '?'}"
+    elif kind == 'Material':
+        label = f"{p.target_bone or '?'} → {p.mat_name or p.mat_name_hash}.{p.mat_property or p.mat_property_hash}"
     else:
         label = p.target_bone or '?'
     return f"[{pre}{idx:02d}] {label}"
@@ -559,32 +613,34 @@ class JCNSConstraintProperties(PropertyGroup):
     reserved_tail: IntVectorProperty(name=T("props.cns.reserved_tail"), size=3, default=(0, 0, 0), min=0, max=255,
                                      description=T("props.cns.reserved_tail_desc"))
 
-    # --- Material constraint-specific fields (populated at import, editable) ---
+    # --- Material constraint (MaterialConstraintData) ---
+    # The file holds only the two hashes (murmur3 of the UTF-16 mdf2 material and
+    # parameter names); a name, when known, is what they were computed from.
+    mat_name: StringProperty(
+        name=T("props.cns.mat_name"), description=T("props.cns.mat_name_desc"),
+        default="", update=_update_mat_name,
+    )
+    mat_property: StringProperty(
+        name=T("props.cns.mat_property"), description=T("props.cns.mat_property_desc"),
+        default="", update=_update_mat_property,
+    )
     mat_name_hash: StringProperty(
         name="MaterialNameHash",
         description=T("props.cns.mat_name_hash_desc"),
-        default="0x00000000",
+        default="0x00000000", update=_update_mat_name_hash,
     )
     mat_property_hash: StringProperty(
         name="MaterialPropertyHash",
         description=T("props.cns.mat_property_hash_desc"),
-        default="0x00000000",
+        default="0x00000000", update=_update_mat_property_hash,
     )
-    mat_transform_element_raw: IntProperty(
-        name="TransformationID",
-        description=T("props.cns.mat_transform_element_desc"),
-        default=0, min=0, max=255,
+    mat_apply_mode: EnumProperty(
+        name=T("props.cns.mat_apply_mode"), description=T("props.cns.mat_apply_mode_desc"),
+        items=MAT_APPLY_MODE_ITEMS, default='TRANS',
     )
     mat_tail_0: IntProperty(name="MatTail[0]", default=0, min=0, max=255)
     mat_tail_1: IntProperty(name="MatTail[1]", default=0, min=0, max=255)
     mat_tail_2: IntProperty(name="MatTail[2]", default=0, min=0, max=255)
-
-    # --- JointExportGraph path (Type 5 empties only) ---
-    jxg_path: StringProperty(
-        name=T("props.cns.jxg_path"),
-        description=T("props.cns.jxg_path_desc"),
-        default="",
-    )
 
     # --- MultiConstraint (target_bone is the skinned object) ---
     multi_sources: CollectionProperty(type=JCNSWeightedSource)
@@ -761,6 +817,10 @@ class JCNSRootProperties(PropertyGroup):
     sdk_driven_index: IntProperty(default=0)
     sdk_keys: CollectionProperty(type=JCNSSDKKey)
     sdk_key_index: IntProperty(default=0)
+    # JointExprGraph (section 5): one path per file; empty = no JXG section
+    jxg_path: StringProperty(
+        name=T("props.root.jxg_path"), description=T("props.root.jxg_path_desc"), default="",
+    )
     source_filepath: StringProperty(
         name=T("props.root.source_filepath"),
         description=T("props.root.source_filepath_desc"),
