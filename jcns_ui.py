@@ -260,7 +260,7 @@ class JCNS_PT_Status(Panel):
         from .jcns_lang import draw_language_toggle
         draw_language_toggle(layout)
 
-        layout.menu("JCNS_MT_new_file", text=T("ui.status.new"), icon='FILE_NEW')
+        layout.operator("jcns.new_file", text=T("ui.status.new"), icon='FILE_NEW')
         row = layout.row(align=True)
         row.operator("jcns.import_file", text=T("ui.status.import"), icon='IMPORT')
         row.operator("jcns.export_file", text=T("ui.status.export"), icon='EXPORT')

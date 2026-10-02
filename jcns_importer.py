@@ -11,7 +11,7 @@ import os
 import sys
 import bpy
 from bpy.props import StringProperty, BoolProperty, EnumProperty
-from bpy.types import Menu, Operator
+from bpy.types import Operator
 from bpy_extras.io_utils import ImportHelper
 
 from .modules_shim import get_schema, ensure_path, T
@@ -550,8 +550,13 @@ class JCNS_OT_NewFile(Operator):
         name=T("io.new.game"),
         items=[(g, T(key), "") for g, _, key in NEW_FILE_GAMES],
         default='MHW_WILDS',
-        options={'HIDDEN'},
     )
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        self.layout.prop(self, "game", expand=True)
 
     def execute(self, context):
         root = do_new(context, self.game, _armature_for_new(context))
@@ -561,15 +566,6 @@ class JCNS_OT_NewFile(Operator):
         context.scene.jcns_active_collection = root.users_collection[0]
         self.report({'INFO'}, T("io.new.done", root.name, root.jcns_root_props.source_version))
         return {'FINISHED'}
-
-
-class JCNS_MT_new_file(Menu):
-    bl_idname = "JCNS_MT_new_file"
-    bl_label  = T("io.new.label")
-
-    def draw(self, context):
-        for game, _, key in NEW_FILE_GAMES:
-            self.layout.operator(JCNS_OT_NewFile.bl_idname, text=T(key)).game = game
 
 
 # ---------------------------------------------------------------------------
@@ -599,7 +595,7 @@ def _menu_import(self, context):
 # Registration
 # ---------------------------------------------------------------------------
 
-_classes = [JCNS_OT_ImportFile, JCNS_OT_NewFile, JCNS_MT_new_file]
+_classes = [JCNS_OT_ImportFile, JCNS_OT_NewFile]
 
 
 def register():
