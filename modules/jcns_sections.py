@@ -150,18 +150,20 @@ def derive_read_joint_table(records, aim_joints, parent):
     return sorted((h for h in need if h not in ancestors), key=depth.get), missing
 
 
-def resolve_read_joint_table(records, aim_joints, meta, locked, parent=None, names=None):
+def resolve_read_joint_table(records, aim_joints, meta, locked, parent=None, names=None, pending=False):
     """(table, problems) to export with.
 
     A file without a table keeps none.  An unchanged structure keeps the shipped
     table verbatim, including its order.  A changed one is re-derived when the
-    skeleton is available and refused when it is not.
+    skeleton is available and refused when it is not.  `pending` is a file upgraded
+    to a version that has a table the source never had: it is always derived.
     """
     orig = list(meta.get('read_joint_table') or [])
-    if not orig or locked == read_joint_signature(records, aim_joints):
+    if not pending and (not orig or locked == read_joint_signature(records, aim_joints)):
         return orig, []
     if parent is None:
-        return orig, ["改动了 Skin 或 Aim 的骨骼，要先设置目标骨架，才能重算读取骨表。"]
+        return orig, ["先设置目标骨架，才能算读取骨表。" if pending
+                      else "改动了 Skin 或 Aim 的骨骼，要先设置目标骨架，才能重算读取骨表。"]
     table, missing = derive_read_joint_table(records, aim_joints, parent)
     if missing:
         label = lambda h: (names or {}).get(h, f"0x{h:08X}")

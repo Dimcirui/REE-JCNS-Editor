@@ -715,7 +715,7 @@ def file_state(rp):
         rebuild=write_mode(v) == 'rebuild',
         sections_cached=bool(rp.sections_cached),
         has_armature=rp.target_armature is not None,
-        has_read_table=bool(rp.read_joint_signature_json),
+        has_read_table=bool(rp.read_joint_signature_json) or rp.read_table_pending,
     )
 
 
@@ -818,6 +818,11 @@ class JCNSRootProperties(PropertyGroup):
     read_joint_table: CollectionProperty(type=JCNSHashItem)
     read_joint_index: IntProperty(default=0)
     read_joint_signature_json: StringProperty(default="")
+    # The file was upgraded from this version on import (0 = it was not); the source file is
+    # no longer what gets exported.
+    upgraded_from: IntProperty(default=0)
+    # The upgraded version has a ReadJointTable the source never had: derived on export.
+    read_table_pending: BoolProperty(default=False)
     # The RotExpressionMap value shared by every RotExpression entry.
     rot_map_value: IntProperty(
         name="RotExpr 映射值", default=0, min=0, max=255,

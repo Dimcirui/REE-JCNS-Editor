@@ -124,7 +124,7 @@ def _draw_raw_group(layout, title, icon, rows):
 
 def _skin_table_locked(rp):
     """A shipped ReadJointTable can only be re-derived with the skeleton."""
-    return bool(rp and rp.read_joint_signature_json and rp.target_armature is None)
+    return bool(rp and (rp.read_joint_signature_json or rp.read_table_pending) and rp.target_armature is None)
 
 
 def _target_unit(transform_type):
@@ -273,7 +273,8 @@ class JCNS_PT_Status(Panel):
         from .jcns_exporter import _root_version
         v = _root_version(rp)
         name = rp.source_filepath.replace('\\', '/').split('/')[-1] or root.name
-        layout.label(text="%s · v%d" % (name, v), icon='FILE')
+        layout.label(text="%s · v%d" % (name, v) if not rp.upgraded_from
+                     else "%s · v%d → v%d" % (name, rp.upgraded_from, v), icon='FILE')
         if v not in get_schema().VERIFIED_VERSIONS:
             layout.label(text="版本支持不完整，导出前先备份", icon='ERROR')
 
@@ -557,6 +558,8 @@ class JCNS_PT_FileInfo(_RootPanel, Panel):
         if entry_counts(root).get('RotExpression'):
             col.prop(rp, "rot_map_value")
         col.label(text="读取骨表：%d" % len(rp.read_joint_table), icon='BONE_DATA')
+        if rp.read_table_pending:
+            col.label(text="导出时按目标骨架计算", icon='INFO')
         if len(rp.read_joint_table):
             col.template_list("UI_UL_list", "jcns_read_joints", rp, "read_joint_table",
                               rp, "read_joint_index", rows=min(len(rp.read_joint_table), 5))

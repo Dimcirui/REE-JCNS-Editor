@@ -81,6 +81,16 @@ def _build_stub_parser(root_props):
     return parser
 
 
+def skeleton_of(arm):
+    """({joint hash: parent hash or None}, {joint hash: name}) of an armature, or (None, None)."""
+    if arm is None or arm.type != 'ARMATURE':
+        return None, None
+    H = lambda name: _name_to_hash(name.strip())
+    bones = arm.data.bones
+    return ({H(b.name): (H(b.parent.name) if b.parent else None) for b in bones},
+            {H(b.name): b.name for b in bones})
+
+
 def _sync_sections_to_parser(root_obj, root_props, parser):
     """
     Rebuild parser.skin_* / aim_constraints / rot_expressions / cone_drivers (and,
@@ -109,12 +119,9 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
     locked = json.loads(root_props.read_joint_signature_json) if root_props.read_joint_signature_json else []
     # The table also covers the Aim joints, so it is resolved against both.
     aim_joints = [H(o.jcns_cns_props.target_bone) for o in section_empties(root_obj, 'Aim')]
-    arm = root_props.target_armature
-    parent = names = None
-    if arm is not None and arm.type == 'ARMATURE':
-        parent = {H(b.name): (H(b.parent.name) if b.parent else None) for b in arm.data.bones}
-        names = {H(b.name): b.name for b in arm.data.bones}
-    table, problems = X.resolve_read_joint_table(records, aim_joints, meta, locked, parent, names)
+    parent, names = skeleton_of(root_props.target_armature)
+    table, problems = X.resolve_read_joint_table(records, aim_joints, meta, locked, parent, names,
+                                                 pending=root_props.read_table_pending)
     if problems:
         return problems
     for w in X.skin_weight_warnings(records):
@@ -449,7 +456,10 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
             self.filename_ext = f".jcns.{_root_version(rp)}"
 
             if rp.source_filepath:
-                self.filepath = bpy.path.abspath(rp.source_filepath)
+                path = bpy.path.abspath(rp.source_filepath)
+                if rp.upgraded_from and path.endswith(f".jcns.{rp.upgraded_from}"):
+                    path = path[:-len(f".{rp.upgraded_from}")] + f".{_root_version(rp)}"
+                self.filepath = path
         
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
@@ -476,7 +486,9 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
             return {'CANCELLED'}
 
         source_path = bpy.path.abspath(root_props.source_filepath)
-        source_exists = os.path.isfile(source_path)
+        # An upgraded file is exported from Blender's data: its source is an older version.
+        upgraded = bool(root_props.upgraded_from)
+        source_exists = os.path.isfile(source_path) and not upgraded
 
         empties = get_constraint_empties(root_obj)
         # Files made only of Skin / Aim / RotExpression / Material entries have no Ranges.
@@ -497,7 +509,8 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
             if not root_props.source_version:
                 self.report({'ERROR'}, f"源文件不存在：{source_path}\n这个根节点是旧版插件导入的，请重新导入该文件。")
                 return {'CANCELLED'}
-            self.report({'WARNING'}, "源文件缺失，按 Blender 里的数据重建文件头导出。")
+            if not upgraded:
+                self.report({'WARNING'}, "源文件缺失，按 Blender 里的数据重建文件头导出。")
             parser = _build_stub_parser(root_props)
 
         if parser.write_mode == 'rebuild' and not root_props.sections_cached:
@@ -571,7 +584,9 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
             root_props.source_filepath = out_path
 
         basename = os.path.basename(out_path)
-        if md5_before is None:
+        if upgraded:
+            self.report({'INFO'}, f"已导出「{basename}」（v{root_props.upgraded_from} → v{parser.version}）。")
+        elif md5_before is None:
             self.report({'INFO'}, f"已导出「{basename}」（源文件缺失，无法比对 MD5）。")
         elif md5_before == md5_after:
             self.report({'INFO'}, f"已导出「{basename}」—— 内容无变化（MD5 相同）。")

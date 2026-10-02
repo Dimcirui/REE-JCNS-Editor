@@ -21,7 +21,7 @@ place: every value can change, the file's structure cannot.
 | 102 | Monster Hunter Wilds (post-TU4) | ✅ Full rebuild |
 | 36 | Onimusha: Way of the Sword | ✏️ In place |
 | 35 | Resident Evil Requiem / PRAGMATA / MH Stories 3 | ✅ Full rebuild |
-| 29 | Monster Hunter Wilds (pre-TU4) | ✏️ In place |
+| 29 | Monster Hunter Wilds (pre-TU4) | ⬆️ Imported as v102 |
 | 24 | Dragon's Dogma 2 | ✏️ In place |
 | 22 | RE4 / Street Fighter 6 | ✏️ In place |
 | 21 | Monster Hunter Rise | ✏️ In place |
@@ -31,6 +31,9 @@ place: every value can change, the file's structure cannot.
 | 11 | RE2 / Devil May Cry 5 | ✏️ In place |
 
 **Full rebuild**: the whole file is regenerated.
+**Imported as v102**: an older file of a game that has a newer version is upgraded
+on import and exported as that newer version. A file with Skin sections needs the
+target armature to derive its ReadJointTable; export asks for it.
 **In place**: the original file is copied and each record is re-packed at its own
 offset; export refuses structural edits and lists what changed. Everything the
 in-place writer does not re-pack is kept byte for byte: ComplexMapping curves,

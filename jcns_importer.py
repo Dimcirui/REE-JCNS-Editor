@@ -18,6 +18,7 @@ from .modules_shim import get_schema, ensure_path
 
 ensure_path()
 import jcns_source_read  # noqa: E402
+import jcns_upgrade  # noqa: E402
 import jcns_targets  # noqa: E402
 from . import jcns_cm
 
@@ -118,6 +119,27 @@ def do_import(filepath, context, armature_obj=None):
                + "\n".join(f"  * {p}" for p in problems))
         return None, 0, msg
 
+    # An older version of a game's file is read as the game's latest: Blender holds the
+    # upgraded data, and the source file is not exported from again.
+    upgraded_from, read_table_pending = 0, False
+    latest = jcns_upgrade.latest_version(parser.version)
+    if latest != parser.version:
+        from .jcns_exporter import skeleton_of
+        parent, skeleton_names = skeleton_of(armature_obj)
+        try:
+            upgraded, upgrade_problems = jcns_upgrade.upgrade(parser, latest, parent, skeleton_names)
+        except jcns_upgrade.UpgradeError as exc:
+            return None, 0, f"无法升级到 v{latest}：{exc}"
+        problems = check_exportable(upgraded)
+        if problems:
+            return None, 0, ("升级到 v%d 后无法完整还原：\n" % latest
+                             + "\n".join(f"  * {p}" for p in problems))
+        for line in upgrade_problems:
+            print("[JCNS] " + line)
+        upgraded_from, read_table_pending = parser.version, bool(upgrade_problems)
+        parser = upgraded
+        constraints = parser.constraints
+
     hash_dict = _build_hash_dict(armature_obj) if armature_obj else {}
 
     filename = _strip_ext(os.path.basename(filepath))
@@ -140,6 +162,8 @@ def do_import(filepath, context, armature_obj=None):
 
     # Drives the export extension and the writer mode.
     root.jcns_root_props.source_version = parser.version
+    root.jcns_root_props.upgraded_from = upgraded_from
+    root.jcns_root_props.read_table_pending = read_table_pending
 
     # What an export without the source file needs besides the entries.
     root.jcns_root_props.header_unknown_bytes = (parser.header.get('HeaderUnknownByte1', 0),
@@ -447,6 +471,11 @@ class JCNS_OT_ImportFile(Operator, ImportHelper):
 
         arm_label = armature_obj.name if armature_obj else "无"
         summary = f"已导入 {count} 条约束 → 「{root.name}」（骨架：{arm_label}）"
+        rp = root.jcns_root_props
+        if rp.upgraded_from:
+            summary += f"，已从 v{rp.upgraded_from} 升级到 v{rp.source_version}"
+            if rp.read_table_pending:
+                summary += "；导出前先设置目标骨架"
         self.report({'INFO'}, summary)
         # Make its collection the working collection so export works without a selection.
         bpy.ops.object.select_all(action='DESELECT')
