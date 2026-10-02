@@ -1511,6 +1511,59 @@ class JCNS_OT_AddSectionEntry(Operator):
         return {'FINISHED'}
 
 
+class JCNS_OT_MdfRefAdd(Operator):
+    bl_idname = "jcns.mdf_ref_add"
+    bl_label  = T("ops.label.mdf_ref_add")
+    bl_description = T("ops.desc.mdf_ref_add")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    filepath: StringProperty(subtype='FILE_PATH')
+    filter_glob: StringProperty(default="*.mdf2.*", options={'HIDDEN'})
+
+    @classmethod
+    def poll(cls, context):
+        from . import get_export_root
+        return get_export_root(context)[0] is not None
+
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        from . import get_export_root, refresh_mdf_catalog, resolve_material_names
+        root, rp = get_export_root(context)
+        ref = rp.mdf_refs.add()
+        ref.filepath = self.filepath            # its update reads the file and resolves names
+        rp.mdf_ref_index = len(rp.mdf_refs) - 1
+        if ref.status:
+            self.report({'WARNING'}, T("ops.mdf.unreadable", ref.status))
+            return {'FINISHED'}
+        self.report({'INFO'}, T("ops.mdf.added", ref.material_count))
+        return {'FINISHED'}
+
+
+class JCNS_OT_MdfRefRemove(Operator):
+    bl_idname = "jcns.mdf_ref_remove"
+    bl_label  = T("ops.label.mdf_ref_remove")
+    bl_description = T("ops.desc.mdf_ref_remove")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        from . import get_export_root
+        _root, rp = get_export_root(context)
+        return rp is not None and len(rp.mdf_refs) > 0
+
+    def execute(self, context):
+        from . import get_export_root, refresh_mdf_catalog
+        _root, rp = get_export_root(context)
+        i = min(rp.mdf_ref_index, len(rp.mdf_refs) - 1)
+        rp.mdf_refs.remove(i)
+        rp.mdf_ref_index = max(0, i - 1)
+        refresh_mdf_catalog(rp)                 # names already filled in stay
+        return {'FINISHED'}
+
+
 def _active_section(context, kind):
     from . import get_jcns_constraint
     obj, p = get_jcns_constraint(context)
@@ -1759,6 +1812,8 @@ _classes = [
     JCNS_OT_SortAnchors,
     JCNS_OT_MirrorConstraints,
     JCNS_OT_AddSectionEntry,
+    JCNS_OT_MdfRefAdd,
+    JCNS_OT_MdfRefRemove,
     JCNS_OT_MultiSourceAdd,
     JCNS_OT_MultiSourceRemove,
     JCNS_OT_MultiNormalizeWeights,

@@ -145,6 +145,122 @@ def _unsync_mat(self, name_attr, hash_attr):
     _sync_constraint_name(self)
 
 
+# ── reference .mdf2 files (the root's mdf_refs) ─────────────────────────────
+_catalog_memo = {}
+
+
+def mdf_catalog(rp):
+    """{material name: {'hash', 'params': {name: [hash, components]}}} of a root's
+    reference files, from the cache refresh_mdf_catalog() keeps."""
+    import json
+    raw = rp.mdf_catalog_json if rp is not None else ""
+    if not raw:
+        return {}
+    if raw not in _catalog_memo:
+        _catalog_memo.clear()
+        try:
+            _catalog_memo[raw] = json.loads(raw)
+        except ValueError:
+            _catalog_memo[raw] = {}
+    return _catalog_memo[raw]
+
+
+def refresh_mdf_catalog(rp):
+    """Re-read every reference file into the cache; a file that cannot be read keeps
+    its error on the list row and adds nothing."""
+    import json
+    from .modules_shim import ensure_path
+    ensure_path()
+    import jcns_mdf
+    per_file = []
+    for ref in rp.mdf_refs:
+        path = bpy.path.abspath(ref.filepath) if ref.filepath else ""
+        if not path:
+            ref.status = ""
+            continue
+        try:
+            mats = jcns_mdf.read_file(path)
+        except (OSError, jcns_mdf.MdfError) as exc:
+            ref.status = str(exc)
+            continue
+        ref.status = ""
+        ref.material_count = len(mats)
+        per_file.append(mats)
+    cat = jcns_mdf.catalog(per_file)
+    rp.mdf_catalog_json = json.dumps(cat, ensure_ascii=False) if cat else ""
+
+
+def resolve_material_names(root):
+    """Fill blank material / parameter names of a root's Material entries from its
+    reference files, matching the hashes.  -> number of names filled."""
+    cat = mdf_catalog(root.jcns_root_props)
+    if not cat:
+        return 0
+    by_hash = {int(e['hash']): name for name, e in cat.items()}
+    filled = 0
+    for o in section_empties(root, 'Material'):
+        p = o.jcns_cns_props
+        try:
+            nh, ph = int(p.mat_name_hash, 16), int(p.mat_property_hash, 16)
+        except ValueError:
+            continue
+        if not p.mat_name and nh in by_hash:
+            p.mat_name = by_hash[nh]
+            filled += 1
+        # Shipped files sometimes name a material the model does not have while the
+        # parameter is one of its own: look in the named material first, then in all.
+        mat = cat.get(p.mat_name)
+        if not p.mat_property:
+            for m in ([mat] if mat is not None else []) + list(cat.values()):
+                pname = next((n for n, (h, _c) in m['params'].items() if int(h) == ph), None)
+                if pname:
+                    p.mat_property = pname
+                    filled += 1
+                    break
+    return filled
+
+
+def material_mismatch(p, rp):
+    """Why a Material entry's names are not in its root's reference files, or ''."""
+    cat = mdf_catalog(rp)
+    if not cat or not p.mat_name:
+        return ''
+    mat = cat.get(p.mat_name)
+    if mat is None:
+        return T("editors.mat.no_material")
+    if p.mat_property and p.mat_property not in mat['params']:
+        return T("editors.mat.no_param")
+    return ''
+
+
+def _update_mdf_ref(self, context):
+    root = self.id_data
+    rp = getattr(root, 'jcns_root_props', None)
+    if rp is None:
+        return
+    refresh_mdf_catalog(rp)
+    resolve_material_names(root)
+
+
+def _search_mat_name(self, context, edit_text):
+    _root, rp = get_jcns_root_from_constraint(self.id_data)
+    needle = edit_text.lower()
+    return sorted(n for n in mdf_catalog(rp) if needle in n.lower())
+
+
+def _search_mat_property(self, context, edit_text):
+    _root, rp = get_jcns_root_from_constraint(self.id_data)
+    cat = mdf_catalog(rp)
+    mats = [cat[self.mat_name]] if self.mat_name in cat else list(cat.values())
+    needle = edit_text.lower()
+    seen = {}
+    for m in mats:
+        for pname, (_h, n) in m['params'].items():
+            if needle in pname.lower():
+                seen.setdefault(pname, n)
+    return [(pname, T("props.mat.components", n)) for pname, n in sorted(seen.items())]
+
+
 def _update_mat_name_hash(self, context):
     _unsync_mat(self, 'mat_name', 'mat_name_hash')
 
@@ -348,6 +464,53 @@ def _search_target_bone(self, context, edit_text):
     return _search_bone_names(context, edit_text)
 
 
+def _output_kind(props):
+    from .modules_shim import get_targets
+    te = next((v for v, n in TRANSFORM_ELEMENT_MAP.items() if n == props.transform_element), 1)
+    return get_targets().target_kind(te)
+
+
+def _used_names(props, attr, kind):
+    """Values of `attr` on this root's other Outputs entries whose target is of `kind`."""
+    root, _rp = get_jcns_root_from_constraint(props.id_data)
+    if root is None:
+        return set()
+    return {getattr(o.jcns_cns_props, attr) for o in get_constraint_empties(root)
+            if o != props.id_data and _output_kind(o.jcns_cns_props) == kind} - {""}
+
+
+def _matching(names, edit_text):
+    needle = edit_text.lower()
+    matches = sorted(n for n in names if needle in n.lower())
+    if edit_text and edit_text not in names:
+        return [edit_text] + matches
+    return matches
+
+
+def _search_output_target(self, context, edit_text):
+    """Bones for joint targets, the reference mdf2 materials for material targets,
+    and otherwise the names other entries of the same kind use."""
+    kind = _output_kind(self)
+    if kind == 'bone':
+        return _search_bone_names(context, edit_text)
+    names = _used_names(self, 'target_bone', kind)
+    if kind == 'material':
+        _root, rp = get_jcns_root_from_constraint(self.id_data)
+        names |= set(mdf_catalog(rp))
+    return _matching(names, edit_text)
+
+
+def _search_output_property(self, context, edit_text):
+    kind = _output_kind(self)
+    names = _used_names(self, 'target_property', kind)
+    if kind == 'material':
+        _root, rp = get_jcns_root_from_constraint(self.id_data)
+        cat = mdf_catalog(rp)
+        for m in ([cat[self.target_bone]] if self.target_bone in cat else cat.values()):
+            names |= set(m['params'])
+    return _matching(names, edit_text)
+
+
 # ---------------------------------------------------------------------------
 # Property Group: one JointDriver_v2 block
 # ---------------------------------------------------------------------------
@@ -536,7 +699,7 @@ class JCNSConstraintProperties(PropertyGroup):
         name=T("props.cns.target_bone"),
         description=T("props.cns.target_bone_desc"),
         default="",
-        search=_search_target_bone,
+        search=_search_output_target,
         search_options={'SUGGESTION'},
     )
     transform_element: EnumProperty(
@@ -584,6 +747,8 @@ class JCNSConstraintProperties(PropertyGroup):
         name=T("props.cns.target_property"),
         description=T("props.cns.target_property_desc"),
         default="",
+        search=_search_output_property,
+        search_options={'SUGGESTION'},
     )
     # The two hashes below are overrides in a signed IntProperty (a uint32 above 2**31
     # is stored as its two's-complement negative); 0 derives the hash from the name.
@@ -619,10 +784,12 @@ class JCNSConstraintProperties(PropertyGroup):
     mat_name: StringProperty(
         name=T("props.cns.mat_name"), description=T("props.cns.mat_name_desc"),
         default="", update=_update_mat_name,
+        search=_search_mat_name, search_options={'SUGGESTION', 'SORT'},
     )
     mat_property: StringProperty(
         name=T("props.cns.mat_property"), description=T("props.cns.mat_property_desc"),
         default="", update=_update_mat_property,
+        search=_search_mat_property, search_options={'SUGGESTION', 'SORT'},
     )
     mat_name_hash: StringProperty(
         name="MaterialNameHash",
@@ -806,6 +973,14 @@ def _browser_kind_items():
             for i, k in enumerate(get_kinds().TAB_KINDS)]
 
 
+class JCNSMdfRef(PropertyGroup):
+    """A reference .mdf2 whose material and parameter names the Material entries pick from."""
+    filepath: StringProperty(name=T("props.mdf_ref.filepath"), description=T("props.mdf_ref.filepath_desc"),
+                             subtype='FILE_PATH', default="", update=_update_mdf_ref)
+    status: StringProperty(default="")           # why the file could not be read
+    material_count: IntProperty(default=0)
+
+
 class JCNSRootProperties(PropertyGroup):
     """On the root Empty of a JCNS collection (one root plus N entry Empties)."""
     # Constraint baking (jcns_sdk_ops.py)
@@ -817,6 +992,10 @@ class JCNSRootProperties(PropertyGroup):
     sdk_driven_index: IntProperty(default=0)
     sdk_keys: CollectionProperty(type=JCNSSDKKey)
     sdk_key_index: IntProperty(default=0)
+    # Reference .mdf2 files for the Material entries, and what they hold
+    mdf_refs: CollectionProperty(type=JCNSMdfRef)
+    mdf_ref_index: IntProperty(default=0)
+    mdf_catalog_json: StringProperty(default="")
     # JointExprGraph (section 5): one path per file; empty = no JXG section
     jxg_path: StringProperty(
         name=T("props.root.jxg_path"), description=T("props.root.jxg_path_desc"), default="",
@@ -1114,6 +1293,7 @@ _classes = [
     JCNSSDKSnapshot,
     JCNSSDKKey,
     JCNSSDKBone,
+    JCNSMdfRef,
     JCNSRootProperties,
 ]
 

@@ -119,4 +119,5 @@ Transformation 约束按欧拉分量乘系数，引擎是否如此未测；预�
 - **RotExpr**：系数（`rot_gains`）和静止姿态模式（`rot_rest_mode`）已放进主面板；`rot_rotation`/`rot_scale` 是恒等四元数，
   `rot_scale` 这个名字有误导性。
 - **Material**：主面板填材质名、参数名（mdf2 原文），自动算出两个哈希（murmur3 UTF-16，与骨骼名同一函数，语料 19/20、5/5 对上）；手改哈希会清掉对不上的名字。ApplyMode 用下拉；新建的尾部字节取语料最常见的 00 01 00。
+  Material 分区下方是「参考 mdf2」列表（根节点 `mdf_refs`，可多个）：读到的材质名/参数名成为两栏的下拉候选，已有条目按哈希反查补名（材质不在参考里时参数名在全部材质里找）；名字对不上参考时面板报警。导入时同目录的 `*.mdf2.*` 自动加入。语料里约三分之一的原版记录与本模型 mdf2 不一致（如 ch02/ch03_018 系列指向 ch05 的 `Liquid3`）。
 - **文件信息**：ObjectSettings、ConeDriver 表、读取骨表目前只读展示；ObjectSettings 的含义还没研究过。

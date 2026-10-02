@@ -18,6 +18,11 @@ STRINGS = {
     "ui.cone.missing": {"ZH": "（不存在）", "EN": "(missing)"},
 
     # --- jcns_ui.py: preview panel ---
+    "ui.mdf.title": {"ZH": "参考 mdf2", "EN": "Reference mdf2"},
+    "ui.mdf.hint": {"ZH": "添加模型的 .mdf2 后，材质名和参数名可以从下拉里选",
+                    "EN": "Add the model's .mdf2 to pick material and parameter names from a list"},
+    "ui.mdf.no_file": {"ZH": "（未选文件）", "EN": "(no file)"},
+    "ui.mdf.count": {"ZH": "%d 个材质", "EN": "%d materials"},
     "ui.preview.label": {"ZH": "预览", "EN": "Preview"},
     "ui.preview.panel_desc": {"ZH": "整个界面唯一的预览入口：整个文件，或只有选中的条目。",
                               "EN": "The only preview entry point: the whole file, or just the selected entry."},

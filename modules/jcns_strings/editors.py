@@ -204,5 +204,9 @@ STRINGS = {
     "editors.mat.tail2": {"ZH": "尾2", "EN": "Tail 2"},
 
     # --- Unknown --------------------------------------------------------------------
+    "editors.mat.no_material": {"ZH": "参考 mdf2 里没有这个材质，游戏里可能找不到它",
+                                "EN": "The reference mdf2 files have no material by this name; the game may not find it"},
+    "editors.mat.no_param": {"ZH": "这个材质在参考 mdf2 里没有这个参数",
+                             "EN": "This material has no parameter by this name in the reference mdf2 files"},
     "editors.unrecognized.type": {"ZH": "类型：%s", "EN": "Type: %s"},
 }

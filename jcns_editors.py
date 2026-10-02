@@ -639,6 +639,10 @@ class JCNS_PT_Ed_Material(_EditorMain, Panel):
 
 
 class JCNS_PT_Ed_Material_Raw(_Editor, _Sub, Panel):
+        from . import material_mismatch
+        why = material_mismatch(c.p, c.rp)
+        if why:
+            _wrap_label(c.body, context, why, icon='ERROR', alert=True)
     bl_label  = T("editors.panel.raw_fields")
     bl_idname = "JCNS_PT_ed_material_raw"
     bl_parent_id = "JCNS_PT_ed_material"

@@ -291,6 +291,18 @@ STRINGS = {
         "ZH": "不能新增这类条目。",
         "EN": "This kind of entry cannot be added.",
     },
+    "ops.label.mdf_ref_add": {"ZH": "添加参考 mdf2", "EN": "Add Reference mdf2"},
+    "ops.desc.mdf_ref_add": {
+        "ZH": "读一个 .mdf2，材质名和参数名就能从下拉里选；已有条目里对得上哈希的名字会自动补上",
+        "EN": "Read an .mdf2 so material and parameter names can be picked from a list; names that match existing entries' hashes are filled in",
+    },
+    "ops.label.mdf_ref_remove": {"ZH": "移除参考 mdf2", "EN": "Remove Reference mdf2"},
+    "ops.desc.mdf_ref_remove": {
+        "ZH": "从列表里移除选中的 mdf2，已经填上的名字保留",
+        "EN": "Remove the selected mdf2 from the list; names already filled in stay",
+    },
+    "ops.mdf.added": {"ZH": "读到 %d 个材质", "EN": "Read %d materials"},
+    "ops.mdf.unreadable": {"ZH": "读不了这个 mdf2：%s", "EN": "Cannot read this mdf2: %s"},
     "ops.section.added": {
         "ZH": "已新增「%s」。",
         "EN": "Added \"%s\".",

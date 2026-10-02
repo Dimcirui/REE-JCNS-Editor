@@ -421,6 +421,40 @@ class JCNS_UL_Entries(bpy.types.UIList):
             row.label(text="", icon='HIDE_OFF')
 
 
+class JCNS_UL_MdfRefs(bpy.types.UIList):
+    """The root's reference .mdf2 files."""
+    def draw_item(self, context, layout, data, item, icon, active_data, active_prop, index):
+        import os
+        row = layout.row(align=True)
+        name = os.path.basename(item.filepath) or T("ui.mdf.no_file")
+        if item.status:
+            row.alert = True
+            row.label(text=name, icon='ERROR')
+        else:
+            row.label(text=name, icon='MATERIAL')
+            row.label(text=T("ui.mdf.count", item.material_count))
+
+
+def _draw_mdf_refs(layout, rp):
+    """Reference .mdf2 files whose names the Material entries pick from."""
+    box = layout.box()
+    box.label(text=T("ui.mdf.title"), icon='MATERIAL')
+    row = box.row()
+    row.template_list("JCNS_UL_MdfRefs", "", rp, "mdf_refs", rp, "mdf_ref_index",
+                      rows=2, maxrows=6)
+    side = row.column(align=True)
+    side.operator("jcns.mdf_ref_add", text="", icon='ADD')
+    side.operator("jcns.mdf_ref_remove", text="", icon='REMOVE')
+    if 0 <= rp.mdf_ref_index < len(rp.mdf_refs):
+        ref = rp.mdf_refs[rp.mdf_ref_index]
+        if ref.status:
+            col = box.column()
+            col.alert = True
+            col.label(text=ref.status, icon='ERROR')
+    if not rp.mdf_refs:
+        box.label(text=T("ui.mdf.hint"), icon='INFO')
+
+
 def _short_label(kind):
     """"Multi 蒙皮" -> "Multi"; labels without a latin name stay whole."""
     head = kind.label.split()[0]
@@ -499,6 +533,9 @@ class JCNS_PT_Edit(_RootPanel, Panel):
             sub.enabled = caps.can_move and on_kind
             sub.operator("jcns.move_constraint", text="", icon='TRIA_UP').direction = 'UP'
             sub.operator("jcns.move_constraint", text="", icon='TRIA_DOWN').direction = 'DOWN'
+
+        if kind.id == 'Material':
+            _draw_mdf_refs(layout, rp)
 
 
 def _draw_channels(layout, context, root, rp):
@@ -593,6 +630,7 @@ _classes = [
     JCNS_UL_MultiSources,
     JCNS_UL_ConeDrivers,
     JCNS_UL_Entries,
+    JCNS_UL_MdfRefs,
     JCNS_PT_Status,
     JCNS_PT_Preview,
     JCNS_PT_Edit,

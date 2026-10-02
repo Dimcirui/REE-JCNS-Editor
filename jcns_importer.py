@@ -399,6 +399,13 @@ def do_import(filepath, context, armature_obj=None):
 
     rp.jxg_path = (parser.joint_export_graph or {}).get('path', '') or ''
 
+    # A model folder keeps its .mdf2 next to the .jcns: take those as the Material
+    # entries' references, which also fills in their names.
+    if parser.material_cns:
+        import glob as _glob
+        for mdf in sorted(_glob.glob(os.path.join(_glob.escape(os.path.dirname(filepath)), '*.mdf2.*'))):
+            rp.mdf_refs.add().filepath = mdf
+
     # Every bone name the Ranges spell out: the choices offered for source_bone.
     all_bone_names = set()
     for c in constraints:
