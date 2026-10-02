@@ -75,6 +75,13 @@ Disk...` and pick the `-extension-vX.Y.Z.zip`. Blender 3.6 – 4.1: `Edit >
 Preferences > Add-ons > Install...` and pick the plain `-vX.Y.Z.zip`.
 Both are built with `python build_addon.py --all`.
 
+## Language
+
+The interface is available in English and Chinese. It follows Blender's interface
+language until you press `English` / `中文` at the top of the JCNS panel; that choice
+is remembered. Panel text switches immediately; property names, tooltips and panel
+titles update after the add-on is reloaded or Blender is restarted.
+
 ## Credits
 
 * [NSACloud](https://github.com/NSACloud) — reference for the overall structural
