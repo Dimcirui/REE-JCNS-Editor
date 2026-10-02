@@ -38,6 +38,13 @@ STRINGS = {
     # --- field row labels -----------------------------------------------------------
     "editors.field.bone": {"ZH": "骨骼：", "EN": "Bone:"},
     "editors.field.local_axis": {"ZH": "局部轴向：", "EN": "Local axis:"},
+    "editors.field.channel": {"ZH": "分量：", "EN": "Channel:"},
+    "editors.field.parameter": {"ZH": "参数：", "EN": "Parameter:"},
+    "editors.target.bone": {"ZH": "骨骼：", "EN": "Bone:"},
+    "editors.target.shape_key": {"ZH": "形态键：", "EN": "Shape key:"},
+    "editors.target.material": {"ZH": "材质：", "EN": "Material:"},
+    "editors.target.component": {"ZH": "组件：", "EN": "Component:"},
+    "editors.target.user_value": {"ZH": "名称：", "EN": "Name:"},
     "editors.field.transform": {"ZH": "变换：", "EN": "Transform:"},
     "editors.field.property": {"ZH": "属性：", "EN": "Property:"},
     "editors.field.base_pose": {"ZH": "叠加：", "EN": "Additive:"},

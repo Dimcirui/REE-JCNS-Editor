@@ -91,7 +91,7 @@ STRINGS = {
     'props.source.cm_flag': {"ZH": '曲线标记 (+29)', "EN": 'Curve Flag (+29)'},
     'props.source.cm_flag_desc': {"ZH": '有曲线时为 1，导出时自动设置；材质目标上可能为 2', "EN": '1 when there is a curve, set automatically on export; may be 2 on material targets'},
     'props.cns.target_bone': {"ZH": '被驱动', "EN": 'Driven'},
-    'props.cns.target_bone_desc': {"ZH": '被驱动的骨骼，可输入以搜索本文件哈希表里的骨骼名', "EN": "The driven bone; type to search bone names in this file's hash table"},
+    'props.cns.target_bone_desc': {"ZH": '被驱动对象的名字：骨骼、形态键、材质或组件，随变换类型而定。输入可搜索', "EN": 'Name of what is driven: a bone, shape key, material or component, depending on the transform type. Type to search'},
     'props.cns.transform_element': {"ZH": '变换类型 TransformElement', "EN": 'Transform Element'},
     'props.cns.transform_element_desc': {"ZH": '约束驱动的是旋转、平移还是缩放等', "EN": 'Whether the constraint drives rotation, translation, scale, etc.'},
     'props.cns.target_axis': {"ZH": '被驱动局部轴向', "EN": 'Driven Local Axis'},

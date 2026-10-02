@@ -235,6 +235,15 @@ def _early_read_axes(c, p, sp):
     return [a for a in axes if (sp.source_bone, path, a) in later]
 
 
+_TARGET_LABEL = {
+    'bone': "editors.target.bone",
+    'shape_key': "editors.target.shape_key",
+    'material': "editors.target.material",
+    'component': "editors.target.component",
+    'user_value': "editors.target.user_value",
+}
+
+
 class JCNS_PT_Ed_Ranges(_EditorMain, Panel):
     bl_label  = T("editors.word.driven")
     bl_description = T("editors.panel.driven_desc")
@@ -248,13 +257,17 @@ class JCNS_PT_Ed_Ranges(_EditorMain, Panel):
             return
         layout, obj, p = c.body, c.obj, c.p
 
-        col = layout.column(align=True)
-        _field_row(col, T("editors.field.bone"), p, "target_bone")
-        _field_row(col, T("editors.field.local_axis"), p, "target_axis")
-        _field_row(col, T("editors.field.transform"), p, "transform_element")
         from .jcns_exporter import _transform_int
-        if p.target_property or _targets().has_property_name(_transform_int(p.transform_element)):
-            _field_row(col, T("editors.field.property"), p, "target_property")
+        te = _transform_int(p.transform_element)
+        kind = _targets().target_kind(te)
+        col = layout.column(align=True)
+        _field_row(col, T(_TARGET_LABEL[kind]), p, "target_bone")
+        _field_row(col, T("editors.field.local_axis" if kind == 'bone' else "editors.field.channel"),
+                   p, "target_axis")
+        _field_row(col, T("editors.field.transform"), p, "transform_element")
+        if p.target_property or _targets().has_property_name(te):
+            _field_row(col, T("editors.field.parameter" if kind == 'material' else "editors.field.property"),
+                       p, "target_property")
         _field_row(col, T("editors.field.base_pose"), p, "base_pose")
 
         # 导出按 [N] 前缀排列；同一通道上后写的那条覆盖前面的。

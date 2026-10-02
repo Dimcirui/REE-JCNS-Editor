@@ -17,6 +17,23 @@ DIRECT_TARGET_TYPES = frozenset({3, 7, 8, 9, 10, 11, 12})
 PROPERTY_TYPES = frozenset({7, 8, 9, 10, 11})
 
 
+MATERIAL_TYPES = frozenset({7, 8, 9, 10})
+
+
+def target_kind(transform_element):
+    """What ObjectName names for a TransformElement byte: 'bone', 'shape_key' (3),
+    'material' (7-10), 'component' (11) or 'user_value' (12)."""
+    if transform_element == 3:
+        return 'shape_key'
+    if transform_element in MATERIAL_TYPES:
+        return 'material'
+    if transform_element == 11:
+        return 'component'
+    if transform_element == 12:
+        return 'user_value'
+    return 'bone'
+
+
 def is_direct_target(transform_element):
     """Whether a TransformElement byte names its target by ObjectHash instead of a hash-table index."""
     return transform_element in DIRECT_TARGET_TYPES
