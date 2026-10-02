@@ -1,0 +1,664 @@
+{
+ "via.motion.detail.JointDriverTangentType": {
+  "count": 11,
+  "values": [
+   [
+    "Auto",
+    0
+   ],
+   [
+    "Spline",
+    1
+   ],
+   [
+    "Linear",
+    2
+   ],
+   [
+    "Fast",
+    3
+   ],
+   [
+    "Slow",
+    4
+   ],
+   [
+    "Flat",
+    5
+   ],
+   [
+    "Step",
+    6
+   ],
+   [
+    "StepNext",
+    7
+   ],
+   [
+    "Fixed",
+    8
+   ],
+   [
+    "Clamped",
+    9
+   ],
+   [
+    "Plateau",
+    10
+   ]
+  ]
+ },
+ "via.motion.detail.JointDriverInfinityType": {
+  "count": 5,
+  "values": [
+   [
+    "Const",
+    0
+   ],
+   [
+    "Linear",
+    1
+   ],
+   [
+    "Oscilate",
+    2
+   ],
+   [
+    "Cycle",
+    3
+   ],
+   [
+    "CycleRelative",
+    4
+   ]
+  ]
+ },
+ "via.motion.JointExMultiRemapValue.RotOrder": {
+  "count": 6,
+  "values": [
+   [
+    "XYZ",
+    0
+   ],
+   [
+    "YZX",
+    1
+   ],
+   [
+    "ZXY",
+    2
+   ],
+   [
+    "ZYX",
+    3
+   ],
+   [
+    "YXZ",
+    4
+   ],
+   [
+    "XZY",
+    5
+   ]
+  ]
+ },
+ "via.motion.JointExMultiRemapValue.ConstraintType": {
+  "count": 7,
+  "values": [
+   [
+    "Outputs",
+    0
+   ],
+   [
+    "RotExpression",
+    1
+   ],
+   [
+    "Multi",
+    2
+   ],
+   [
+    "Aim",
+    3
+   ],
+   [
+    "Material",
+    4
+   ],
+   [
+    "JointExprGraph",
+    5
+   ],
+   [
+    "Max",
+    6
+   ]
+  ]
+ },
+ "via.motion.JointExMultiRemapValue.ConeInputData.ConeAxis": {
+  "count": 7,
+  "values": [
+   [
+    "X",
+    0
+   ],
+   [
+    "Y",
+    1
+   ],
+   [
+    "Z",
+    2
+   ],
+   [
+    "MinusX",
+    3
+   ],
+   [
+    "MinusY",
+    4
+   ],
+   [
+    "MinusZ",
+    5
+   ],
+   [
+    "Vector",
+    6
+   ]
+  ]
+ },
+ "via.motion.JointExMultiRemapValue.ConeInputData.AttrFlags": {
+  "count": 2,
+  "values": [
+   [
+    "None",
+    0
+   ],
+   [
+    "BasePose",
+    1
+   ]
+  ]
+ },
+ "via.motion.JointExMultiRemapValue.OutputData.TransformElement": {
+  "count": 17,
+  "values": [
+   [
+    "Trans",
+    0
+   ],
+   [
+    "Rot",
+    1
+   ],
+   [
+    "Scale",
+    2
+   ],
+   [
+    "Deform",
+    3
+   ],
+   [
+    "RotRPY",
+    4
+   ],
+   [
+    "RotPYR",
+    5
+   ],
+   [
+    "ExpMap",
+    6
+   ],
+   [
+    "Material",
+    7
+   ],
+   [
+    "MaterialF4",
+    8
+   ],
+   [
+    "MaterialPosF4",
+    9
+   ],
+   [
+    "MaterialRotF4",
+    10
+   ],
+   [
+    "ComponentProperty",
+    11
+   ],
+   [
+    "UserValue",
+    12
+   ],
+   [
+    "Rot2",
+    13
+   ],
+   [
+    "RotRPY2",
+    14
+   ],
+   [
+    "RotPYR2",
+    15
+   ],
+   [
+    "ExpMap2",
+    16
+   ]
+  ]
+ },
+ "via.motion.JointExMultiRemapValue.OutputData.OutputMode": {
+  "count": 5,
+  "values": [
+   [
+    "Mode_Sum",
+    0
+   ],
+   [
+    "Mode_Average",
+    1
+   ],
+   [
+    "Mode_Mul",
+    2
+   ],
+   [
+    "Mode_Min",
+    3
+   ],
+   [
+    "Mode_Max",
+    4
+   ]
+  ]
+ },
+ "via.motion.JointExMultiRemapValue.OutputData.Axis": {
+  "count": 4,
+  "values": [
+   [
+    "X",
+    0
+   ],
+   [
+    "Y",
+    1
+   ],
+   [
+    "Z",
+    2
+   ],
+   [
+    "W",
+    3
+   ]
+  ]
+ },
+ "via.motion.JointExMultiRemapValue.OutputData.AttrFlags": {
+  "count": 7,
+  "values": [
+   [
+    "None",
+    0
+   ],
+   [
+    "BasePose",
+    1
+   ],
+   [
+    "World",
+    2
+   ],
+   [
+    "ClampMin",
+    4
+   ],
+   [
+    "ClampMax",
+    8
+   ],
+   [
+    "OutJoint",
+    16
+   ],
+   [
+    "OutRot",
+    32
+   ]
+  ]
+ },
+ "via.motion.JointExMultiRemapValue.OutputData.Interpolation": {
+  "count": 4,
+  "values": [
+   [
+    "Linear",
+    0
+   ],
+   [
+    "Slow",
+    1
+   ],
+   [
+    "Fast",
+    2
+   ],
+   [
+    "Smooth",
+    3
+   ]
+  ]
+ },
+ "via.motion.JointExMultiRemapValue.OutputData.TangentType": {
+  "count": 11,
+  "values": [
+   [
+    "Auto",
+    0
+   ],
+   [
+    "Spline",
+    1
+   ],
+   [
+    "Linear",
+    2
+   ],
+   [
+    "Fast",
+    3
+   ],
+   [
+    "Slow",
+    4
+   ],
+   [
+    "Flat",
+    5
+   ],
+   [
+    "Step",
+    6
+   ],
+   [
+    "StepNext",
+    7
+   ],
+   [
+    "Fixed",
+    8
+   ],
+   [
+    "Clamped",
+    9
+   ],
+   [
+    "Plateau",
+    10
+   ]
+  ]
+ },
+ "via.motion.JointExMultiRemapValue.OutputData.PackFlags": {
+  "count": 2,
+  "values": [
+   [
+    "None",
+    0
+   ],
+   [
+    "InputPack",
+    1
+   ]
+  ]
+ },
+ "via.motion.JointExMultiRemapValue.OutputData.ConeDriverData.CurveType": {
+  "count": 2,
+  "values": [
+   [
+    "MinMax",
+    0
+   ],
+   [
+    "Function",
+    1
+   ]
+  ]
+ },
+ "via.motion.JointExMultiRemapValue.OutputData.JointDriverData.AttrFlags": {
+  "count": 4,
+  "values": [
+   [
+    "None",
+    0
+   ],
+   [
+    "BasePose",
+    1
+   ],
+   [
+    "MidPoint",
+    2
+   ],
+   [
+    "World",
+    4
+   ]
+  ]
+ },
+ "via.motion.JointExMultiRemapValue.OutputData.JointDriverData.CurveType": {
+  "count": 3,
+  "values": [
+   [
+    "MinMax",
+    0
+   ],
+   [
+    "Function",
+    1
+   ],
+   [
+    "Scaling",
+    2
+   ]
+  ]
+ },
+ "via.motion.JointExMultiRemapValue.OutputData.JointDriverData.InputType": {
+  "count": 6,
+  "values": [
+   [
+    "Trans",
+    0
+   ],
+   [
+    "Rot",
+    1
+   ],
+   [
+    "Scale",
+    2
+   ],
+   [
+    "RotRPY",
+    3
+   ],
+   [
+    "RotPYR",
+    4
+   ],
+   [
+    "ExpMap",
+    5
+   ]
+  ]
+ },
+ "via.motion.JointExMultiRemapValue.AimConstraintData.WorldUpType": {
+  "count": 6,
+  "values": [
+   [
+    "SceneUp",
+    0
+   ],
+   [
+    "ObjectUp",
+    1
+   ],
+   [
+    "ObjectRotationUp",
+    2
+   ],
+   [
+    "Vector",
+    3
+   ],
+   [
+    "None",
+    4
+   ],
+   [
+    "None_MayaLike",
+    5
+   ]
+  ]
+ },
+ "via.motion.JointExMultiRemapValue.MaterialConstraintData.ApplyMode": {
+  "count": 4,
+  "values": [
+   [
+    "Trans",
+    0
+   ],
+   [
+    "Euler",
+    1
+   ],
+   [
+    "Scale",
+    2
+   ],
+   [
+    "Rot",
+    3
+   ]
+  ]
+ },
+ "via.motion.JointConstraintsResource.LegacyVersion": {
+  "count": 2,
+  "values": [
+   [
+    "Latest",
+    0
+   ],
+   [
+    "Legacy1",
+    1
+   ]
+  ]
+ },
+ "via.motion.exprgraph.CoordSpace": {
+  "count": 3,
+  "values": [
+   [
+    "Local",
+    0
+   ],
+   [
+    "Global",
+    1
+   ],
+   [
+    "LocalDiffBase",
+    2
+   ]
+  ]
+ },
+ "via.motion.exprgraph.CoordUnit": {
+  "count": 2,
+  "values": [
+   [
+    "Centimeter",
+    0
+   ],
+   [
+    "Meter",
+    1
+   ]
+  ]
+ },
+ "via.motion.exprgraph.RotUnit": {
+  "count": 2,
+  "values": [
+   [
+    "Rad",
+    0
+   ],
+   [
+    "Deg",
+    1
+   ]
+  ]
+ },
+ "via.motion.exprgraph.RotComposeType": {
+  "count": 3,
+  "values": [
+   [
+    "RotRPY",
+    0
+   ],
+   [
+    "RotPYR",
+    1
+   ],
+   [
+    "ExpMap",
+    2
+   ]
+  ]
+ },
+ "via.motion.exprgraph.RbfKernelType": {
+  "count": 6,
+  "values": [
+   [
+    "Linear",
+    0
+   ],
+   [
+    "Gaussian1",
+    1
+   ],
+   [
+    "Gaussian2",
+    2
+   ],
+   [
+    "ThinPlateSpline",
+    3
+   ],
+   [
+    "MultiQuadricBiharmonic",
+    4
+   ],
+   [
+    "InverseMultiQuadricBiharmonic",
+    5
+   ]
+  ]
+ },
+ "via.motion.exprgraph.RbfDistanceType": {
+  "count": 2,
+  "values": [
+   [
+    "Euclidean",
+    0
+   ],
+   [
+    "Angle",
+    1
+   ]
+  ]
+ }
+}
