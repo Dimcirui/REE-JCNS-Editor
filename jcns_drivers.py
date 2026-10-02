@@ -261,6 +261,90 @@ def _on_load(_dummy):
         print("[JCNS] channel rebuild failed: %r" % exc)
 
 
+# Blender runs a Python driver only in a file it trusts; otherwise it shows the
+# "disabled auto-execution" dialog and the driver stays dead.  A saved file therefore
+# carries none: they come off before the save and go back right after it, so the
+# previews live on in the open session and are applied again after the file is opened.
+_STRIPPED = []      # (object name, driver snapshot) of drivers taken off, not yet put back
+_FLAGGED = []       # names of entries whose preview_on was cleared for the save
+_TARGET_PROPS = ('id', 'data_path', 'bone_target', 'transform_type', 'rotation_mode',
+                 'transform_space')
+
+
+def _jcns_drivers():
+    for obj in bpy.data.objects:
+        if obj.animation_data is None:
+            continue
+        for fc in list(obj.animation_data.drivers):
+            if fc.driver.type == 'SCRIPTED' and fc.driver.expression.startswith('jcns_ch('):
+                yield obj, fc
+
+
+def _snapshot(fc):
+    d = fc.driver
+    return {'path': fc.data_path, 'index': fc.array_index, 'mute': fc.mute,
+            'use_self': d.use_self, 'expression': d.expression,
+            'variables': [(v.name, v.type, [{k: getattr(t, k) for k in _TARGET_PROPS}
+                                            for t in v.targets]) for v in d.variables]}
+
+
+def _put_back(obj, snap):
+    obj.animation_data_create()
+    obj.driver_remove(snap['path'], snap['index'])
+    fc = obj.driver_add(snap['path'], snap['index'])
+    fc.keyframe_points.clear()
+    fc.mute = snap['mute']
+    d = fc.driver
+    d.type = 'SCRIPTED'
+    d.use_self = snap['use_self']
+    while d.variables:
+        d.variables.remove(d.variables[0])
+    for name, vtype, targets in snap['variables']:
+        v = d.variables.new()
+        v.name, v.type = name, vtype
+        for t, props in zip(v.targets, targets):
+            for k, val in props.items():
+                setattr(t, k, val)
+    d.expression = snap['expression']
+
+
+@bpy.app.handlers.persistent
+def _on_save_pre(*_args):
+    try:
+        for obj, fc in list(_jcns_drivers()):
+            _STRIPPED.append((obj.name, _snapshot(fc)))
+            obj.animation_data.drivers.remove(fc)
+        from . import jcns_preview
+        for obj in bpy.data.objects:
+            p = getattr(obj, 'jcns_cns_props', None)
+            if p is None or not p.is_jcns_constraint or not p.preview_on:
+                continue
+            backend = jcns_preview.backend_of(p.constraint_type)
+            if backend is not None and backend.id == 'driver':
+                p.preview_on = False
+                _FLAGGED.append(obj.name)
+    except Exception as exc:                                  # never break saving
+        print("[JCNS] taking drivers off before save failed: %r" % exc)
+
+
+@bpy.app.handlers.persistent
+def _on_save_post(*_args):
+    try:
+        for name, snap in _STRIPPED:
+            obj = bpy.data.objects.get(name)
+            if obj is not None:
+                _put_back(obj, snap)
+        for name in _FLAGGED:
+            obj = bpy.data.objects.get(name)
+            if obj is not None:
+                obj.jcns_cns_props.preview_on = True
+    except Exception as exc:
+        print("[JCNS] putting drivers back after save failed: %r" % exc)
+    finally:
+        _STRIPPED.clear()
+        _FLAGGED.clear()
+
+
 def transform_path(transform):
     """The pose-bone data path a TransformType drives, or None."""
     from .jcns_operators import _DRIVABLE
@@ -274,11 +358,19 @@ def register():
     get_mapping().set_rest_resolver(source_rest_input_of)
     if _on_load not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(_on_load)
+    if _on_save_pre not in bpy.app.handlers.save_pre:
+        bpy.app.handlers.save_pre.append(_on_save_pre)
+    if _on_save_post not in bpy.app.handlers.save_post:
+        bpy.app.handlers.save_post.append(_on_save_post)
 
 
 def unregister():
     if _on_load in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_on_load)
+    if _on_save_pre in bpy.app.handlers.save_pre:
+        bpy.app.handlers.save_pre.remove(_on_save_pre)
+    if _on_save_post in bpy.app.handlers.save_post:
+        bpy.app.handlers.save_post.remove(_on_save_post)
     bpy.app.driver_namespace.pop('jcns_ch', None)
     get_mapping().set_rest_resolver(None)
     clear_channels()
