@@ -13,6 +13,14 @@ _MODULES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modules")
 if _MODULES not in sys.path:
     sys.path.insert(0, _MODULES)
 
+# modules/ is imported as top-level modules, which outlive a reinstall or reload of
+# the add-on package: without this, new code runs on the old string table, mapping
+# and so on until Blender restarts.  This file is imported once per package load.
+_OWN = {os.path.splitext(n)[0] for n in os.listdir(_MODULES)
+        if n.endswith(".py") or os.path.isdir(os.path.join(_MODULES, n))}
+for _name in [m for m in sys.modules if m.split(".")[0] in _OWN]:
+    del sys.modules[_name]
+
 from jcns_i18n import T, get_lang, set_lang  # noqa: E402,F401
 _mapping = None
 _mirror = None
