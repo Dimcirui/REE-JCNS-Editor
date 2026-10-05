@@ -204,6 +204,10 @@ STRINGS = {
     "editors.mat.name": {"ZH": "材质名", "EN": "Material"},
     "editors.mat.property": {"ZH": "参数名", "EN": "Parameter"},
     "editors.mat.apply_mode": {"ZH": "写入方式", "EN": "Apply mode"},
+    "editors.mat.no_material": {"ZH": "参考 mdf2 里没有这个材质，游戏里可能找不到它",
+                                "EN": "The reference mdf2 files have no material by this name; the game may not find it"},
+    "editors.mat.no_param": {"ZH": "这个材质在参考 mdf2 里没有这个参数",
+                             "EN": "This material has no parameter by this name in the reference mdf2 files"},
     "editors.mat.untested": {"ZH": "材质名和参数名填模型 mdf2 里的原文；在游戏里的具体效果未知", "EN": "Use the names exactly as they appear in the model's mdf2; the in-game effect is not known"},
     "editors.mat.property_hash": {"ZH": "属性哈希", "EN": "Property hash"},
     "editors.mat.tail0": {"ZH": "尾0", "EN": "Tail 0"},
@@ -211,9 +215,5 @@ STRINGS = {
     "editors.mat.tail2": {"ZH": "尾2", "EN": "Tail 2"},
 
     # --- Unknown --------------------------------------------------------------------
-    "editors.mat.no_material": {"ZH": "参考 mdf2 里没有这个材质，游戏里可能找不到它",
-                                "EN": "The reference mdf2 files have no material by this name; the game may not find it"},
-    "editors.mat.no_param": {"ZH": "这个材质在参考 mdf2 里没有这个参数",
-                             "EN": "This material has no parameter by this name in the reference mdf2 files"},
     "editors.unrecognized.type": {"ZH": "类型：%s", "EN": "Type: %s"},
 }
