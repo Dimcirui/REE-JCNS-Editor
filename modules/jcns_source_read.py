@@ -90,13 +90,25 @@ def from_euler_xyz(euler):
     return q
 
 
+def from_euler_order(euler, order):
+    """Euler angles (x, y, z) -> quaternion for one RotOrder, R_i * R_j * R_k."""
+    q = (1.0, 0.0, 0.0, 0.0)
+    for a in ROT_ORDERS.get(order, ROT_ORDERS[0]):
+        h = euler[a] * 0.5
+        r = [math.cos(h), 0.0, 0.0, 0.0]
+        r[a + 1] = math.sin(h)
+        q = qmul(q, r)
+    return q
+
+
 def pose_rotation(rest, euler):
     """The bone's whole parent-relative rotation for a Blender XYZ Euler pose."""
     return _pos_w(qmul(rest, from_euler_xyz(euler)))
 
 
-# +27 RotOrder -> (i, j, k) with R = R_i * R_j * R_k (k applied first)
-ROT_ORDERS = {0: (2, 1, 0), 1: (0, 2, 1), 2: (1, 0, 2), 3: (0, 1, 2)}
+# RotOrder -> (i, j, k) with R = R_i * R_j * R_k (k applied first).  4 YXZ and 5 XZY come
+# from the engine enum; only a Rot2 group's TailBytes[0] uses them so far.
+ROT_ORDERS = {0: (2, 1, 0), 1: (0, 2, 1), 2: (1, 0, 2), 3: (0, 1, 2), 4: (2, 0, 1), 5: (1, 2, 0)}
 # The same orders as Blender names them (first-applied axis first)
 ROT_ORDER_NAMES = {0: 'XYZ', 1: 'YZX', 2: 'ZXY', 3: 'ZYX'}
 
@@ -187,7 +199,8 @@ def override_basis(rest, replaced, added):
 # How a rotation target composes its three channel values, by TransformElement.
 # They mirror the source reads: 1 / 4 / 5 / 6 build the rotation the way InputType 1 / 3 / 4 / 5 take it
 # apart.  13 and 14 hold a single rotation about the written axis per bone -- the
-# last such entry on the bone wins, whatever its axis.
+# last such entry on the bone wins, whatever its axis -- except that one joint group of
+# 13s is a single Euler rotation over its axes in the group's +74 order (round 19).
 TARGET_MODES = {1: 'euler', 4: 'swing_twist', 5: 'twist_swing', 6: 'rotvec',
                 13: 'axis', 14: 'axis'}
 
@@ -232,18 +245,31 @@ def target_basis(rest, parts):
     again; with no added channel q1 is the rest pose.  This matches bones that mix
     add and replace on types 1, 4, 5 and 6 (rounds 13 and 16) and pure replace on all four.
     Axis rotations (13 / 14) hold one rotation and replacing drops the whole rest.
+
+    A part may carry a fifth item, (group, order), for a Rot2 entry: the engine builds
+    one joint group's Rot2 entries into a single Euler rotation in the group's
+    TailBytes[0] order (RemapValue evaluator, disassembly), so the last group wins as a
+    whole.  Without it each entry is its own group and the last entry wins.
     """
     if not parts:
         return (0.0, 0.0, 0.0)
     last = parts[-1]
     mode = last[1]
     if mode == 'axis':
-        q = _axis_q(last[0], last[3])
+        grp = last[4] if len(last) > 4 else None
+        if grp is None:
+            q = _axis_q(last[0], last[3])
+        else:
+            v = [0.0, 0.0, 0.0]
+            for p in parts:
+                if len(p) > 4 and p[4] is not None and p[4][0] == grp[0]:
+                    v[p[0]] = p[3]
+            q = from_euler_order(v, grp[1])
         if not last[2]:
             q = qmul(rest, q)
         return tuple(_euler(_pos_w(qmul(_conj(rest), q)), 0))
-    replaced = {a: v for a, m, r, v in parts if r}
-    added = {a: v for a, m, r, v in parts if not r}
+    replaced = {p[0]: p[3] for p in parts if p[2]}
+    added = {p[0]: p[3] for p in parts if not p[2]}
     q = rest
     if added:
         add = [0.0, 0.0, 0.0]

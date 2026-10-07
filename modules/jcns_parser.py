@@ -148,10 +148,13 @@ class JCNSParser:
       +72:  UnknownByte72          uint8    0 in 98.7%, else 1-4; follows the target bone (99.6%).  Unmeasured.
       +73:  TransformAxis         uint8    bt: AxisID, the target axis; equals target_axis in
                                              every entry.  Takes W (1.1%), sources never do.
-      +74:  TailBytes[0..5]        6 bytes  +74: 0 in 98.9% (else 5/2/1), follows the target bone (99.7%), unmeasured.
+      +74:  TailBytes[0..5]        6 bytes  +74: 0 in 98.9% (else 5/2/1).  The RotOrder a joint group of Rot2 (13)
+                                             entries composes its axes in, read off the group's
+                                             first entry (round 19); no effect on 0/1/2 (rounds 15-16).
                                              +75: 2 in 69%, also 5/0/1/3/6/8; one value per file
                                              in 940 of 971 files (mixed files split translation 2
-                                             / rotation 8 on one bone).  Unmeasured.
+                                             / rotation 8 on one bone).  The native evaluator skips the entry when
+                                             it is below a per-object level (looks like LOD; disassembly only).
                                              +76, +78, +79: always 0.
                                              +77: joint-group count -- the N entries right after
                                              this one (same target, property, TransformElement and

@@ -521,11 +521,30 @@ def replacing_bones(armature_obj, root_obj):
     return out
 
 
+def _rot2_groups(empties):
+    """{entry name: (group start, RotOrder)} for the Rot2 (13) entries: the joint
+    group each sits in (+77 counts) and that group's TailBytes[0], which the engine
+    uses as the Euler order of the whole group."""
+    from .jcns_exporter import _transform_int
+    out = {}
+    i = 0
+    while i < len(empties):
+        head = empties[i].jcns_cns_props
+        k = max(0, head.group_count)
+        for e in empties[i:i + k + 1]:
+            if _transform_int(e.jcns_cns_props.transform_element) == 13:
+                out[e.name] = (i, head.unknown_byte_74)
+        i += k + 1
+    return out
+
+
 def register_bone_group(armature_obj, root_obj, bone, chans):
     """Put one bone's rotation group in the channel table.  -> (keys, sources,
     reads) for the drivers, or None when a channel cannot be previewed."""
     from . import jcns_drivers, get_constraint_empties
-    order = {e.name: i for i, e in enumerate(get_constraint_empties(root_obj))}
+    empties = get_constraint_empties(root_obj)
+    order = {e.name: i for i, e in enumerate(empties)}
+    rot2 = _rot2_groups(empties)
     parts, all_sources, all_reads = [], [], []
     # File order of the live entries: for a single-axis type the last one wins.
     for axis in sorted(chans, key=lambda a: order.get(chans[a][-1].name, -1)):
@@ -535,7 +554,8 @@ def register_bone_group(armature_obj, root_obj, bone, chans):
             return None
         reads = [jcns_drivers.source_read(s) for s in sources]
         parts.append((axis, _target_mode(members), _replaces(members),
-                      [jcns_drivers.source_map(s, 'Rotation') for s in sources], reads))
+                      [jcns_drivers.source_map(s, 'Rotation') for s in sources], reads,
+                      rot2.get(members[-1].name)))
         all_sources += sources
         all_reads += reads
     rest, _off = _rest_transform(armature_obj, bone)

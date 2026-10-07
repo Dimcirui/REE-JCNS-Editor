@@ -110,7 +110,7 @@ STRINGS = {
     'props.cns.property_hash_desc': {"ZH": '按有符号整数显示，0 表示用目标属性名的哈希，只有属性名对不上哈希时才需要填', "EN": 'Shown as a signed integer; 0 uses the hash of the target property name; only needed when the name does not match the hash'},
     'props.cns.object_hash': {"ZH": '目标哈希覆盖', "EN": 'Target Hash Override'},
     'props.cns.object_hash_desc': {"ZH": '只用于按哈希指定的目标（形变、材质、标量、命名输出），按有符号整数显示，0 表示用目标名的哈希，只有名字对不上哈希时才需要填', "EN": 'Only for targets specified by hash (blend shape, material, scalar, named output); shown as a signed integer; 0 uses the hash of the target name; only needed when the name does not match the hash'},
-    'props.cns.unknown_byte_74_desc': {"ZH": '具体作用未知。通常为 0（约 99%），跟着被驱动骨走', "EN": 'Purpose unknown. Usually 0 (about 99%); follows the driven bone'},
+    'props.cns.unknown_byte_74_desc': {"ZH": 'Rot2 关节组合成各轴时的欧拉顺序，取组内第一条的值。其他变换类型上无效。通常为 0', "EN": 'Euler order a Rot2 joint group composes its axes in, taken from the first entry of the group. No effect on other transform types. Usually 0'},
     'props.cns.unknown_byte_75_desc': {"ZH": '具体作用未知。通常为 2（约 69%），同一文件里同一变换类型一般只用一个值', "EN": 'Purpose unknown. Usually 2 (about 69%); within one file a transform type normally uses a single value'},
     'props.cns.group_count': {"ZH": '关节组计数', "EN": 'Joint Group Count'},
     'props.cns.group_count_desc': {"ZH": '紧跟在这条后面、与它同目标同变换同 AttrFlags 的连续条目数（组首填 N，组员填 0），导出时自动校验', "EN": "Number of consecutive entries right after this one with the same target, transform and AttrFlags (N on the group's first entry, 0 on the others); validated on export"},

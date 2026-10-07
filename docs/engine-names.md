@@ -226,6 +226,7 @@ ExprJointGetNode、ExprJointSetNode。
     对应 OutputMode Sum/Average/Mul/Min/Max。
   - **Rot2（13）**：沿关节组步进（每条 0x50），按各条的 Axis（+0x49）把值收进 vec3，再用 `TailBytes[0]`（+0x4A）
     作 **RotOrder** 转成四元数（和锥形 Offset 用的是同一个欧拉转换 B0E1050）。AttrFlags bit0 打开时再乘关节的静止局部旋转。
+    **第 19 轮实测成立**：同组按组首的 TailBytes[0] 合成（误差 ≤0.0014°），分开成组时最后一条胜出。
     语料里 TailBytes[0] 非 0 的值是 1/2/5（YZX/ZXY/XZY），也出现在 Trans/Rot/Scale 等条目上。那些条目读不读它，还没查。
   - AttrFlags bit4（+0x2E & 0x10）为真时，先按 ObjectHashIndex（+0x20）查一次目标，查不到就跳过。
 

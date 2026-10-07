@@ -17,7 +17,8 @@ Engine rules the reads follow:
 A bone's three rotation_euler drivers are built as one group, each evaluating the
 whole bone (jcns_source_read.target_basis), when its rotation TransformElement is not
 1 (4 / 5 / 6 compose by swing-twist, twist-swing and rotation vector; 13 / 14 hold
-one rotation about the last written axis), or when a target entry with AttrFlags
+one rotation about the last written axis, and a joint group of 13s one Euler rotation
+in its +74 order), or when a target entry with AttrFlags
 bit0 = 0 lands on a bone with a rest rotation (it replaces the rest pose).
 """
 
@@ -124,7 +125,7 @@ def clear_channels():
     _GROUPS.clear()
 
 
-# gid -> {'rest': (w, x, y, z), 'parts': [(axis, mode, replaces, maps, reads), ...]}
+# gid -> {'rest': (w, x, y, z), 'parts': [(axis, mode, replaces, maps, reads[, rot2_group]), ...]}
 # for a bone whose rotation or location drivers are built together; parts are in
 # file order of their live entries.  Location groups also carry 'offset', the
 # parent-relative rest offset in metres.  The bone's channels are in _CHANNELS as
@@ -181,13 +182,14 @@ def _group_value(ch, values):
         return 0.0
     parts = []
     at = 0
-    for axis, mode, replaces, maps, reads in g['parts']:
+    for part in g['parts']:
+        axis, mode, replaces, maps, reads = part[:5]
         total, used = _total(maps, reads, values[at:])
         at += used
-        parts.append((axis, mode, replaces, total))
+        parts.append((axis, mode, replaces, total) + tuple(part[5:]))
     if 'offset' in g:
         return jcns_source_read.translation_basis(
-            g['rest'], g['offset'], [(a, rep, val) for a, mode, rep, val in parts],
+            g['rest'], g['offset'], [(p[0], p[2], p[3]) for p in parts],
             g.get('parent_scale', (1.0, 1.0, 1.0)))[ch['axis']]
     return jcns_source_read.target_basis(g['rest'], parts)[ch['axis']]
 
