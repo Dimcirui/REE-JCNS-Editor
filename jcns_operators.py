@@ -360,6 +360,8 @@ def _install_driver(armature_obj, bone_name, data_path, index, key, sources, rea
     """Create the jcns_ch driver on one pose-bone channel, with the variables the
     sources' reads ask for, in order.  -> the expression (callers check its length)."""
     from .modules_shim import get_mapping
+    from .jcns_drivers import ensure_namespace
+    ensure_namespace()
     pose_bone = armature_obj.pose.bones[bone_name]
     pose_bone.driver_remove(data_path, index)
     armature_obj.animation_data_create()

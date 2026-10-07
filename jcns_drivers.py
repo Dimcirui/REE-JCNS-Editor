@@ -253,8 +253,15 @@ def rebuild_all():
     return rebuilt
 
 
+def ensure_namespace():
+    """Put jcns_ch back: Blender resets driver_namespace whenever it reads a .blend."""
+    if bpy.app.driver_namespace.get('jcns_ch') is not jcns_ch:
+        bpy.app.driver_namespace['jcns_ch'] = jcns_ch
+
+
 @bpy.app.handlers.persistent
 def _on_load(_dummy):
+    ensure_namespace()
     try:
         n = rebuild_all()
         if n:
@@ -356,7 +363,7 @@ def transform_path(transform):
 
 def register():
     from .jcns_operators import source_rest_input_of
-    bpy.app.driver_namespace['jcns_ch'] = jcns_ch
+    ensure_namespace()
     get_mapping().set_rest_resolver(source_rest_input_of)
     if _on_load not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(_on_load)
