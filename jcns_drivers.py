@@ -13,6 +13,8 @@ Engine rules the reads follow:
     included; +25 picks the decomposition (modules/jcns_source_read.py).
   * entries run in file order within one frame, so a source channel written by
     this entry or a later one reads its rest value and gets no variable.
+  * a ConeDriver is one more summed term, read off its cone joint's rotation
+    (jcns_source_read.cone_value, measured in Wilds round 20).
 
 A bone's three rotation_euler drivers are built as one group, each evaluating the
 whole bone (jcns_source_read.target_basis), when its rotation TransformElement is not
@@ -47,6 +49,10 @@ import jcns_source_read  # noqa: E402
 #   ('loc', axis, rest, offset, live)
 #                                 one variable per axis in `live` (location, metres);
 #                                 offset is the rest offset from the parent, metres
+#   ('cone', rest, direction, matrix, angle, base_pose, self_parent, live)
+#                                 a ConeDriver: the cone joint's XYZ Euler channels in
+#                                 `live` (none when its ParentJoint is the joint itself);
+#                                 its map is ('CONE', out_min, out_max, interpolation)
 _CHANNELS = {}
 
 READ_VALUE = ('v',)
@@ -66,7 +72,7 @@ def read_width(read):
     """How many driver variables a read consumes."""
     if read[0] == 'c':
         return 0
-    if read[0] in ('rot', 'loc'):
+    if read[0] in ('rot', 'loc', 'cone'):
         return len(read[-1])
     return 1
 
@@ -80,6 +86,10 @@ def _read(read, vals):
         _, mode, axis, rest, order, frame, _live = read
         return jcns_source_read.rotation(
             mode, jcns_source_read.pose_rotation(rest, chans), axis, order, frame)
+    if read[0] == 'cone':
+        _, rest, direction, matrix, angle, base_pose, self_parent, _live = read
+        q = (1.0, 0.0, 0.0, 0.0) if self_parent else jcns_source_read.pose_rotation(rest, chans)
+        return jcns_source_read.cone_value(q, rest, direction, matrix, angle, base_pose)
     _, axis, rest, offset, _live = read
     return jcns_source_read.position(rest, offset, chans, axis)
 
@@ -90,6 +100,10 @@ def source_map(s, target_q):
     Input side in the source's units (its +25), output side in the target's.
     """
     m = get_mapping()
+    if s.get('cone'):
+        k = s['cone']
+        u = _unit_scale(target_q)
+        return ('CONE', k['out_min'] * u, k['out_max'] * u, k['interp'])
     src_q = m.source_quantity(s.get('input_type'))
     if s.get('cm'):
         return ('CM', tuple(jcns_complex.scaled(s['cm'], _unit_scale(src_q),
@@ -162,7 +176,7 @@ def _total(maps, reads, values):
             break                  # driver built for another layout; Apply rebuilds it
         if read[0] == 'c':
             v = read[1]
-        elif read[0] in ('rot', 'loc'):
+        elif read[0] in ('rot', 'loc', 'cone'):
             v = _read(read, values[at:at + width])
         elif read[0] == 'sc':
             v = values[at] * read[1]       # Blender pose scale -> engine scale
@@ -171,6 +185,8 @@ def _total(maps, reads, values):
         at += width
         if m[0] == 'CM':
             total += jcns_complex.evaluate(m[1], v)
+        elif m[0] == 'CONE':
+            total += m[1] + (m[2] - m[1]) * jcns_source_read.cone_ease(m[3], v)
         else:
             total += ev(*m[:6], v, two_point=(len(m) > 6 and m[6]), interp=(m[7] if len(m) > 7 else 0))
     return total, at

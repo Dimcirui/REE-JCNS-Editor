@@ -284,6 +284,53 @@ def target_basis(rest, parts):
     return tuple(_euler(_pos_w(qmul(_conj(rest), q)), 0))
 
 
+def _rot_vec(q, v):
+    """Vector v rotated by quaternion q (w, x, y, z)."""
+    r = qmul(qmul(q, (0.0, v[0], v[1], v[2])), _conj(q))
+    return r[1], r[2], r[3]
+
+
+def cone_value(joint_rot, rest, direction, matrix, angle, base_pose):
+    """Wilds' native ConeInput value (round 20: 8 cones within 5e-5).
+
+    `joint_rot` is the joint's rotation in its ParentJoint's frame (w, x, y, z), `rest`
+    the joint's rest rotation there; `direction` the record's quaternion (x, y, z, w)
+    and `matrix` its 3x3 rows.  Current axis = joint_rot * Matrix * Y, reference axis =
+    [rest *] Direction * X; the value falls linearly from 1 to 0 as the angle between
+    them grows to `angle` (radians).  Exactly parallel or opposite axes give 0, as in
+    the engine (it only takes the angle for -1 < dot < 1).
+    """
+    if angle <= 0.0:
+        return 0.0
+    m_y = (matrix[0][1], matrix[1][1], matrix[2][1])
+    cur = _rot_vec(joint_rot, m_y)
+    dx, dy, dz, dw = direction
+    ref = _rot_vec((dw, dx, dy, dz), (1.0, 0.0, 0.0))
+    if base_pose:
+        ref = _rot_vec(rest, ref)
+    n = math.sqrt(sum(c * c for c in cur)) * math.sqrt(sum(c * c for c in ref))
+    if n < 1e-12:
+        return 0.0
+    dot = sum(a * b for a, b in zip(cur, ref)) / n
+    if not -1.0 < dot < 1.0:
+        return 0.0
+    t = math.acos(dot)
+    return 1.0 - t / angle if t < angle else 0.0
+
+
+def cone_ease(interpolation, x):
+    """ConeDriver Interpolation applied to a cone value clamped to 0..1:
+    0 linear, 1 x^3, 2 1 - (1 - x)^3, 3 smoothstep (constants read off the evaluator)."""
+    x = min(max(x, 0.0), 1.0)
+    if interpolation == 1:
+        return x ** 3
+    if interpolation == 2:
+        return x ** 3 - 3.0 * x * x + 3.0 * x
+    if interpolation == 3:
+        return 3.0 * x * x - 2.0 * x ** 3
+    return x
+
+
 def rest_input(mode, axis, rest, offset_cm, order=0, frame=None, scale=None):
     """What a source reads with its bone at rest, in the file's units (degrees,
     centimetres, or 1 for a scale).

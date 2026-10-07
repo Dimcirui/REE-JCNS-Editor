@@ -355,9 +355,17 @@ STRINGS = {
         "ZH": "源骨骼不在骨架里：%s",
         "EN": "Source bones not in the armature: %s",
     },
-    "ops.driver.cone_only": {
-        "ZH": "只由 ConeDriver 驱动，暂不预览，骨骼保持静止姿态",
-        "EN": "Driven only by ConeDrivers, which are not previewed yet; the bone stays at rest",
+    "ops.driver.cone_unresolved": {
+        "ZH": "第 %d 个 ConeInput 不存在，或它的骨骼不在骨架里",
+        "EN": "ConeInput %d does not exist, or its bones are not in the armature",
+    },
+    "ops.driver.cone_curve": {
+        "ZH": "曲线类型为 1 的 ConeDriver 不预览",
+        "EN": "ConeDrivers with curve type 1 are not previewed",
+    },
+    "ops.driver.cone_parent": {
+        "ZH": "锥形「%s」的父骨不是 %s 在骨架里的父骨（%s），不预览",
+        "EN": "Cone “%s”: its parent joint is not the parent of %s in the armature (%s); not previewed",
     },
     "ops.driver.none": {
         "ZH": "没有驱动",

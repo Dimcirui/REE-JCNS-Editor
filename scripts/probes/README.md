@@ -325,6 +325,8 @@
   拿 A/B/C/G 拟合一个自由的轴旋转得出 e_Y，D/E/F/H 没参与拟合，8 个锥形误差全部 ≤5e-5；托管版的 cos 形式差 0.13–0.21。
 - 绕 X 的扭转（D）、BasePose（F，静止旋转是单位旋转）与 A 完全相同；镜像 Matrix（H）把当前轴翻成 −Y。
 - 没测：BasePose 在非单位静止旋转上的作用、SymmetryJoint、ConeDriver 的 Function 曲线和插值 1–3。
+- 预览已实现（`jcns_source_read.cone_value` / `cone_ease`，ConeDriver 作为求和的一项）：`bg_check_cone_preview.py` 在本轮数据上误差 ≤5e-5 cm。
+  只支持 ParentJoint 是 Joint 在骨架里的父骨（或就是 Joint 自己）、CurveType 0 的锥形；其他情形面板上给出原因。
 
 ## 还没做的
 

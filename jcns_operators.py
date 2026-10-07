@@ -108,24 +108,73 @@ def _missing_sources(members, armature_obj):
             if sp.source_bone and sp.source_bone not in armature_obj.data.bones]
 
 
-def _previewable(members, armature_obj=None):
-    """The live entry of a channel reads source bones the armature has.
+_BONE_HASHES = {}
 
-    ConeDriver values are not evaluated, so a cone-only channel gets no driver and
-    stays at rest; writing it as a source-less replace would wipe the bone's rest
-    rotation.  A missing source bone would feed the driver nothing."""
-    if not any(sp.source_bone for sp in members[-1].jcns_cns_props.sources):
+
+def _bone_by_hash(armature_obj):
+    """{murmur hash: bone name} of an armature, cached on its bone names."""
+    names = tuple(b.name for b in armature_obj.data.bones)
+    hit = _BONE_HASHES.get(armature_obj.name)
+    if hit is None or hit[0] != names:
+        from .jcns_exporter import _name_to_hash
+        hit = (names, {_name_to_hash(n): n for n in names})
+        _BONE_HASHES[armature_obj.name] = hit
+    return hit[1]
+
+
+def _cone_plan(members, armature_obj):
+    """[(ConeDriver props, joint bone, ConeInput record, self_parent)] for the live
+    entry's ConeDrivers, and the reason when one of them cannot be previewed.
+
+    Index 255 is no cone and is left out.  The cone needs its joint in the armature
+    and its ParentJoint to be the joint's parent there (or the joint itself)."""
+    from . import get_jcns_root_from_constraint
+    from jcns_sections import cone_inputs_from_json
+    owner = members[-1]
+    cds = [k for k in owner.jcns_cns_props.cone_drivers if k.cone_input_index != 255]
+    if not cds:
+        return [], None
+    _, rp = get_jcns_root_from_constraint(owner)
+    table = cone_inputs_from_json(rp.cone_inputs_json) if rp is not None and rp.cone_inputs_json else []
+    by_hash = _bone_by_hash(armature_obj) if armature_obj is not None else {}
+    plan = []
+    for k in cds:
+        if k.cone_input_index >= len(table):
+            return plan, T("ops.driver.cone_unresolved", k.cone_input_index)
+        if k.curve_type != 0:
+            return plan, T("ops.driver.cone_curve")
+        rec = table[k.cone_input_index]
+        joint = by_hash.get(rec['JointHash'])
+        parent = by_hash.get(rec['ParentJointHash'])
+        if joint is None or parent is None:
+            return plan, T("ops.driver.cone_unresolved", k.cone_input_index)
+        bone = armature_obj.data.bones[joint]
+        if parent != joint and (bone.parent is None or bone.parent.name != parent):
+            return plan, T("ops.driver.cone_parent", rec.get('Name', ''), joint, parent)
+        plan.append((k, joint, rec, parent == joint))
+    return plan, None
+
+
+def _previewable(members, armature_obj=None):
+    """The live entry of a channel reads source bones the armature has, and cones it
+    can resolve.  A missing source bone would feed the driver nothing; an entry with
+    neither sources nor cones has nothing to preview."""
+    p = members[-1].jcns_cns_props
+    plan, why = _cone_plan(members, armature_obj)
+    if why is not None:
+        return False
+    if not plan and not any(sp.source_bone for sp in p.sources):
         return False
     return not _missing_sources(members, armature_obj)
 
 
 def _no_driver_reason(members, armature_obj=None):
-    p = members[-1].jcns_cns_props
     missing = _missing_sources(members, armature_obj)
     if missing:
         return T("ops.driver.source_missing", T("ui.sep.list").join(missing))
-    if len(p.cone_drivers) and not any(sp.source_bone for sp in p.sources):
-        return T("ops.driver.cone_only")
+    _plan, why = _cone_plan(members, armature_obj)
+    if why is not None:
+        return why
     return T("ops.driver.none")
 
 
@@ -302,6 +351,18 @@ def channel_sources(armature_obj, root_obj, owner):
             s['read'] = ('c', _REST_VALUE[q])
         else:
             s['read'] = jcns_drivers.READ_VALUE
+    plan, why = _cone_plan([owner], armature_obj)
+    if why is None:
+        for k, joint, rec, self_parent in plan:
+            rest, _off = _rest_transform(armature_obj, joint)
+            live = () if self_parent else tuple(
+                a for a in range(3) if (joint, 'rotation_euler', a) not in later)
+            m = rec['Matrix']
+            sources.append({
+                'bone': joint, 'axis_idx': 0, 'axis_name': 'X',
+                'cone': {'out_min': k.out_min, 'out_max': k.out_max, 'interp': k.interpolation},
+                'read': ('cone', rest, tuple(rec['Direction']), (m[0:3], m[4:7], m[8:11]),
+                         rec['AngleRad'], bool(rec['Tail'][3] & 1), self_parent, live)})
     return sources
 
 
@@ -392,7 +453,7 @@ def _install_driver(armature_obj, bone_name, data_path, index, key, sources, rea
     for s, read in zip(sources, reads):
         if read[0] == 'c':
             continue
-        if read[0] == 'rot':
+        if read[0] in ('rot', 'cone'):
             for a in read[-1]:
                 add_var(s['bone'], _ROT_TYPE[a], 'XYZ')
             continue

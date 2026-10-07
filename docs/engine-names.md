@@ -249,6 +249,8 @@ Wilds 的 native 求值器**会算锥形**，算法和第 2 节的托管原型�
   Function 曲线（+0x00 起的指针和字段）、插值 1–3 都没测。
 - 一条约束的多个 ConeDriver 按 OutputMode（+72）合并：Sum 相加、Mul 相乘、Min/Max 取极值。第一个直接赋值。
 - 平移目标上 `getOutputUserValue` 返回的是米（锥形值 ÷100）。
+- 插值常量从 exe 读出：1 = x³，2 = x³ − 3x² + 3x，3 = 3x² − 2x³。dot 只在 (−1, 1) 内取角度，两轴恰好平行或反向时值为 0。
+- 预览按此实现（`jcns_source_read.cone_value`）。公式是在 Wilds（v102）上测的，RE9（v35）、RE4（v22）是不是同一算法没有验证。
 
 ## 5. 还没解决的
 
