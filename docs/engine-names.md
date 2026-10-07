@@ -194,8 +194,7 @@ TRS 0 Trans / 1 Rot / 2 Scale，CalculateMode 0 Sum / 1 Average；`InRotOrder`/`
 - 随后按 InMin/InMax → OutMin/OutMax 做线性映射并夹紧，`Calculate(v, inMin, inMax, outMin, outMax)` 同样如此
   （inMin = inMax 时返回 outMax）。`MidPoint` 打开时按 InMid 分两段映射。
 
-这是托管原型的算法。native jcns 的 ConeInput（Direction、Matrix、Joint/ParentJoint 哈希、AngleRad）字段可能一一对应：
-Direction ↔ p̂，Matrix ↔ q_off，AngleRad ↔ 半角。但 native 路径没有实测过，要做带锥形输入的 jcns 放进游戏验证。
+这是托管原型的算法。native 求值器读 jcns 时用的是另一套（见第 4 节"native 锥形"），两者不能互相代替。
 
 ## 3. 表达式图 `via.motion.exprgraph`（JXG）
 
@@ -230,9 +229,29 @@ ExprJointGetNode、ExprJointSetNode。
     语料里 TailBytes[0] 非 0 的值是 1/2/5（YZX/ZXY/XZY），也出现在 Trans/Rot/Scale 等条目上。那些条目读不读它，还没查。
   - AttrFlags bit4（+0x2E & 0x10）为真时，先按 ObjectHashIndex（+0x20）查一次目标，查不到就跳过。
 
+### native 锥形（2026-10-07，反汇编 + 第 20 轮实测）
+
+Wilds 的 native 求值器**会算锥形**，算法和第 2 节的托管原型不同：
+
+- ConeInput 预先逐项算一次（A623DA0 开头，记录步长 0x68）。AngleRad ≤ 0 时值为 0。
+  Joint、ParentJoint 按哈希表索引查骨，找不到父骨就用 Joint 的实际父骨。
+  有 SymmetryJoint 时走另一个函数（CF4A4F0），没测。
+- **当前方向 = Joint 的旋转 · Matrix · e_Y，参考方向 = Parent 的旋转 · [BasePose 时乘 Joint 静止局部旋转] · Direction · e_X**。
+  Direction 是四元数 (x, y, z, w)，Matrix 取 4×3 字段的 3×3 部分。
+- **值 = 1 − θ / AngleRad**（θ 是两个方向的夹角，θ ≥ AngleRad 时为 0），对角度是线性的，不是托管版的 cos 形式。
+  实测：8 个锥形（不同 Direction、45°/90°/120°、BasePose、镜像 Matrix）误差 ≤5e-5；cos 形式差 0.13–0.21。
+  镜像 Matrix 把当前轴翻成 −Y。参考轴到底是固定的 e_X 还是 Matrix 的第 0 行，这次分不出来（镜像阵第 0 行不变）。
+- **ConeDriver（每条 24 字节）**：+0x15 锥形索引（u8，0xFF 表示不用），+0x16 CurveType（0 MinMax / 1 Function），
+  +0x14 MinMax 的插值方式（0 线性，1–3 是三种多项式缓动），+0x0C OutMin，+0x10 OutMax。
+  MinMax：输出 = OutMin + (OutMax − OutMin) · f(clamp(v, 0, 1))。schema 里的 `ConeInputIndex`（u16）其实是索引 + CurveType 两个字节，
+  `Rest123[2]` 是 OutMin（缩放目标上是 1），`Value` 是 OutMax，`UnkByte0` 是插值方式。
+  Function 曲线（+0x00 起的指针和字段）、插值 1–3 都没测。
+- 一条约束的多个 ConeDriver 按 OutputMode（+72）合并：Sum 相加、Mul 相乘、Min/Max 取极值。第一个直接赋值。
+- 平移目标上 `getOutputUserValue` 返回的是米（锥形值 ÷100）。
+
 ## 5. 还没解决的
 
-- 锥形公式在托管原型上已经测定（见第 2 节）；native jcns 的 ConeInput 是否同一算法、字段怎么对应，还没验证。
+- native 锥形：BasePose 位（测试骨静止旋转是单位旋转，测不出）、SymmetryJoint、Function 曲线、插值 1–3、参考轴是否取 Matrix 第 0 行。
 - 源 AttrFlags 的 BasePose 位（bit0=0 的源）到底怎么读（求值器 A623DA0 里的 6 路 InputType switch 是下一步要读的地方）。
 - TailBytes[1] 比较的级别是哪个组件的哪个量；TailBytes[0] 在 Rot2 以外的元素上有没有作用。
 - ConeDriverInfo 里那个 0/2 字节。

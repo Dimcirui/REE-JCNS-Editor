@@ -74,7 +74,7 @@
   RE Mesh Editor 按扩展名判断版本，`xaihi_model.mesh.241111606.before_round11_…` 这种带后缀的备份读不了；
   快照要用标准文件名存进 `roundN_keep/`（第 10、11 轮都已存好）。
 
-## 十九轮结论一览
+## 二十轮结论一览
 
 | 轮 | 脚本 | 结论 |
 |---|---|---|
@@ -90,6 +90,7 @@
 | 13 | `build_rules_rig.py` | 类型 4/5/6/14 的 bit0=0、叠加替换混用、混用类型、UnknownFloat2、缩放作源，见下 |
 | 14 | `build_aimrot_rig.py` | Aim 向量、类型 3/5、影响；RotExpr 系数 (1,1,1) 与单轴，见下 |
 | 15 | `build_mixed_rig.py` | 混用旋转类型由最后一条决定；源 +28 是插值字节；+72/+74/+75 无效，见下 |
+| 20 | `build_cone_rig.py` | Wilds 会算锥形：当前 Joint·Matrix·Y 与参考 Parent·Direction·X 的夹角，值 = 1 − θ/AngleRad，见下 |
 | 19 | `build_rot2_group_rig.py` | Rot2 关节组按组首 +74 的 RotOrder 合成一个欧拉旋转；分开成组仍是最后一条胜出，见下 |
 | 18 | `build_parent_rig.py` | 缩放父骨下子骨的平移目标空间（改 mesh），见下 |
 | 17 | `build_aim2_rig.py` | Aim 影响 / Vec0 / 类型 2 的 Vec3；RotExpr 系数连续性与 0.5、1、2，见下 |
@@ -313,6 +314,17 @@
 - **分开成组仍是最后一条胜出**：E（X、Z 各自成组）只剩 Z（0.0010°），和第 9 轮一致。
 - 预览已按此实现（`target_basis` 的组信息、`jcns_operators._rot2_groups`）。后台预览 A–E 误差 ≤0.0011°；
   F（负缩放）和 I/J/K（剪切）仍是第 18 轮记下的已知限制。
+
+## 第 20 轮：ConeInput / ConeDriver（2026-10-07）
+
+- 第一次让 Wilds 加载带锥形的 jcns：8 个锥形，Joint L_Thigh、Parent Hip，按 RE9 的写法（Direction 是四元数，Tail `06 06 00 {BasePose}`）。
+  每个锥形驱动一条只有锥形、没有源的平移条目（MinMax，OutMin 0、OutMax 1）；另有 3 条参考条目读 L_Thigh 的 XYZ 欧拉。
+- 脚本：`build_cone_rig.py` / `analyze_cone_rig.py`，数据 `reframework/data/round20_keep`（含当轮 jcns）。1826 帧，各种腿部动作。
+- 平移目标的 Out 是米，锥形值要 ×100。
+- **公式**：当前方向 = L · Matrix · e_Y，参考方向 = Direction · e_X（都在父骨空间），值 = 1 − θ/AngleRad，θ ≥ AngleRad 时为 0。
+  拿 A/B/C/G 拟合一个自由的轴旋转得出 e_Y，D/E/F/H 没参与拟合，8 个锥形误差全部 ≤5e-5；托管版的 cos 形式差 0.13–0.21。
+- 绕 X 的扭转（D）、BasePose（F，静止旋转是单位旋转）与 A 完全相同；镜像 Matrix（H）把当前轴翻成 −Y。
+- 没测：BasePose 在非单位静止旋转上的作用、SymmetryJoint、ConeDriver 的 Function 曲线和插值 1–3。
 
 ## 还没做的
 
