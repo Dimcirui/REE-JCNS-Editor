@@ -174,7 +174,28 @@ jcns 资源在运行时叫 `JointExMultiRemapValue`，资源类型是 `via.motio
   `Offset (vec3)`、`ConeHalfAngle`、`InMin/InMid/InMax → OutMin/OutMid/OutMax`、`InputValue`、`OutputValue`。
 
 锥形是和平移、旋转、缩放并列的第四种输入，参数是 `ConeHalfAngle` 和 `Offset`。
-托管枚举的数值没读（成员名按字母排）。
+
+托管枚举的数值（2026-10-07 实测）：InputType 0 Trans / 1 Rot / 2 Scale / 3 Cone，Axis 0 X / 1 Y / 2 Z，
+TRS 0 Trans / 1 Rot / 2 Scale，CalculateMode 0 Sum / 1 Average；`InRotOrder`/`OutRotOrder` 用 `via.math.RotationOrder`
+（0 XYZ / 1 YZX / 2 ZXY / 3 ZYX / 4 YXZ / 5 XZY）。
+
+### 锥形公式（2026-10-07，反汇编 + 实测 640/640，误差 ≤ 7e-7）
+
+在游戏里手建 `RemapValueItem`/`InputJoint`、调 `Update(Transform, bool)`（`scripts/probes/ConeRemapProbe.cs`），
+再对照 `Update` 的反汇编（RVA 0x7A7E8C0）。J = `JointName`，P = J 的父骨，G = P 的父骨：
+
+- p̂ = J 当前局部位置的单位向量，也就是 P→J 这段骨在 P 空间里的方向。|p| ≤ 1.19e-7 时输入为 0（root、Hip 都是 0）。
+- q_off = `Offset`（度）按 `InRotOrder` 组成的外旋欧拉：XYZ 先绕 X 再绕 Y 再绕 Z，即 Rz·Ry·Rx。
+- 参考方向 c = G_world · [`BasePose` 时乘 P 的静止局部旋转] · q_off · p̂；当前方向 d = G_world · P_local · p̂。
+  G 两边抵消，所以量的是 **P 的局部旋转把 J 这段骨摆离参考方向多少**。J 自己的旋转不参与；
+  InAxis 对锥形不起作用；Input=Cone 时 InputValue 三个分量都写同一个值。
+- 值 = 1 − (1 − c·d) / (1 − cos `ConeHalfAngle`)；若 (1 − cos H) ≤ (1 − c·d)，值为 0。范围 0..1：骨段正对参考方向时为 1，
+  到锥面边缘时为 0。H = 360° 时恒为 0。
+- 随后按 InMin/InMax → OutMin/OutMax 做线性映射并夹紧，`Calculate(v, inMin, inMax, outMin, outMax)` 同样如此
+  （inMin = inMax 时返回 outMax）。`MidPoint` 打开时按 InMid 分两段映射。
+
+这是托管原型的算法。native jcns 的 ConeInput（Direction、Matrix、Joint/ParentJoint 哈希、AngleRad）字段可能一一对应：
+Direction ↔ p̂，Matrix ↔ q_off，AngleRad ↔ 半角。但 native 路径没有实测过，要做带锥形输入的 jcns 放进游戏验证。
 
 ## 3. 表达式图 `via.motion.exprgraph`（JXG）
 
@@ -191,7 +212,7 @@ ExprJointGetNode、ExprJointSetNode。
 
 ## 4. 还没解决的
 
-- 锥形的计算公式：在游戏里建 `JointRemapValue` 实例、`Input=Cone`，调用 `Update` 读回结果。
+- 锥形公式在托管原型上已经测定（见第 2 节）；native jcns 的 ConeInput 是否同一算法、字段怎么对应，还没验证。
 - 源 AttrFlags 的 BasePose 位（bit0=0 的源）到底怎么读。
 - TailBytes[0]（0/1/2/5）、TailBytes[1]（0–8）分别是什么，TangentType 是候选之一。
 - ConeDriverInfo 里那个 0/2 字节。
