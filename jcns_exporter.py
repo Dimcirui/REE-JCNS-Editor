@@ -13,7 +13,7 @@ import os
 import sys
 import hashlib
 import bpy
-from bpy.props import StringProperty, BoolProperty
+from bpy.props import StringProperty, BoolProperty, EnumProperty
 from bpy.types import Operator
 from bpy_extras.io_utils import ExportHelper
 
@@ -43,16 +43,17 @@ def _get_active_root(context):
     return get_export_root(context)
 
 
-def _build_stub_parser(root_props):
+def _build_stub_parser(root_props, version=None):
     """
     A parser-like object for a file whose source is gone: the generated file header, and
     the section order and hash list the import stored.  Everything else comes from the
-    Empties, so all constraints are new.
+    Empties, so all constraints are new.  `version` overrides the root's for a
+    cross-version export (see CONVERTIBLE_VERSIONS).
     """
     from jcns_parser import read_header, write_mode
     from jcns_schema import file_header
 
-    version = _root_version(root_props)
+    version = version or _root_version(root_props)
     orig = file_header(version, tuple(root_props.header_unknown_bytes))
 
     class _StubParser:
@@ -66,7 +67,7 @@ def _build_stub_parser(root_props):
     parser.filepath = root_props.source_filepath
     parser.header = read_header(orig, check_layout=False)
     parser.version = version
-    parser.write_mode = root_write_mode(root_props)
+    parser.write_mode = 'rebuild' if version != _root_version(root_props) else root_write_mode(root_props)
     parser.is_stub = True
     parser.aim_constraints    = []
     parser.object_settings    = []
@@ -114,16 +115,25 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
                 'tail': bytes(o.jcns_cns_props.multi_tail),
                 'sources': [{'hash': H(w.bone), 'weight': w.weight} for w in o.jcns_cns_props.multi_sources]}
                for o in section_empties(root_obj, 'Multi')]
+    converted_from = getattr(parser, 'converted_from', 0)
     meta = {'constant': root_props.file_constant,
             'read_joint_table': [it.hash & 0xFFFFFFFF for it in root_props.read_joint_table]}
     locked = json.loads(root_props.read_joint_signature_json) if root_props.read_joint_signature_json else []
     # The table also covers the Aim joints, so it is resolved against both.
     aim_joints = [H(o.jcns_cns_props.target_bone) for o in section_empties(root_obj, 'Aim')]
     parent, names = skeleton_of(root_props.target_armature)
-    table, problems = X.resolve_read_joint_table(records, aim_joints, meta, locked, parent, names,
-                                                 pending=root_props.read_table_pending)
-    if problems:
-        return problems
+    if converted_from and parser.version < 36:
+        table = []                       # the target version has no ReadJointTable
+    else:
+        # A file that gains a ReadJointTable by the conversion (v35 -> v102) derives it.
+        pending = root_props.read_table_pending or (0 < converted_from < 36 <= parser.version)
+        table, problems = X.resolve_read_joint_table(records, aim_joints, meta, locked, parent, names,
+                                                     pending=pending)
+        if problems:
+            return problems
+    if converted_from:
+        for r in records:
+            r['tail'] = convert_multi_tail(r['tail'], parser.version)
     for w in X.multi_weight_warnings(records):
         print('[JCNS EXPORT] warning: ' + w)
     parser.multi_constraints, parser.multi_source_infos = X.multi_parser_form(records, meta)
@@ -292,6 +302,36 @@ def _root_version(rp):
     if rp.source_version:
         return rp.source_version
     return 35 if rp.detected_game == 'RE9' else 102
+
+
+# Versions an export can turn into each other: same layout but for the header
+# (ReadJointTable from v36) and these values, read off the corpora (12 RE9 v35 files,
+# 1103 Wilds v102 files):
+#   AttrFlags bit 5 (OutRot)  v35 never sets it; v102 sets it on rotation targets
+#                             (the v102 export derives bits 4/5 anyway).
+#   TailBytes[1]              v35 always 0; v102 mostly 2, and the Wilds evaluator skips an
+#                             entry whose byte is below the object's level, so 0 -> 2.
+#   Multi tail                v102 always 0000; v35 0101 / 0201 / 0100 / 0200, meaning
+#                             unknown -- 0101, the commonest, is written (with a warning).
+CONVERTIBLE_VERSIONS = (35, 102)
+_V35_MULTI_TAIL = b'\x01\x01'
+
+
+def convert_multi_tail(tail, version):
+    if version == 35:
+        return _V35_MULTI_TAIL if bytes(tail) == b'\x00\x00' else bytes(tail)
+    return b'\x00\x00'
+
+
+def convert_constraint(c, version):
+    """Outputs record values that differ between v35 and v102, for `version`."""
+    tail = bytearray(c.get('TailBytes') or bytes(6))
+    if version == 35:
+        c['AttrFlags'] = c['AttrFlags'] & ~0x20
+        tail[1] = 0
+    elif tail[1] == 0:
+        tail[1] = 2
+    c['TailBytes'] = bytes(tail)
 
 
 def _hex_bytes(text, size):
@@ -468,16 +508,39 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
         description=T("io.export.clean_hashes.tip"),
         default=False
     )
+    target_version: EnumProperty(
+        name=T("io.export.version.name"),
+        description=T("io.export.version.tip"),
+        items=[('SOURCE', T("io.export.version.same"), ""),
+               ('102', T("io.export.version.v102"), ""),
+               ('35', T("io.export.version.v35"), "")],
+        default='SOURCE',
+        options={'SKIP_SAVE'},          # every export starts from the file's own version
+    )
 
     @classmethod
     def poll(cls, context):
         obj, _ = _get_active_root(context)
         return obj is not None
 
+    def _version(self, rp):
+        v = _root_version(rp)
+        if v in CONVERTIBLE_VERSIONS and self.target_version != 'SOURCE':
+            return int(self.target_version)
+        return v
+
+    def draw(self, context):
+        _root, rp = _get_active_root(context)
+        self.layout.prop(self, "clean_hashes")
+        if rp is not None and _root_version(rp) in CONVERTIBLE_VERSIONS:
+            self.layout.prop(self, "target_version")
+            if self._version(rp) != _root_version(rp):
+                self.layout.label(text=T("io.export.version.note"), icon='INFO')
+
     def invoke(self, context, event):
         root, rp = _get_active_root(context)
         if rp:
-            self.filename_ext = f".jcns.{_root_version(rp)}"
+            self.filename_ext = f".jcns.{self._version(rp)}"
             if not rp.source_filepath:
                 self.filepath = root.name
 
@@ -492,6 +555,14 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
 
     def check(self, context):
         change_ext = False
+        _root, rp = _get_active_root(context)
+        if rp is not None:
+            want = f".jcns.{self._version(rp)}"
+            if want != self.filename_ext:
+                import re
+                self.filepath = re.sub(r'\.jcns\.\d+$', want, self.filepath)
+                self.filename_ext = want
+                change_ext = True
         filepath = self.filepath
         if filepath != "":
             ext = self.filename_ext
@@ -515,7 +586,13 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
         is_new = not root_props.source_filepath      # made with New JCNS, never saved
         # An upgraded file is exported from Blender's data: its source is an older version.
         upgraded = bool(root_props.upgraded_from)
-        source_exists = os.path.isfile(source_path) and not upgraded
+        # A cross-version export is built from Blender's data too, in the other version.
+        version = self._version(root_props)
+        converted_from = _root_version(root_props) if version != _root_version(root_props) else 0
+        if converted_from and not root_props.sections_cached:
+            self.report({'ERROR'}, T("io.export.old_no_data"))
+            return {'CANCELLED'}
+        source_exists = os.path.isfile(source_path) and not upgraded and not converted_from
 
         empties = get_constraint_empties(root_obj)
         # Files made only of Multi / Aim / RotExpression / Material entries have no Ranges.
@@ -536,9 +613,10 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
             if not root_props.source_version:
                 self.report({'ERROR'}, T("io.export.source_missing_old", source_path))
                 return {'CANCELLED'}
-            if not upgraded and not is_new:
+            if not upgraded and not is_new and not converted_from:
                 self.report({'WARNING'}, T("io.export.source_missing_rebuild"))
-            parser = _build_stub_parser(root_props)
+            parser = _build_stub_parser(root_props, version)
+            parser.converted_from = converted_from
 
         if parser.write_mode == 'rebuild' and not root_props.sections_cached:
             self.report({'ERROR'}, T("io.export.old_no_data"))
@@ -575,6 +653,8 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
                             else _make_default_constraint_dict(empty))
             _patch_constraint_from_empty(parsed_c, empty, parser.hash_list,
                                          root_props.sections_cached, parser.version)
+            if converted_from:
+                convert_constraint(parsed_c, parser.version)
             final_constraints.append(parsed_c)
 
         parser.constraints = final_constraints
@@ -607,11 +687,18 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
         with open(out_path, 'rb') as f:
             md5_after = hashlib.md5(f.read()).hexdigest()
 
-        if out_path != source_path:
+        # A converted copy is another version's file: the root keeps pointing at its own.
+        if out_path != source_path and not converted_from:
             root_props.source_filepath = out_path
 
         basename = os.path.basename(out_path)
-        if upgraded:
+        if converted_from:
+            n_multi = len(getattr(parser, 'multi_constraints', []) or [])
+            if parser.version == 35 and n_multi:
+                self.report({'WARNING'}, T("io.export.converted_multi", basename, converted_from, n_multi))
+            else:
+                self.report({'INFO'}, T("io.export.done_upgraded", basename, converted_from, parser.version))
+        elif upgraded:
             self.report({'INFO'}, T("io.export.done_upgraded", basename, root_props.upgraded_from, parser.version))
         elif is_new:
             self.report({'INFO'}, T("io.export.done_new", basename))

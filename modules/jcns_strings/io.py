@@ -225,6 +225,15 @@ STRINGS = {
         "EN": "Export the selected JCNS collection as a .jcns file, in the same version as when it was imported",
     },
     "io.export.clean_hashes.name": {"ZH": "清除冗余哈希", "EN": "Remove Unused Hashes"},
+    "io.export.version.name": {"ZH": "导出版本", "EN": "Export Version"},
+    "io.export.version.tip": {
+        "ZH": "v35（生化危机 9）和 v102（荒野）可以互相导出。另存为另一个版本时，根节点仍指向原文件",
+        "EN": "v35 (Resident Evil 9) and v102 (Wilds) can be exported as each other. A copy in the other version leaves the root pointing at its own file",
+    },
+    "io.export.version.same": {"ZH": "与导入时相同", "EN": "Same as Imported"},
+    "io.export.version.v102": {"ZH": "v102（怪物猎人荒野）", "EN": "v102 (Monster Hunter Wilds)"},
+    "io.export.version.v35": {"ZH": "v35（生化危机 9）", "EN": "v35 (Resident Evil 9)"},
+    "io.export.version.note": {"ZH": "骨骼名字按另一个游戏的骨架填写", "EN": "Bone names must match the other game skeleton"},
     "io.export.clean_hashes.tip": {
         "ZH": "删除已无约束引用的哈希。不勾选则保留原文件的全部哈希",
         "EN": "Delete hashes that no constraint refers to any more. When unchecked, all hashes of the original file are kept",
@@ -254,6 +263,10 @@ STRINGS = {
         "EN": "This file was imported by an older version of the add-on, and Blender does not hold the data needed to rebuild it; re-import the file and export again.",
     },
     "io.export.write_failed": {"ZH": "写入失败：%s", "EN": "Write failed: %s"},
+    "io.export.converted_multi": {
+        "ZH": "已导出「%s」（v%s → v35）。%d 条 Multi 记录的尾字节写成 0101，这个值在生化危机 9 里的作用未知。",
+        "EN": "Exported “%s” (v%s → v35). %d Multi records got tail bytes 0101, whose effect in Resident Evil 9 is unknown.",
+    },
     "io.export.done_upgraded": {
         "ZH": "已导出「%s」（v%s → v%s）。",
         "EN": "Exported “%s” (v%s → v%s).",
