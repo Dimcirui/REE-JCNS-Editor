@@ -46,6 +46,8 @@ STRINGS = {
     'props.transform.t16': {"ZH": '16：具体作用未知', "EN": '16: purpose unknown'},
     'props.cm_key.flag_desc': {"ZH": '具体作用未知，改动不影响曲线。常见值为 0、2、5、8', "EN": 'Purpose unknown; changing it does not affect the curve. Common values are 0, 2, 5, 8'},
     'props.cone.index_desc': {"ZH": 'ConeInput 表里的序号', "EN": 'Index in the ConeInput table'},
+    'props.root.draw_cones': {"ZH": '在视口里画出锥形', "EN": 'Draw Cone in Viewport'},
+    'props.root.draw_cones_desc': {"ZH": '画出选中锥形的锥面与锥轴（白），以及关节当前方向（红到绿表示锥形值 0 到 1）', "EN": "Draw the selected cone's surface and axis (white) and the joint's current direction (red to green for cone value 0 to 1)"},
     'props.cone_input.name': {"ZH": '名字', "EN": 'Name'},
     'props.cone_input.joint': {"ZH": '关节', "EN": 'Joint'},
     'props.cone_input.joint_desc': {"ZH": '量这根骨的朝向：它的旋转 · Matrix 作用在 Y 轴上，得到当前方向。输入可搜索', "EN": "The bone whose orientation is measured: its rotation times Matrix applied to Y gives the current direction. Type to search"},

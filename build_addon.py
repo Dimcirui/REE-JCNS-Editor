@@ -53,6 +53,7 @@ INCLUDE_FILES = [
     "__init__.py",
     "jcns_capture.py",
     "jcns_cm.py",
+    "jcns_cone_draw.py",
     "jcns_drivers.py",
     "jcns_editors.py",
     "jcns_exporter.py",

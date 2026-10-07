@@ -607,6 +607,7 @@ class JCNS_PT_ConeInputs(_RootPanel, Panel):
         editable = file_state(rp).rebuild
         if not editable:
             layout.label(text=T("ui.cone_inputs.locked"), icon='LOCKED')
+        layout.prop(rp, "draw_cones", icon='CONE')
         row = layout.row()
         row.template_list("JCNS_UL_cone_inputs", "", rp, "cone_inputs", rp, "active_cone_input_index",
                           rows=min(max(len(rp.cone_inputs), 2), 8))

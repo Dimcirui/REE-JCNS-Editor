@@ -533,6 +533,11 @@ class JCNSCMKey(PropertyGroup):
                         default=0, min=0)
 
 
+def _redraw_cones(self, context):
+    from . import jcns_cone_draw
+    jcns_cone_draw.tag_redraw()
+
+
 def _refresh_cone_table(self, context):
     """A ConeInput edit changes every previewed entry that reads the cone: re-apply them."""
     try:
@@ -540,6 +545,7 @@ def _refresh_cone_table(self, context):
         jcns_operators.refresh_applied_driver(self.id_data)
     except Exception as exc:                     # an edit must never hard-fail
         print("[JCNS] cone refresh skipped: %r" % exc)
+    _redraw_cones(self, context)
 
 
 def _cone_joint_update(self, context):
@@ -1148,7 +1154,9 @@ class JCNSRootProperties(PropertyGroup):
     object_settings_json: StringProperty(default="")
     # The ConeInput table ConeDrivers index into; editable when the file is rebuilt.
     cone_inputs: CollectionProperty(type=JCNSConeInput)
-    active_cone_input_index: IntProperty(default=0)
+    active_cone_input_index: IntProperty(default=0, update=_redraw_cones)
+    draw_cones: BoolProperty(name=T("props.root.draw_cones"), description=T("props.root.draw_cones_desc"),
+                             default=False, update=_redraw_cones)
     # Read only when source_version is 0 (see jcns_exporter._root_version).
     detected_game: EnumProperty(
         name=T("props.root.detected_game"),
@@ -1350,6 +1358,7 @@ from . import jcns_editors
 from . import jcns_drivers
 from . import jcns_preview
 from . import jcns_capture
+from . import jcns_cone_draw
 from . import jcns_cm
 from . import jcns_merge_ops
 from . import jcns_sdk_ops
@@ -1402,9 +1411,11 @@ def register():
     jcns_cm.register()
     jcns_merge_ops.register()
     jcns_sdk_ops.register()
+    jcns_cone_draw.register()
 
 
 def unregister():
+    jcns_cone_draw.unregister()
     jcns_sdk_ops.unregister()
     jcns_merge_ops.unregister()
     jcns_cm.unregister()
