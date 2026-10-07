@@ -539,10 +539,12 @@ def _redraw_cones(self, context):
 
 
 def _refresh_cone_table(self, context):
-    """A ConeInput edit changes every previewed entry that reads the cone: re-apply them."""
+    """A ConeInput edit changes the previewed entries that read this cone: re-apply them."""
     try:
+        import re
         from . import jcns_operators
-        jcns_operators.refresh_applied_driver(self.id_data)
+        m = re.search(r'cone_inputs\[(\d+)\]', self.path_from_id())
+        jcns_operators.refresh_cone_users(self.id_data, int(m.group(1)) if m else None)
     except Exception as exc:                     # an edit must never hard-fail
         print("[JCNS] cone refresh skipped: %r" % exc)
     _redraw_cones(self, context)
@@ -617,13 +619,15 @@ class JCNSConeDriver(PropertyGroup):
     """One ConeDriver record (24 bytes, v24+; 12 before): a cone this constraint reads.
     See jcns_schema.CONE_DRIVER for what each field does."""
     cone_input_index: IntProperty(name="ConeInput", description=T("props.cone.index_desc"),
-                                  default=0, min=0, max=255)
-    out_min: FloatProperty(name=T("props.cone.out_min"), description=T("props.cone.out_min_desc"), default=0.0)
-    out_max: FloatProperty(name=T("props.cone.out_max"), description=T("props.cone.out_max_desc"), default=0.0)
+                                  default=0, min=0, max=255, update=_refresh_preview)
+    out_min: FloatProperty(name=T("props.cone.out_min"), description=T("props.cone.out_min_desc"), default=0.0,
+                           update=_refresh_preview_values)
+    out_max: FloatProperty(name=T("props.cone.out_max"), description=T("props.cone.out_max_desc"), default=0.0,
+                           update=_refresh_preview_values)
     interpolation: IntProperty(name=T("props.cone.interpolation"), description=T("props.cone.interpolation_desc"),
-                               default=0, min=0, max=255)
+                               default=0, min=0, max=255, update=_refresh_preview_values)
     curve_type: IntProperty(name=T("props.cone.curve_type"), description=T("props.cone.curve_type_desc"),
-                            default=0, min=0, max=255)
+                            default=0, min=0, max=255, update=_refresh_preview)
     curve_data_hex: StringProperty(name=T("props.cone.curve_data"), description=T("props.cone.curve_data_desc"),
                                    default="00" * 12)
     reserved_byte: IntProperty(name="+23", default=0, min=0, max=255)

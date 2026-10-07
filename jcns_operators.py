@@ -788,6 +788,30 @@ def refresh_channel_values(obj):
 
 
 
+def refresh_cone_users(root_obj, cone_index):
+    """Re-apply only the previewed channels whose live entry reads ConeInput `cone_index`
+    (all cone-reading channels when it is None).  -> how many were re-applied."""
+    from . import group_constraints_by_channel
+    rp = getattr(root_obj, 'jcns_root_props', None)
+    if rp is None or rp.target_armature is None:
+        return 0
+    done = 0
+    for _key, members in group_constraints_by_channel(root_obj).items():
+        p = members[-1].jcns_cns_props
+        if not any(e.jcns_cns_props.preview_on for e in members):
+            continue
+        if not any(cone_index is None or k.cone_input_index == cone_index for k in p.cone_drivers):
+            continue
+        try:
+            ok, _e, _l = _apply_channel(rp.target_armature, rp, members)
+            done += bool(ok)
+        except Exception as exc:
+            print("[JCNS] cone refresh failed: %r" % exc)
+    if done:
+        rp.target_armature.update_tag()
+    return done
+
+
 def refresh_applied_driver(obj):
     """Re-apply the driver for obj's channel if one is already on it.
 
@@ -1235,7 +1259,9 @@ class JCNS_OT_RemoveSource(Operator):
     def poll(cls, context):
         from . import get_jcns_constraint
         obj, props = get_jcns_constraint(context)
-        return obj is not None and len(props.sources) > 1
+        # The last source may go only when ConeDrivers drive the entry instead.
+        return obj is not None and (len(props.sources) > 1 or
+                                    (len(props.sources) == 1 and len(props.cone_drivers) > 0))
 
     def execute(self, context):
         from . import get_jcns_constraint, constraint_name_from_props
@@ -1251,6 +1277,7 @@ class JCNS_OT_RemoveSource(Operator):
             except (ValueError, IndexError):
                 pass
         cns_obj.name = constraint_name_from_props(idx, p)
+        refresh_applied_driver(cns_obj)
         self.report({'INFO'}, T("ops.remove_source.done", len(p.sources)))
         return {'FINISHED'}
 
@@ -1869,6 +1896,9 @@ class JCNS_OT_ConeDriverAdd(Operator):
             k.cone_input_index, k.out_min, k.out_max = prev.cone_input_index, prev.out_min, prev.out_max
             k.interpolation, k.curve_type = prev.interpolation, prev.curve_type
         p.active_cone_driver_index = len(p.cone_drivers) - 1
+        from . import _sync_constraint_name
+        _sync_constraint_name(p)            # a cone-only entry is named "Cone×N → ..."
+        refresh_applied_driver(p.id_data)
         return {'FINISHED'}
 
 
@@ -1888,6 +1918,9 @@ class JCNS_OT_ConeDriverRemove(Operator):
         i = min(p.active_cone_driver_index, len(p.cone_drivers) - 1)
         p.cone_drivers.remove(i)
         p.active_cone_driver_index = max(0, i - 1)
+        from . import _sync_constraint_name
+        _sync_constraint_name(p)
+        refresh_applied_driver(p.id_data)
         return {'FINISHED'}
 
 
