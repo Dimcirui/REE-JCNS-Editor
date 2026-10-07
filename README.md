@@ -72,7 +72,7 @@ table is re-derived from the skeleton's hierarchy.
 
 ## Installation
 
-Blender 4.2 or newer: `Edit > Preferences > Get Extensions > ⌄ > Install from
+Blender 4.3 or newer: `Edit > Preferences > Get Extensions > ⌄ > Install from
 Disk...` and pick the `-extension-vX.Y.Z.zip`. Blender 3.6 – 4.1: `Edit >
 Preferences > Add-ons > Install...` and pick the plain `-vX.Y.Z.zip`.
 Both are built with `python build_addon.py --all`.

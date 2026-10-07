@@ -11,7 +11,7 @@ website = "https://github.com/Dimcirui/REE-JCNS-Editor"
 
 tags = ["Animation", "Import-Export", "Rigging"]
 
-blender_version_min = "4.2.0"
+blender_version_min = "4.3.0"
 
 # Blender add-ons link against bpy and are distributed under a GPL-compatible
 # licence by convention; this also matches NSACloud's RE Engine add-ons, whose
