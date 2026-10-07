@@ -249,8 +249,8 @@ class JCNSWriter:
             cone_driver_blob.extend(b'\x00' * (_align(pos, 16) - pos))
             cone_driver_at.append(CONE_INFO_START + len(cone_driver_blob))
             for ci in infos:
-                # Index 255 is a reference to no cone, which v22 files carry.
-                if not (0 <= ci['ConeInputIndex'] < N_CONE or (version < 35 and ci['ConeInputIndex'] == 255)):
+                # Index 255 is a reference to no cone (v22 files carry it).
+                if not (0 <= ci['ConeInputIndex'] < N_CONE or ci['ConeInputIndex'] == 255):
                     raise ValueError(T("core.writer.cone_input_index", c.get('ObjectName', ''),
                                        ci['ConeInputIndex'], N_CONE))
                 cone_driver_blob.extend(CONE_DRIVER.pack(ci, version))

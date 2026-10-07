@@ -433,17 +433,20 @@ def cone_struct(version):
     return CONE_INPUT if version >= 35 else CONE_INPUT_V1
 
 
-# OutputData.ConeDriverOffset -> ConeDriver[ConeDriverCount].
-# Rest is (0,0,0,0), or (0,0,0,1) on scale targets whose neutral value is 1;
-# Value is what the target takes for that cone (a factor on scale targets, not
-# an angle).
+# OutputData.ConeDriverOffset -> ConeDriver[ConeDriverCount].  Read off Wilds' native
+# evaluator (docs/engine-names.md section 4): with CurveType 0 (MinMax) the entry takes
+# OutMin + (OutMax - OutMin) * f(cone value), f picked by Interpolation (0 linear, 1-3
+# polynomial eases), and an entry's cones combine by its OutputMode.  ConeInputIndex 255
+# is no cone.  CurveData is only read with CurveType 1 (Function) and is 0 in every
+# shipped file.  v22's OutMin / OutMax pair with OutputMode Min / Max as expected.
 CONE_DRIVER = Struct('ConeDriver', [
-    F('Rest0',           'f'),
-    F('Rest123',         '3f', since(24)),
-    F('Value',           'f'),
-    F('UnkByte0',        'B'),                   # 0 or 2
-    F('ConeInputIndex', 'H'),
-    F('UnkByte3',        'B'),                   # always 0
+    F('CurveData',       '12s', since(24)),
+    F('OutMin',          'f'),                   # 1 on scale targets
+    F('OutMax',          'f'),
+    F('Interpolation',   'B'),                   # RE9 0 / 2, RE4 v22 3
+    F('ConeInputIndex',  'B'),
+    F('CurveType',       'B'),                   # 0 in every shipped file
+    F('ReservedByte',    'B'),                   # always 0
 ])
 
 

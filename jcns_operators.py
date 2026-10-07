@@ -1796,7 +1796,8 @@ class JCNS_OT_ConeDriverAdd(Operator):
         k = p.cone_drivers.add()
         if len(p.cone_drivers) > 1:
             prev = p.cone_drivers[len(p.cone_drivers) - 2]
-            k.cone_input_index, k.rest = prev.cone_input_index, tuple(prev.rest)
+            k.cone_input_index, k.out_min, k.out_max = prev.cone_input_index, prev.out_min, prev.out_max
+            k.interpolation, k.curve_type = prev.interpolation, prev.curve_type
         p.active_cone_driver_index = len(p.cone_drivers) - 1
         return {'FINISHED'}
 

@@ -270,9 +270,9 @@ def do_import(filepath, context, armature_obj=None):
                 c.get('ObjectHash', 0) & 0xFFFFFFFF, target_bone)
         for ci in c.get('ConeDriver') or []:
             k = p.cone_drivers.add()
-            k.cone_input_index, k.value = ci['ConeInputIndex'], ci['Value']
-            k.rest = (ci['Rest0'],) + tuple(ci.get('Rest123', (0.0, 0.0, 0.0)))
-            k.unk_byte0, k.unk_byte3 = ci['UnkByte0'], ci['UnkByte3']
+            k.cone_input_index, k.out_min, k.out_max = ci['ConeInputIndex'], ci['OutMin'], ci['OutMax']
+            k.interpolation, k.curve_type, k.reserved_byte = ci['Interpolation'], ci['CurveType'], ci['ReservedByte']
+            k.curve_data_hex = bytes(ci.get('CurveData', bytes(12))).hex()
         if len(p.cone_drivers):
             # Rename: target_bone's update named it while the cone list was empty.
             from . import constraint_name_from_props

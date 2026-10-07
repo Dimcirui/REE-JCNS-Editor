@@ -243,8 +243,9 @@ Wilds 的 native 求值器**会算锥形**，算法和第 2 节的托管原型�
   镜像 Matrix 把当前轴翻成 −Y。参考轴到底是固定的 e_X 还是 Matrix 的第 0 行，这次分不出来（镜像阵第 0 行不变）。
 - **ConeDriver（每条 24 字节）**：+0x15 锥形索引（u8，0xFF 表示不用），+0x16 CurveType（0 MinMax / 1 Function），
   +0x14 MinMax 的插值方式（0 线性，1–3 是三种多项式缓动），+0x0C OutMin，+0x10 OutMax。
-  MinMax：输出 = OutMin + (OutMax − OutMin) · f(clamp(v, 0, 1))。schema 里的 `ConeInputIndex`（u16）其实是索引 + CurveType 两个字节，
-  `Rest123[2]` 是 OutMin（缩放目标上是 1），`Value` 是 OutMax，`UnkByte0` 是插值方式。
+  MinMax：输出 = OutMin + (OutMax − OutMin) · f(clamp(v, 0, 1))。schema 已按此改名：`CurveData`（12 字节）、`OutMin`、`OutMax`、
+  `Interpolation`、`ConeInputIndex`（u8）、`CurveType`、`ReservedByte`（旧名 Rest0/Rest123、Value、UnkByte0、u16 索引、UnkByte3）。
+  v22 的 12 字节记录没有 CurveData；RE4 语料里 (OutMin −20, OutMax −90) 总配 OutputMode Min，(20, 90) 总配 Max，和这个解读一致。
   Function 曲线（+0x00 起的指针和字段）、插值 1–3 都没测。
 - 一条约束的多个 ConeDriver 按 OutputMode（+72）合并：Sum 相加、Mul 相乘、Min/Max 取极值。第一个直接赋值。
 - 平移目标上 `getOutputUserValue` 返回的是米（锥形值 ÷100）。

@@ -159,11 +159,13 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
         return [T("io.export.cone_not_cached", n_cone)]
     n = len(parser.cone_inputs)
     for o in get_constraint_empties(root_obj):
-        # before v35 index 255 is a reference to no cone, which shipped files carry
-        bad = [k.cone_input_index for k in o.jcns_cns_props.cone_drivers
-               if k.cone_input_index >= n and not (parser.version < 35 and k.cone_input_index == 255)]
+        # index 255 is a reference to no cone (v22 files carry it)
+        cds = o.jcns_cns_props.cone_drivers
+        bad = [k.cone_input_index for k in cds if n <= k.cone_input_index != 255]
         if bad:
             return [T("io.export.cone_bad_index", o.name, bad[0], n)]
+        if any(_hex_bytes(k.curve_data_hex, 12) is None for k in cds):
+            return [T("io.export.cone_bad_curve_data", o.name)]
 
     # ObjectSettings are not editable; the stub gets them back from the root
     if getattr(parser, 'is_stub', False) and root_props.object_settings_json:
@@ -283,6 +285,15 @@ def _root_version(rp):
     if rp.source_version:
         return rp.source_version
     return 35 if rp.detected_game == 'RE9' else 102
+
+
+def _hex_bytes(text, size):
+    """`size` bytes from a hex string (spaces allowed), or None when it is not that."""
+    try:
+        b = bytes.fromhex(text.replace(' ', ''))
+    except ValueError:
+        return None
+    return b if len(b) == size else None
 
 
 def _transform_int(transform_element, default=1):
@@ -419,8 +430,9 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
     else:
         parsed_c['ObjectHashIndex'] = 0
     parsed_c['ConeDriver'] = [{
-        'Rest0': k.rest[0], 'Rest123': tuple(k.rest[1:]), 'Value': k.value,
-        'UnkByte0': k.unk_byte0, 'ConeInputIndex': k.cone_input_index, 'UnkByte3': k.unk_byte3}
+        'CurveData': _hex_bytes(k.curve_data_hex, 12), 'OutMin': k.out_min, 'OutMax': k.out_max,
+        'Interpolation': k.interpolation, 'ConeInputIndex': k.cone_input_index,
+        'CurveType': k.curve_type, 'ReservedByte': k.reserved_byte}
         for k in p.cone_drivers]
     parsed_c['ConeDriverCount'] = len(parsed_c['ConeDriver'])
     parsed_c['TailBytes']     = bytes([

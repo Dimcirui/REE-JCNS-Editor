@@ -103,8 +103,8 @@ def main():
         c['TransformElement'] = 0
         c['AttrFlags'] = 17
         c['sources'] = []
-        c['ConeDriver'] = [{'Rest0': 0.0, 'Rest123': (0.0, 0.0, 0.0), 'Value': 1.0,
-                            'UnkByte0': 0, 'ConeInputIndex': k, 'UnkByte3': 0}]
+        c['ConeDriver'] = [{'CurveData': bytes(12), 'OutMin': 0.0, 'OutMax': 1.0, 'Interpolation': 0,
+                            'ConeInputIndex': k, 'CurveType': 0, 'ReservedByte': 0}]
         cons.append(c)
     for ax in range(3):
         c = copy.deepcopy(tmpl)

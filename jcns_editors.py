@@ -397,11 +397,15 @@ class JCNS_PT_Ed_Ranges_Cones(_Editor, Panel):
         if len(p.cone_drivers):
             k = p.cone_drivers[min(p.active_cone_driver_index, len(p.cone_drivers) - 1)]
             box = layout.box()
-            box.prop(k, "value")
-            box.row(align=True).prop(k, "rest", text="Rest")
             r = box.row(align=True)
-            r.prop(k, "unk_byte0")
-            r.prop(k, "unk_byte3")
+            r.prop(k, "out_min")
+            r.prop(k, "out_max")
+            r = box.row(align=True)
+            r.prop(k, "interpolation")
+            r.prop(k, "curve_type")
+            if k.curve_type != 0 or k.curve_data_hex.strip('0 '):
+                box.prop(k, "curve_data_hex")
+            box.prop(k, "reserved_byte")
 
 
 class JCNS_PT_Ed_Ranges_Tools(_Editor, Panel):

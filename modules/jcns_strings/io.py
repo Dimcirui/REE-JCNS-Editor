@@ -216,6 +216,10 @@ STRINGS = {
         "ZH": "约束「%s」引用了第 %d 个 ConeInput，但文件里只有 %d 个。",
         "EN": "Constraint “%s” refers to ConeInput %d, but the file has only %d.",
     },
+    "io.export.cone_bad_curve_data": {
+        "ZH": "约束「%s」的锥形曲线数据不是 12 字节的十六进制。",
+        "EN": "Constraint “%s” has cone curve data that is not 12 bytes of hex.",
+    },
     "io.export.tip": {
         "ZH": "把选中的 JCNS 集合导出为 .jcns 文件，版本与导入时相同",
         "EN": "Export the selected JCNS collection as a .jcns file, in the same version as when it was imported",

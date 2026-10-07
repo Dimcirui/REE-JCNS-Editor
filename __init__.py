@@ -534,16 +534,19 @@ class JCNSCMKey(PropertyGroup):
 
 
 class JCNSConeDriver(PropertyGroup):
-    """One ConeDriver record (24 bytes, v24+): a cone this constraint reads.
-
-    RE9 v35: Rest is (0,0,0,0), or (0,0,0,1) on scale targets; Value is what the
-    target takes for that cone (bt: AngleDeg, but scale targets hold factors).
-    """
-    cone_input_index: IntProperty(name="ConeInput", description=T("props.cone.index_desc"), default=0, min=0)
-    value: FloatProperty(name=T("props.cone.value"), description=T("props.cone.value_desc"), default=0.0)
-    rest: FloatVectorProperty(name="Rest", size=4, default=(0.0, 0.0, 0.0, 0.0))
-    unk_byte0: IntProperty(name="+20", default=0, min=0, max=255)
-    unk_byte3: IntProperty(name="+23", default=0, min=0, max=255)
+    """One ConeDriver record (24 bytes, v24+; 12 before): a cone this constraint reads.
+    See jcns_schema.CONE_DRIVER for what each field does."""
+    cone_input_index: IntProperty(name="ConeInput", description=T("props.cone.index_desc"),
+                                  default=0, min=0, max=255)
+    out_min: FloatProperty(name=T("props.cone.out_min"), description=T("props.cone.out_min_desc"), default=0.0)
+    out_max: FloatProperty(name=T("props.cone.out_max"), description=T("props.cone.out_max_desc"), default=0.0)
+    interpolation: IntProperty(name=T("props.cone.interpolation"), description=T("props.cone.interpolation_desc"),
+                               default=0, min=0, max=255)
+    curve_type: IntProperty(name=T("props.cone.curve_type"), description=T("props.cone.curve_type_desc"),
+                            default=0, min=0, max=255)
+    curve_data_hex: StringProperty(name=T("props.cone.curve_data"), description=T("props.cone.curve_data_desc"),
+                                   default="00" * 12)
+    reserved_byte: IntProperty(name="+23", default=0, min=0, max=255)
 
 
 class JCNSIntItem(PropertyGroup):
