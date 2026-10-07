@@ -210,11 +210,30 @@ Direction ↔ p̂，Matrix ↔ q_off，AngleRad ↔ 半角。但 native 路径�
 JointConeInputNode、ConeInputNode、MaConeRemapNode、MaFloatRemapNode、ExpMapToQuatNode、QuatToExpMapNode、
 ExprJointGetNode、ExprJointSetNode。
 
-## 4. 还没解决的
+## 4. native 求值器（2026-10-07，静态反汇编，未实测）
+
+入口：`JointConstraintsLayer.update()`（RVA C3D77F0）→ CE0E4F0 → 63820 → 分区调度 CE0E600。
+求值时**直接读文件里的记录**：OutputData 步长 0x50，偏移就是 `jcns_schema.OUTPUT_DATA` 的文件偏移。
+地址只对当前这版 exe 有效。
+
+- **分区调度**：按文件的 section table 逐项分发。id 0 → Outputs（A623DA0），1 → A627460，2 → A6275C0，
+  3 → A628410，4 → A629530，5 → A6299E0。不在表里的分区不执行，和第 12 轮实测一致。
+  调度器把一个"级别"参数传给 id 0–3，id 4、5 拿不到。
+- **Outputs 求值器 A623DA0**：
+  - 先比较 `TailBytes[1]`（+0x4B）和传入的级别，**TailBytes[1] < 级别时整条跳过**。级别来自 GameObject 上某个组件的
+    +0x4E4 字段（A623C40；先查一种组件，没有再查另一种），像 LOD 档位。语料里 TailBytes[1] 是 0–8，最多的是 2（15758 条）。
+  - `TransformElement`（+0x2F）分 17 路 switch；源的 InputType 分 6 路；`UnknownByte72`（+0x48）分 5 路，
+    对应 OutputMode Sum/Average/Mul/Min/Max。
+  - **Rot2（13）**：沿关节组步进（每条 0x50），按各条的 Axis（+0x49）把值收进 vec3，再用 `TailBytes[0]`（+0x4A）
+    作 **RotOrder** 转成四元数（和锥形 Offset 用的是同一个欧拉转换 B0E1050）。AttrFlags bit0 打开时再乘关节的静止局部旋转。
+    语料里 TailBytes[0] 非 0 的值是 1/2/5（YZX/ZXY/XZY），也出现在 Trans/Rot/Scale 等条目上。那些条目读不读它，还没查。
+  - AttrFlags bit4（+0x2E & 0x10）为真时，先按 ObjectHashIndex（+0x20）查一次目标，查不到就跳过。
+
+## 5. 还没解决的
 
 - 锥形公式在托管原型上已经测定（见第 2 节）；native jcns 的 ConeInput 是否同一算法、字段怎么对应，还没验证。
-- 源 AttrFlags 的 BasePose 位（bit0=0 的源）到底怎么读。
-- TailBytes[0]（0/1/2/5）、TailBytes[1]（0–8）分别是什么，TangentType 是候选之一。
+- 源 AttrFlags 的 BasePose 位（bit0=0 的源）到底怎么读（求值器 A623DA0 里的 6 路 InputType switch 是下一步要读的地方）。
+- TailBytes[1] 比较的级别是哪个组件的哪个量；TailBytes[0] 在 Rot2 以外的元素上有没有作用。
 - ConeDriverInfo 里那个 0/2 字节。
 - exe 里还有一组手写脚本的字段（`_ConeVector`、`_HalfAngleTbl`、`_ConeInputs`、`_ConeOutMax`、
   `ConeDriverCount`、`ConeDrivenCount`，和颚、鳍、尾的表放在一起），像某个怪物的专用约束脚本，所属类型没查到。
