@@ -51,6 +51,13 @@ STRINGS = {
     "ui.channels.row": {"ZH": "局部 %s 轴 ← %s%s", "EN": "Local %s axis ← %s%s"},
     "ui.channels.shared": {"ZH": "        %d 条共用此通道", "EN": "        %d entries share this channel"},
 
+    # --- jcns_ui.py: ConeInput table panel ---
+    "ui.cone_inputs.label": {"ZH": "ConeInput 表", "EN": "ConeInput Table"},
+    "ui.cone_inputs.panel_desc": {"ZH": "文件里的锥形定义。条目的 ConeDriver 输入按序号引用它们。",
+                                  "EN": "The file's cone definitions. Entries' ConeDriver inputs refer to them by index."},
+    "ui.cone_inputs.locked": {"ZH": "这个版本原地写回，锥形表不能改", "EN": "This version is written in place; the cone table cannot be changed"},
+    "ui.cone_inputs.empty": {"ZH": "没有锥形。用 + 新建后，条目才能加 ConeDriver 输入", "EN": "No cones. Add one with + before entries can take ConeDriver inputs"},
+
     # --- jcns_ui.py: file info panel ---
     "ui.fileinfo.label": {"ZH": "文件信息", "EN": "File Info"},
     "ui.fileinfo.panel_desc": {"ZH": "不属于任何一条条目、只随文件带着走的数据。",

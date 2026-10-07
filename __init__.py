@@ -533,6 +533,80 @@ class JCNSCMKey(PropertyGroup):
                         default=0, min=0)
 
 
+def _refresh_cone_table(self, context):
+    """A ConeInput edit changes every previewed entry that reads the cone: re-apply them."""
+    try:
+        from . import jcns_operators
+        jcns_operators.refresh_applied_driver(self.id_data)
+    except Exception as exc:                     # an edit must never hard-fail
+        print("[JCNS] cone refresh skipped: %r" % exc)
+
+
+def _cone_joint_update(self, context):
+    """Picking the joint fills an empty parent joint with its parent in the armature,
+    the only parent the preview follows."""
+    rp = getattr(self.id_data, 'jcns_root_props', None)
+    arm = rp.target_armature if rp is not None else None
+    if not self.parent_joint.strip() and arm is not None and arm.type == 'ARMATURE':
+        b = arm.data.bones.get(self.joint.strip())
+        if b is not None and b.parent is not None:
+            self.parent_joint = b.parent.name
+    _refresh_cone_table(self, context)
+
+
+def _cone_euler_get(self):
+    from mathutils import Quaternion
+    x, y, z, w = self.direction
+    return tuple(Quaternion((w, x, y, z)).to_euler('XYZ'))
+
+
+def _cone_euler_set(self, value):
+    from mathutils import Euler
+    q = Euler(value, 'XYZ').to_quaternion()
+    self.direction = (q.x, q.y, q.z, q.w)
+
+
+def _cone_base_pose_get(self):
+    return bool(self.tail[3] & 1)
+
+
+def _cone_base_pose_set(self, value):
+    t = list(self.tail)
+    t[3] = (t[3] & ~1) | int(bool(value))
+    self.tail = t
+
+
+class JCNSConeInput(PropertyGroup):
+    """One ConeInput record of the root's table (jcns_schema.CONE_INPUT): a cone that
+    ConeDrivers point at by index.  See jcns_source_read.cone_value for what it measures."""
+    name: StringProperty(name=T("props.cone_input.name"), default="Cone_cdr", update=_refresh_cone_table)
+    joint: StringProperty(name=T("props.cone_input.joint"), description=T("props.cone_input.joint_desc"),
+                          default="", update=_cone_joint_update,
+                          search=lambda self, context, text: _search_bone_names(context, text))
+    parent_joint: StringProperty(name=T("props.cone_input.parent"), description=T("props.cone_input.parent_desc"),
+                                 default="", update=_refresh_cone_table,
+                                 search=lambda self, context, text: _search_bone_names(context, text))
+    symmetry_joint: StringProperty(name=T("props.cone_input.symmetry"), description=T("props.cone_input.symmetry_desc"),
+                                   default="", update=_refresh_cone_table,
+                                   search=lambda self, context, text: _search_bone_names(context, text))
+    # Stored as the file's quaternion (x, y, z, w); the panel edits it as an Euler.
+    direction: FloatVectorProperty(size=4, default=(0.0, 0.0, 0.0, 1.0), update=_refresh_cone_table)
+    direction_euler: FloatVectorProperty(name=T("props.cone_input.direction"),
+                                         description=T("props.cone_input.direction_desc"),
+                                         size=3, subtype='EULER', get=_cone_euler_get, set=_cone_euler_set,
+                                         update=_refresh_cone_table)
+    angle: FloatProperty(name=T("props.cone_input.angle"), description=T("props.cone_input.angle_desc"),
+                         default=0.785398, min=0.0, subtype='ANGLE', update=_refresh_cone_table)
+    matrix: FloatVectorProperty(name="Matrix", description=T("props.cone_input.matrix_desc"), size=12,
+                                default=(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0),
+                                update=_refresh_cone_table)
+    translation: FloatVectorProperty(size=4, default=(0.0, 0.0, 0.0, 0.0))     # v13-v23 only
+    tail: IntVectorProperty(size=8, default=(6, 6, 0, 0, 0, 0, 0, 0), min=0, max=255)
+    base_pose: BoolProperty(name=T("props.cone_input.base_pose"), description=T("props.cone_input.base_pose_desc"),
+                            get=_cone_base_pose_get, set=_cone_base_pose_set, update=_refresh_cone_table)
+    unknown_uint32: IntProperty(default=0, min=0)
+
+
 class JCNSConeDriver(PropertyGroup):
     """One ConeDriver record (24 bytes, v24+; 12 before): a cone this constraint reads.
     See jcns_schema.CONE_DRIVER for what each field does."""
@@ -1072,8 +1146,9 @@ class JCNSRootProperties(PropertyGroup):
         name=T("props.root.rot_map_value"), default=0, min=0, max=255,
         description=T("props.root.rot_map_value_desc"))
     object_settings_json: StringProperty(default="")
-    # ConeInput table (v35+), cached so a rebuild can re-emit it
-    cone_inputs_json: StringProperty(default="")
+    # The ConeInput table ConeDrivers index into; editable when the file is rebuilt.
+    cone_inputs: CollectionProperty(type=JCNSConeInput)
+    active_cone_input_index: IntProperty(default=0)
     # Read only when source_version is 0 (see jcns_exporter._root_version).
     detected_game: EnumProperty(
         name=T("props.root.detected_game"),
@@ -1289,6 +1364,7 @@ _classes = [
     JCNSCMKey,                  # groups must register before the groups that reference them
     JCNSIntItem,
     JCNSHashItem,
+    JCNSConeInput,
     JCNSConeDriver,
     JCNSWeightedSource,
     JCNSSourceProperties,

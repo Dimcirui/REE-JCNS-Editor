@@ -151,12 +151,19 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
     parser.rot_expressions, parser.rot_expression_map = X.rot_parser_form(
         rots, {'map_value': root_props.rot_map_value}, parser.version)
 
-    # ConeDrivers are not editable; re-emitted from the import cache.
-    n_cone = parser.header.get('ConeInputCount', 0)
-    if root_props.cone_inputs_json:
-        parser.cone_inputs = X.cone_inputs_from_json(root_props.cone_inputs_json)
-    elif n_cone:
-        return [T("io.export.cone_not_cached", n_cone)]
+    # The ConeInput table, as edited on the root.  Bone names may be "0x%08X" hashes.
+    parser.cone_inputs = []
+    for i, ci in enumerate(root_props.cone_inputs):
+        if not ci.joint.strip() or not ci.parent_joint.strip():
+            return [T("io.export.cone_no_joint", i, ci.name)]
+        sym = ci.symmetry_joint.strip()
+        parser.cone_inputs.append({
+            'Name': ci.name, 'Direction': tuple(ci.direction), 'Matrix': tuple(ci.matrix),
+            'Translation': tuple(ci.translation), 'AngleRad': ci.angle,
+            'UnknownUInt32': ci.unknown_uint32, 'Tail': bytes(ci.tail),
+            'JointName': ci.joint.strip(), 'ParentJointName': ci.parent_joint.strip(),
+            'JointHash': _name_to_hash(ci.joint.strip()), 'ParentJointHash': _name_to_hash(ci.parent_joint.strip()),
+            'SymmetryJointHash': _name_to_hash(sym) if sym else None})
     n = len(parser.cone_inputs)
     for o in get_constraint_empties(root_obj):
         # index 255 is a reference to no cone (v22 files carry it)

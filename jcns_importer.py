@@ -286,8 +286,7 @@ def do_import(filepath, context, armature_obj=None):
     # names this file's Ranges spell out, then the bundled dictionary, else show the
     # raw hash (the exporter reads a "0x1234ABCD" name back as that hash).
     import json
-    from jcns_sections import (multi_editable, read_joint_signature, aim_editable, rot_editable,
-                               cone_inputs_to_json)
+    from jcns_sections import multi_editable, read_joint_signature, aim_editable, rot_editable
     from jcns_names import name_of
     from . import section_empty_name
     names = {}
@@ -365,7 +364,22 @@ def do_import(filepath, context, armature_obj=None):
     if not rot_meta['map_uniform']:
         print("[JCNS] RotExpressionMap holds different values, using the first (%d)" % rot_meta['map_value'])
 
-    rp.cone_inputs_json = cone_inputs_to_json(parser.cone_inputs) if getattr(parser, 'cone_inputs', []) else ''
+    rp.cone_inputs.clear()
+    for cd in getattr(parser, 'cone_inputs', []):
+        ci = rp.cone_inputs.add()
+        ci.name = cd['Name']
+        ci.joint = cd.get('JointName') or _nm(cd['JointHash'])
+        ci.parent_joint = cd.get('ParentJointName') or _nm(cd['ParentJointHash'])
+        sym = cd.get('SymmetryJointHash')
+        ci.symmetry_joint = _nm(sym) if sym is not None else ''
+        ci.direction = cd['Direction']
+        if 'Matrix' in cd:
+            ci.matrix = cd['Matrix']
+        if 'Translation' in cd:
+            ci.translation = cd['Translation']
+        ci.angle = cd['AngleRad']
+        ci.tail = tuple(bytes(cd['Tail']))
+        ci.unknown_uint32 = cd.get('UnknownUInt32', 0)
     rp.object_settings_json = json.dumps([
         {'UnkBytes': o['UnkBytes'].hex(), 'UnknownDWORD': o['UnknownDWORD'],
          'ObjectNameHash': o['ObjectNameHash']} for o in parser.object_settings])

@@ -13,14 +13,15 @@
 | 1 | `JCNS_PT_sdk` | 烘焙约束 | 摆姿势记录键，生成 Outputs 约束；对话框里「生成后预览」默认开（`jcns_sdk_ops.py`） |
 | 2 | `JCNS_PT_preview` | 预览 | 整个界面唯一的预览入口：整个文件应用/清除，另一行只处理选中的条目；显示已应用数量 |
 | 3 | `JCNS_PT_edit` | 编辑 | 分区标签、条目列表（Outputs 可切到按骨骼分组）、增删换序；选中条目的详情是它的子面板 |
-| 4 | `JCNS_PT_file_info` | 文件信息 | ObjectSettings、ConeDriver 表、读取骨表的数量，默认折叠 |
+| 4 | `JCNS_PT_cone_inputs` | ConeInput 表 | 文件的锥形定义，可增删改（原地写回的版本只读）；Matrix 有单位阵 / 镜像阵预设，默认折叠 |
+| 5 | `JCNS_PT_file_info` | 文件信息 | ObjectSettings、ConeInput 表、读取骨表的数量，默认折叠 |
 
 没有 JCNS 根节点时，除「MHWs JCNS」外都不出现。
 
 「编辑」下的子面板（`jcns_editors.py`），只在选中条目是该类型时出现：
 
     编辑
-    ├─ 被驱动 · 驱动 · 映射曲线 · ConeDriver 输入（文件有 ConeInput 才出现）· 工具（镜像、合并所有同通道约束）· 高级（折叠）   Outputs
+    ├─ 被驱动 · 驱动 · 映射曲线 · ConeDriver 输入（可重建的文件或已有锥形时出现）· 工具（镜像、合并所有同通道约束）· 高级（折叠）   Outputs
     ├─ Multi 蒙皮  └─ 高级（折叠）
     ├─ Aim 瞄准   └─ 高级（折叠）
     ├─ RotExpr 旋转表达式  └─ 高级（折叠）
@@ -120,4 +121,5 @@ Transformation 约束按欧拉分量乘系数，引擎是否如此未测；预�
   `rot_scale` 这个名字有误导性。
 - **Material**：主面板填材质名、参数名（mdf2 原文），自动算出两个哈希（murmur3 UTF-16，与骨骼名同一函数，语料 19/20、5/5 对上）；手改哈希会清掉对不上的名字。ApplyMode 用下拉；新建的尾部字节取语料最常见的 00 01 00。
   Material 分区下方是「参考 mdf2」列表（根节点 `mdf_refs`，可多个）：读到的材质名/参数名成为两栏的下拉候选，已有条目按哈希反查补名（材质不在参考里时参数名在全部材质里找）；名字对不上参考时面板报警。导入时同目录的 `*.mdf2.*` 自动加入。语料里约三分之一的原版记录与本模型 mdf2 不一致（如 ch02/ch03_018 系列指向 ch05 的 `Liquid3`）。
-- **文件信息**：ObjectSettings、ConeDriver 表、读取骨表目前只读展示；ObjectSettings 的含义还没研究过。
+- **文件信息**：ObjectSettings、读取骨表目前只读展示；ObjectSettings 的含义还没研究过。ConeInput 表在自己的面板里编辑。
+- **ConeInput 表**：删除一项时，引用它的 ConeDriver 改为 255（不用锥形），之后的序号前移。

@@ -56,35 +56,6 @@ from jcns_i18n import T
 from jcns_schema import ROT_EXPRESSION
 
 
-# ── ConeDrivers ────────────────────────────────────────────────────────────
-# Not editable: Blender keeps the parsed table as JSON and the exporter re-emits it.  Whatever
-# the version's layout holds is kept; file offsets, hash-list indices and NameHash (derived
-# from Name) are not.
-
-_CONE_DERIVED = ('NameHash',)
-
-
-def cone_inputs_to_json(cones):
-    out = []
-    for cd in cones:
-        rec = {}
-        for k, v in cd.items():
-            if k.endswith('Offset') or k.endswith('HashIndex') or k in _CONE_DERIVED:
-                continue
-            rec[k] = v.hex() if isinstance(v, (bytes, bytearray)) else list(v) if isinstance(v, tuple) else v
-        out.append(rec)
-    return json.dumps(out)
-
-
-def cone_inputs_from_json(text):
-    out = []
-    for rec in json.loads(text):
-        cd = {k: tuple(v) if isinstance(v, list) else v for k, v in rec.items()}
-        cd['Tail'] = bytes.fromhex(cd['Tail'])
-        out.append(cd)
-    return out
-
-
 # ── MultiConstraint ─────────────────────────────────────────────────────────
 
 def multi_editable(parser):

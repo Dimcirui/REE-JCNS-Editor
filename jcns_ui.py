@@ -13,7 +13,8 @@ modules/jcns_kinds.py 决定，预览（驱动器 / 骨骼约束）由 jcns_prev
   2 JCNS_PT_Preview    整个界面唯一的预览入口
   3 JCNS_PT_Edit       分区标签、条目列表（或按骨骼分组）、增删换序
       （jcns_editors.py）选中条目的编辑详情，作为「编辑」的子面板
-  4 JCNS_PT_FileInfo   文件信息（ObjectSettings、ConeInput 表、读取骨表），默认折叠
+  4 JCNS_PT_ConeInputs ConeInput 表：文件的锥形定义，默认折叠
+  5 JCNS_PT_FileInfo   文件信息（ObjectSettings、ConeInput 表、读取骨表），默认折叠
 """
 
 import os
@@ -169,21 +170,9 @@ class JCNS_UL_MultiSources(bpy.types.UIList):
         row.prop(item, "weight", text="")
 
 
-_CONE_NAME_CACHE = {}
-
-
 def _cone_names(rp):
-    """ConeInput names of a root, from its import cache (parsed once per string)."""
-    raw = rp.cone_inputs_json if rp else ''
-    if not raw:
-        return []
-    hit = _CONE_NAME_CACHE.get(raw)
-    if hit is None:
-        import json
-        hit = [cd['Name'] for cd in json.loads(raw)]
-        _CONE_NAME_CACHE.clear()
-        _CONE_NAME_CACHE[raw] = hit
-    return hit
+    """ConeInput names of a root's table."""
+    return [ci.name for ci in rp.cone_inputs] if rp else []
 
 
 class JCNS_UL_ConeDrivers(bpy.types.UIList):
@@ -200,7 +189,18 @@ class JCNS_UL_ConeDrivers(bpy.types.UIList):
         sub = row.row()
         sub.alert = item.cone_input_index >= len(names)
         sub.label(text=label, icon='CONE')
-        row.prop(item, "value", text="")
+        row.prop(item, "out_max", text="")
+
+
+class JCNS_UL_ConeInputs(bpy.types.UIList):
+    """ConeInput 表：文件里的锥形定义，ConeDriver 按序号引用。"""
+    bl_idname = "JCNS_UL_cone_inputs"
+
+    def draw_item(self, context, layout, data, item, icon, active_data, active_prop, index):
+        row = layout.row(align=True)
+        row.label(text="%d" % index)
+        row.prop(item, "name", text="", emboss=False, icon='CONE')
+        row.label(text=item.joint or "?")
 
 
 
@@ -590,6 +590,54 @@ def _draw_channels(layout, context, root, rp):
 
 
 # ---------------------------------------------------------------------------
+# ConeInput 表
+# ---------------------------------------------------------------------------
+
+class JCNS_PT_ConeInputs(_RootPanel, Panel):
+    bl_description = T("ui.cone_inputs.panel_desc")
+    bl_label    = T("ui.cone_inputs.label")
+    bl_idname   = "JCNS_PT_cone_inputs"
+    bl_order    = 4
+    bl_options  = {'DEFAULT_CLOSED'}
+
+    def draw(self, context):
+        from . import file_state
+        _root, rp = _resolve_root(context)
+        layout = self.layout
+        editable = file_state(rp).rebuild
+        if not editable:
+            layout.label(text=T("ui.cone_inputs.locked"), icon='LOCKED')
+        row = layout.row()
+        row.template_list("JCNS_UL_cone_inputs", "", rp, "cone_inputs", rp, "active_cone_input_index",
+                          rows=min(max(len(rp.cone_inputs), 2), 8))
+        col = row.column(align=True)
+        col.operator("jcns.cone_input_add", text="", icon='ADD')
+        col.operator("jcns.cone_input_remove", text="", icon='REMOVE')
+        if not len(rp.cone_inputs):
+            layout.label(text=T("ui.cone_inputs.empty"), icon='INFO')
+            return
+        ci = rp.cone_inputs[min(rp.active_cone_input_index, len(rp.cone_inputs) - 1)]
+        box = layout.box()
+        box.enabled = editable
+        box.prop(ci, "name")
+        box.prop(ci, "joint")
+        box.prop(ci, "parent_joint")
+        box.prop(ci, "symmetry_joint")
+        box.prop(ci, "direction_euler")
+        box.prop(ci, "angle")
+        box.prop(ci, "base_pose")
+        r = box.row(align=True)
+        r.label(text="Matrix")
+        r.operator("jcns.cone_input_matrix", text=T("ops.cone_input.matrix_identity")).preset = 'IDENTITY'
+        r.operator("jcns.cone_input_matrix", text=T("ops.cone_input.matrix_mirror")).preset = 'MIRROR'
+        grid = box.column(align=True)
+        for i in range(3):
+            g = grid.row(align=True)
+            for j in range(3):
+                g.prop(ci, "matrix", index=4 * i + j, text="")
+
+
+# ---------------------------------------------------------------------------
 # 文件信息
 # ---------------------------------------------------------------------------
 
@@ -597,7 +645,7 @@ class JCNS_PT_FileInfo(_RootPanel, Panel):
     bl_description = T("ui.fileinfo.panel_desc")
     bl_label    = T("ui.fileinfo.label")
     bl_idname   = "JCNS_PT_file_info"
-    bl_order    = 4
+    bl_order    = 5
     bl_options  = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
@@ -629,11 +677,13 @@ _classes = [
     JCNS_UL_Sources,
     JCNS_UL_MultiSources,
     JCNS_UL_ConeDrivers,
+    JCNS_UL_ConeInputs,
     JCNS_UL_Entries,
     JCNS_UL_MdfRefs,
     JCNS_PT_Status,
     JCNS_PT_Preview,
     JCNS_PT_Edit,
+    JCNS_PT_ConeInputs,
     JCNS_PT_FileInfo,
 ]
 

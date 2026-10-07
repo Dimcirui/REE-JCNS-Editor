@@ -135,6 +135,21 @@ STRINGS = {
         "ZH": "删除当前约束里选中的锥形",
         "EN": "Delete the selected cone of the current constraint",
     },
+    "ops.label.cone_input_add": {"ZH": "新增 ConeInput", "EN": "Add ConeInput"},
+    "ops.desc.cone_input_add": {"ZH": "在文件的锥形表里加一个锥形", "EN": "Add a cone to the file's cone table"},
+    "ops.label.cone_input_remove": {"ZH": "删除 ConeInput", "EN": "Delete ConeInput"},
+    "ops.desc.cone_input_remove": {
+        "ZH": "删除选中的锥形；引用它的 ConeDriver 改为不用锥形，之后的序号前移",
+        "EN": "Delete the selected cone; ConeDrivers that use it are set to no cone and later indices move down",
+    },
+    "ops.label.cone_input_matrix": {"ZH": "设置 Matrix", "EN": "Set Matrix"},
+    "ops.desc.cone_input_matrix": {"ZH": "把选中锥形的 Matrix 设为预设值", "EN": "Set the selected cone's Matrix to a preset"},
+    "ops.cone_input.matrix_identity": {"ZH": "单位阵", "EN": "Identity"},
+    "ops.cone_input.matrix_mirror": {"ZH": "镜像阵", "EN": "Mirror"},
+    "ops.cone_input.removed_refs": {
+        "ZH": "有 %d 个 ConeDriver 引用了被删除的锥形，已改为不用锥形",
+        "EN": "%d ConeDrivers used the deleted cone and now use no cone",
+    },
     "ops.add_constraint.added": {
         "ZH": "已新增约束「%s」。",
         "EN": "Added constraint \"%s\".",

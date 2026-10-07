@@ -9,6 +9,7 @@ STRINGS = {
     "editors.panel.sources": {"ZH": "驱动", "EN": "Drivers"},
     "editors.panel.mapping": {"ZH": "映射曲线", "EN": "Mapping Curve"},
     "editors.panel.cones": {"ZH": "ConeDriver 输入", "EN": "ConeDriver Inputs"},
+    "editors.cones.no_table": {"ZH": "先在「ConeInput 表」面板里新建锥形", "EN": "Add a cone in the ConeInput Table panel first"},
     "editors.panel.cones_desc": {
         "ZH": "ConeDriver 输入：关节摆进某个锥形的程度驱动这条约束，与驱动并列。",
         "EN": "ConeDriver inputs: how far a joint swings into a cone drives this constraint, alongside the drivers.",

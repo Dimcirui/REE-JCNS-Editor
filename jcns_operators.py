@@ -122,36 +122,45 @@ def _bone_by_hash(armature_obj):
     return hit[1]
 
 
+def _armature_bone(armature_obj, name):
+    """The armature bone a table name means: the name itself, or a "0x%08X" hash /
+    a name the armature spells differently, matched by hash.  None if absent."""
+    if armature_obj is None or not name:
+        return None
+    if name in armature_obj.data.bones:
+        return name
+    from .jcns_exporter import _name_to_hash
+    return _bone_by_hash(armature_obj).get(_name_to_hash(name))
+
+
 def _cone_plan(members, armature_obj):
-    """[(ConeDriver props, joint bone, ConeInput record, self_parent)] for the live
+    """[(ConeDriver props, joint bone, ConeInput props, self_parent)] for the live
     entry's ConeDrivers, and the reason when one of them cannot be previewed.
 
     Index 255 is no cone and is left out.  The cone needs its joint in the armature
     and its ParentJoint to be the joint's parent there (or the joint itself)."""
     from . import get_jcns_root_from_constraint
-    from jcns_sections import cone_inputs_from_json
     owner = members[-1]
     cds = [k for k in owner.jcns_cns_props.cone_drivers if k.cone_input_index != 255]
     if not cds:
         return [], None
     _, rp = get_jcns_root_from_constraint(owner)
-    table = cone_inputs_from_json(rp.cone_inputs_json) if rp is not None and rp.cone_inputs_json else []
-    by_hash = _bone_by_hash(armature_obj) if armature_obj is not None else {}
+    table = rp.cone_inputs if rp is not None else []
     plan = []
     for k in cds:
         if k.cone_input_index >= len(table):
             return plan, T("ops.driver.cone_unresolved", k.cone_input_index)
         if k.curve_type != 0:
             return plan, T("ops.driver.cone_curve")
-        rec = table[k.cone_input_index]
-        joint = by_hash.get(rec['JointHash'])
-        parent = by_hash.get(rec['ParentJointHash'])
+        ci = table[k.cone_input_index]
+        joint = _armature_bone(armature_obj, ci.joint.strip())
+        parent = _armature_bone(armature_obj, ci.parent_joint.strip())
         if joint is None or parent is None:
             return plan, T("ops.driver.cone_unresolved", k.cone_input_index)
         bone = armature_obj.data.bones[joint]
         if parent != joint and (bone.parent is None or bone.parent.name != parent):
-            return plan, T("ops.driver.cone_parent", rec.get('Name', ''), joint, parent)
-        plan.append((k, joint, rec, parent == joint))
+            return plan, T("ops.driver.cone_parent", ci.name, joint, parent)
+        plan.append((k, joint, ci, parent == joint))
     return plan, None
 
 
@@ -353,16 +362,16 @@ def channel_sources(armature_obj, root_obj, owner):
             s['read'] = jcns_drivers.READ_VALUE
     plan, why = _cone_plan([owner], armature_obj)
     if why is None:
-        for k, joint, rec, self_parent in plan:
+        for k, joint, ci, self_parent in plan:
             rest, _off = _rest_transform(armature_obj, joint)
             live = () if self_parent else tuple(
                 a for a in range(3) if (joint, 'rotation_euler', a) not in later)
-            m = rec['Matrix']
+            m = tuple(ci.matrix)
             sources.append({
                 'bone': joint, 'axis_idx': 0, 'axis_name': 'X',
                 'cone': {'out_min': k.out_min, 'out_max': k.out_max, 'interp': k.interpolation},
-                'read': ('cone', rest, tuple(rec['Direction']), (m[0:3], m[4:7], m[8:11]),
-                         rec['AngleRad'], bool(rec['Tail'][3] & 1), self_parent, live)})
+                'read': ('cone', rest, tuple(ci.direction), (m[0:3], m[4:7], m[8:11]),
+                         ci.angle, ci.base_pose, self_parent, live)})
     return sources
 
 
@@ -1850,7 +1859,7 @@ class JCNS_OT_ConeDriverAdd(Operator):
     @classmethod
     def poll(cls, context):
         p = _active_cone_constraint(context)
-        return p is not None and bool(_rebuild_root(context)[1].cone_inputs_json)
+        return p is not None and len(_rebuild_root(context)[1].cone_inputs) > 0
 
     def execute(self, context):
         p = _active_cone_constraint(context)
@@ -1882,6 +1891,91 @@ class JCNS_OT_ConeDriverRemove(Operator):
         return {'FINISHED'}
 
 
+_CONE_MATRICES = {
+    'IDENTITY': (1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0),
+    'MIRROR':   (1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0),
+}
+
+
+def _active_cone_input(context):
+    """(root props, ConeInput props) of the active rebuilt file's selected ConeInput."""
+    rp = _rebuild_root(context)[1]
+    if rp is None or not len(rp.cone_inputs):
+        return rp, None
+    return rp, rp.cone_inputs[min(rp.active_cone_input_index, len(rp.cone_inputs) - 1)]
+
+
+class JCNS_OT_ConeInputAdd(Operator):
+    bl_idname = "jcns.cone_input_add"
+    bl_label  = T("ops.label.cone_input_add")
+    bl_description = T("ops.desc.cone_input_add")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return _rebuild_root(context)[1] is not None
+
+    def execute(self, context):
+        rp = _rebuild_root(context)[1]
+        ci = rp.cone_inputs.add()
+        ci.name = "Cone%02d_cdr" % (len(rp.cone_inputs) - 1)
+        rp.active_cone_input_index = len(rp.cone_inputs) - 1
+        return {'FINISHED'}
+
+
+class JCNS_OT_ConeInputRemove(Operator):
+    bl_idname = "jcns.cone_input_remove"
+    bl_label  = T("ops.label.cone_input_remove")
+    bl_description = T("ops.desc.cone_input_remove")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return _active_cone_input(context)[1] is not None
+
+    def execute(self, context):
+        from . import get_export_root, get_constraint_empties
+        root, _ = get_export_root(context)
+        rp = _rebuild_root(context)[1]
+        i = min(rp.active_cone_input_index, len(rp.cone_inputs) - 1)
+        rp.cone_inputs.remove(i)
+        rp.active_cone_input_index = max(0, i - 1)
+        # ConeDrivers point at the table by index: the removed cone becomes "no cone"
+        # (255), later ones move down by one.
+        cut = 0
+        for e in get_constraint_empties(root):
+            for k in e.jcns_cns_props.cone_drivers:
+                if k.cone_input_index == i:
+                    k.cone_input_index = 255
+                    cut += 1
+                elif i < k.cone_input_index != 255:
+                    k.cone_input_index -= 1
+        if cut:
+            self.report({'WARNING'}, T("ops.cone_input.removed_refs", cut))
+        refresh_applied_driver(root)
+        return {'FINISHED'}
+
+
+class JCNS_OT_ConeInputMatrix(Operator):
+    bl_idname = "jcns.cone_input_matrix"
+    bl_label  = T("ops.label.cone_input_matrix")
+    bl_description = T("ops.desc.cone_input_matrix")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    preset: bpy.props.EnumProperty(items=[
+        ('IDENTITY', T("ops.cone_input.matrix_identity"), ""),
+        ('MIRROR', T("ops.cone_input.matrix_mirror"), ""),
+    ])
+
+    @classmethod
+    def poll(cls, context):
+        return _active_cone_input(context)[1] is not None
+
+    def execute(self, context):
+        _active_cone_input(context)[1].matrix = _CONE_MATRICES[self.preset]
+        return {'FINISHED'}
+
+
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
@@ -1907,6 +2001,9 @@ _classes = [
     JCNS_OT_CMEdit,
     JCNS_OT_ConeDriverAdd,
     JCNS_OT_ConeDriverRemove,
+    JCNS_OT_ConeInputAdd,
+    JCNS_OT_ConeInputRemove,
+    JCNS_OT_ConeInputMatrix,
 ]
 
 

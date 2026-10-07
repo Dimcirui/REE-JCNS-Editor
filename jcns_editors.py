@@ -379,15 +379,20 @@ class JCNS_PT_Ed_Ranges_Cones(_Editor, Panel):
         from . import get_jcns_constraint, get_jcns_root_from_constraint
         if not super().poll(context):
             return False
+        from . import file_state
         obj, p = get_jcns_constraint(context)
         _, rp = get_jcns_root_from_constraint(obj)
-        return bool(len(p.cone_drivers) or (rp and rp.cone_inputs_json))
+        return bool(len(p.cone_drivers) or (rp and (len(rp.cone_inputs) or file_state(rp).rebuild)))
 
     def draw(self, context):
         c = _begin(self.layout, context, banner=False)
         if c is None:
             return
         layout, p = c.body, c.p
+        from . import get_jcns_root_from_constraint
+        _, rp = get_jcns_root_from_constraint(context.active_object)
+        if rp is not None and not len(rp.cone_inputs):
+            layout.label(text=T("editors.cones.no_table"), icon='INFO')
         row = layout.row()
         row.template_list("JCNS_UL_cone_drivers", "", p, "cone_drivers", p, "active_cone_driver_index",
                           rows=min(max(len(p.cone_drivers), 2), 8))
