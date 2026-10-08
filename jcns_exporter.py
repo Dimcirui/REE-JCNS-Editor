@@ -116,24 +116,30 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
                 'sources': [{'hash': H(w.bone), 'weight': w.weight} for w in o.jcns_cns_props.multi_sources]}
                for o in section_empties(root_obj, 'Multi')]
     converted_from = getattr(parser, 'converted_from', 0)
-    meta = {'constant': root_props.file_constant,
+    constant = root_props.file_constant
+    if converted_from:
+        constant = convert_file_constant(constant, converted_from, parser.version)
+    meta = {'constant': constant,
             'read_joint_table': [it.hash & 0xFFFFFFFF for it in root_props.read_joint_table]}
     locked = json.loads(root_props.read_joint_signature_json) if root_props.read_joint_signature_json else []
     # The table also covers the Aim joints, so it is resolved against both.
     aim_joints = [H(o.jcns_cns_props.target_bone) for o in section_empties(root_obj, 'Aim')]
     parent, names = skeleton_of(root_props.target_armature)
-    if converted_from and parser.version < 36:
-        table = []                       # the target version has no ReadJointTable
+    if converted_from and parser.version in (35, 36):
+        table = []                       # v35 has no ReadJointTable, v36 ships it empty
     else:
-        # A file that gains a ReadJointTable by the conversion (v35 -> v102) derives it.
-        pending = root_props.read_table_pending or (0 < converted_from < 36 <= parser.version)
+        # A v102 copy of a v35 / v36 file derives the table it never had.
+        pending = root_props.read_table_pending or converted_from in (35, 36)
         table, problems = X.resolve_read_joint_table(records, aim_joints, meta, locked, parent, names,
                                                      pending=pending)
         if problems:
             return problems
+    parser.replaced_multi_tails = 0
     if converted_from:
         for r in records:
-            r['tail'] = convert_multi_tail(r['tail'], parser.version)
+            tail = convert_multi_tail(r['tail'], parser.version, converted_from)
+            parser.replaced_multi_tails += tail != bytes(r['tail'])
+            r['tail'] = tail
     for w in X.multi_weight_warnings(records):
         print('[JCNS EXPORT] warning: ' + w)
     parser.multi_constraints, parser.multi_source_infos = X.multi_parser_form(records, meta)
@@ -154,6 +160,8 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
             'vectors': [tuple(p.aim_offset), tuple(p.aim_axis), tuple(p.aim_up_axis), tuple(p.aim_up_dir)],
             'world_up_type': WORLD_UP_TYPE_TO_INT[p.world_up_type], 'bytes': (0,) + tuple(p.aim_bytes),
         })
+        if converted_from and aims[-1]['bytes'][2] == root_props.file_constant:
+            aims[-1]['bytes'] = aims[-1]['bytes'][:2] + (constant,)
     parser.aim_constraints = X.aim_parser_form(aims)
 
     rots = [{'joint': H(o.jcns_cns_props.target_bone), 'source': H(o.jcns_cns_props.rot_source_bone),
@@ -307,22 +315,40 @@ def _root_version(rp):
 
 
 # Versions an export can turn into each other: same layout but for the header
-# (ReadJointTable from v36) and these values, read off the corpora (12 RE9 v35 files,
-# 1103 Wilds v102 files):
-#   AttrFlags bit 5 (OutRot)  v35 never sets it; v102 sets it on rotation targets
-#                             (the v102 export derives bits 4/5 anyway).
-#   TailBytes[1]              v35 always 0; v102 mostly 2, and the Wilds evaluator skips an
-#                             entry whose byte is below the object's level, so 0 -> 2.
-#   Multi tail                v102 always 0000; v35 0101 / 0201 / 0100 / 0200, meaning
-#                             unknown -- 0101, the commonest, is written (with a warning).
-CONVERTIBLE_VERSIONS = (35, 102)
-_V35_MULTI_TAIL = b'\x01\x01'
+# (ReadJointTable from v36, HeaderUnknownUInt16 before v102) and these values, read off
+# the corpora (RE9 v35, Onimusha v36, Wilds v102):
+#   AttrFlags bit 5 (OutRot)  v35 never sets it; v36 / v102 set it on rotation targets
+#                             (their export derives bits 4/5 anyway).
+#   TailBytes[1]              v35 always 0; v36 / v102 mostly 2, and the Wilds evaluator skips
+#                             an entry whose byte is below the object's level, so 0 -> 2.
+#   Multi tail                v102 always 0000; v36 0001 (0101 twice); v35 0101 / 0201 /
+#                             0100 / 0200.  Meaning unknown: the commonest maps to the
+#                             commonest, and a tail the target never ships becomes its
+#                             commonest, with a warning.
+#   File constant             Multi tail[0], Multi source info and Aim +59: 0xFF in v35 /
+#                             v36, 5 in v102 (0 and 11 too, which are kept).
+#   ReadJointTable            v35 has none and v36 ships it empty; a v102 copy derives it.
+CONVERTIBLE_VERSIONS = (35, 36, 102)
+_MULTI_TAILS = {35: (b'\x01\x01', {b'\x01\x01', b'\x02\x01', b'\x01\x00', b'\x02\x00'}),
+                36: (b'\x00\x01', {b'\x00\x01', b'\x01\x01'}),
+                102: (b'\x00\x00', {b'\x00\x00'})}
 
 
-def convert_multi_tail(tail, version):
-    if version == 35:
-        return _V35_MULTI_TAIL if bytes(tail) == b'\x00\x00' else bytes(tail)
-    return b'\x00\x00'
+def convert_multi_tail(tail, version, from_version=None):
+    """The source's commonest tail becomes the target's; another tail the target ships is kept."""
+    common, shipped = _MULTI_TAILS[version]
+    tail = bytes(tail)
+    if from_version in _MULTI_TAILS and tail == _MULTI_TAILS[from_version][0]:
+        return common
+    return tail if tail in shipped else common
+
+
+def convert_file_constant(constant, from_version, version):
+    """The source version's usual constant becomes the target's; any other value is kept."""
+    import jcns_sections as X
+    if constant == X.file_constant_default(from_version):
+        return X.file_constant_default(version)
+    return constant
 
 
 def convert_constraint(c, version):
@@ -515,7 +541,8 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
         description=T("io.export.version.tip"),
         items=[('SOURCE', T("io.export.version.same"), ""),
                ('102', T("io.export.version.v102"), ""),
-               ('35', T("io.export.version.v35"), "")],
+               ('35', T("io.export.version.v35"), ""),
+               ('36', T("io.export.version.v36"), "")],
         default='SOURCE',
         options={'SKIP_SAVE'},          # every export starts from the file's own version
     )
@@ -695,9 +722,11 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
 
         basename = os.path.basename(out_path)
         if converted_from:
-            n_multi = len(getattr(parser, 'multi_constraints', []) or [])
-            if parser.version == 35 and n_multi:
-                self.report({'WARNING'}, T("io.export.converted_multi", basename, converted_from, n_multi))
+            # Every shipped v102 tail is 0000; the other versions' tails vary.
+            n_tails = getattr(parser, 'replaced_multi_tails', 0) if parser.version != 102 else 0
+            if n_tails:
+                self.report({'WARNING'}, T("io.export.converted_multi", basename, converted_from, parser.version,
+                                           n_tails, convert_multi_tail(b'', parser.version).hex()))
             else:
                 self.report({'INFO'}, T("io.export.done_upgraded", basename, converted_from, parser.version))
         elif upgraded:

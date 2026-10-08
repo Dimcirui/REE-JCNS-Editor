@@ -36,12 +36,14 @@ sections is written in place instead.
 **Imported as v102**: an older file of a game that has a newer version is upgraded
 on import and exported as that newer version. A file with Multi sections needs the
 target armature to derive its ReadJointTable; export asks for it.
-**v35 ⇄ v102**: a Resident Evil Requiem file can be exported as a Wilds file and the
-other way round (export dialog, *Export Version*). Bone names stay as they are, so they
-must match the other game's skeleton. The conversion drops or derives the ReadJointTable
-(a v35 file with Multi or Aim needs its armature for v102), clears AttrFlags bit 5 for v35,
-sets the TailBytes[1] level byte to 0 for v35 and from 0 to 2 for v102, and writes Multi
-tail bytes 0101 for v35 (their meaning in RE9 is unknown; export warns).
+**v35 ⇄ v36 ⇄ v102**: Resident Evil Requiem, Onimusha and Wilds files can be exported as
+each other (export dialog, *Export Version*). Bone names stay as they are, so they
+must match the other game's skeleton. The conversion empties the ReadJointTable for v35
+and v36 and derives it for v102 (a file with Multi or Aim needs its armature), clears
+AttrFlags bit 5 for v35, sets the TailBytes[1] level byte to 0 for v35 and from 0 to 2
+for v36 / v102, switches the file constant (Multi tail[0], Aim +59) between 0xFF (v35,
+v36) and 5 (v102), and gives Multi records a tail the target ships (0101 for v35, 0001
+for v36, 0000 for v102; their meaning is unknown, so export warns when it changes one).
 **In place**: the original file is copied and each record is re-packed at its own
 offset; export refuses structural edits and lists what changed. Everything the
 in-place writer does not re-pack is kept byte for byte: ComplexMapping curves,
