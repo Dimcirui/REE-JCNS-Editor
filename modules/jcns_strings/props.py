@@ -71,7 +71,7 @@ STRINGS = {
     'props.cone.curve_type': {"ZH": '曲线类型', "EN": 'Curve Type'},
     'props.cone.curve_type_desc': {"ZH": '0 按最小/最大输出插值；1 用曲线数据。通常为 0', "EN": '0 interpolates between Out Min and Out Max; 1 uses the curve data. Usually 0'},
     'props.cone.curve_data': {"ZH": '曲线数据', "EN": 'Curve Data'},
-    'props.cone.curve_data_desc': {"ZH": '曲线类型为 1 时读取的 12 字节，十六进制。通常为 0', "EN": 'The 12 bytes read with curve type 1, as hex. Usually 0'},
+    'props.cone.curve_data_desc': {"ZH": '曲线类型为 1 时是曲线的偏移和点数，十六进制。通常为 0', "EN": 'With curve type 1, the offset and point count of the curve, as hex. Usually 0'},
     'props.int_item.value': {"ZH": '值', "EN": 'Value'},
     'props.hash_item.hash': {"ZH": '哈希', "EN": 'Hash'},
     'props.hash_item.hash_desc': {"ZH": '按有符号整数显示', "EN": 'Shown as a signed integer'},

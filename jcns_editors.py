@@ -15,6 +15,7 @@ jcns_editors.py
 每个面板调 _begin()，它按 jcns_kinds.capabilities() 决定整块能否编辑并画出原因。
 """
 
+import json
 from types import SimpleNamespace
 
 import bpy
@@ -408,7 +409,9 @@ class JCNS_PT_Ed_Ranges_Cones(_Editor, Panel):
             r = box.row(align=True)
             r.prop(k, "interpolation")
             r.prop(k, "curve_type")
-            if k.curve_type != 0 or k.curve_data_hex.strip('0 '):
+            if k.curve_json:
+                box.label(text=T("editors.cone.curve_points", len(json.loads(k.curve_json))), icon='FCURVE')
+            elif k.curve_type != 0 or k.curve_data_hex.strip('0 '):
                 box.prop(k, "curve_data_hex")
             box.prop(k, "reserved_byte")
 

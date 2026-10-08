@@ -7,6 +7,7 @@ Builds a collection JCNS_<filename> holding one root Empty (JCNSRootProperties)
 and one child Empty per entry (JCNSConstraintProperties).
 """
 
+import json
 import os
 import sys
 import bpy
@@ -273,6 +274,7 @@ def do_import(filepath, context, armature_obj=None):
             k.cone_input_index, k.out_min, k.out_max = ci['ConeInputIndex'], ci['OutMin'], ci['OutMax']
             k.interpolation, k.curve_type, k.reserved_byte = ci['Interpolation'], ci['CurveType'], ci['ReservedByte']
             k.curve_data_hex = bytes(ci.get('CurveData', bytes(12))).hex()
+            k.curve_json = json.dumps(ci['Curve']) if ci.get('Curve') else ''
         if len(p.cone_drivers):
             # Rename: target_bone's update named it while the cone list was empty.
             from . import constraint_name_from_props
@@ -285,7 +287,6 @@ def do_import(filepath, context, armature_obj=None):
     # Non-Ranges sections store hashes only.  Resolve through the armature, then the
     # names this file's Ranges spell out, then the bundled dictionary, else show the
     # raw hash (the exporter reads a "0x1234ABCD" name back as that hash).
-    import json
     from jcns_sections import multi_editable, read_joint_signature, aim_editable, rot_editable
     from jcns_names import name_of
     from . import section_empty_name

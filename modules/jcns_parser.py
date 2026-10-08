@@ -373,6 +373,14 @@ class JCNSParser:
                 size_ci = CONE_DRIVER.size(v)
                 c['ConeDriver'] = [CONE_DRIVER.read(data, cone_at + k * size_ci, v)
                                        for k in range(n_cone)]
+                # CurveType 1 (Function): CurveData is {uint64 offset, uint32 count} of a
+                # curve in ComplexMapping records, stored right after this ConeDriver array.
+                size_cm = COMPLEX_MAPPING.size(v)
+                for cd in c['ConeDriver']:
+                    if cd.get('CurveType') == 1 and cd.get('CurveData'):
+                        off, n = struct.unpack_from('<QI', cd['CurveData'])
+                        if off and 0 < n and off + n * size_cm <= len(data):
+                            cd['Curve'] = [COMPLEX_MAPPING.read(data, off + k * size_cm, v) for k in range(n)]
 
             # JointDriver[SourceCount] — consecutive records at SourceListOffset.
             # Multi-source constraints are common (~12% in Wilds).

@@ -249,12 +249,24 @@ class JCNSWriter:
             pos = CONE_INFO_START + len(cone_driver_blob)
             cone_driver_blob.extend(b'\x00' * (_align(pos, 16) - pos))
             cone_driver_at.append(CONE_INFO_START + len(cone_driver_blob))
+            array_at = len(cone_driver_blob)
             for ci in infos:
                 # Index 255 is a reference to no cone (v22 files carry it).
                 if not (0 <= ci['ConeInputIndex'] < N_CONE or ci['ConeInputIndex'] == 255):
                     raise ValueError(T("core.writer.cone_input_index", c.get('ObjectName', ''),
                                        ci['ConeInputIndex'], N_CONE))
                 cone_driver_blob.extend(CONE_DRIVER.pack(ci, version))
+            # Function curves follow the array, each 16-aligned; CurveData points at them.
+            for k, ci in enumerate(infos):
+                curve = ci.get('Curve')
+                if not curve or not CONE_DRIVER.has('CurveData', version):
+                    continue
+                pos = CONE_INFO_START + len(cone_driver_blob)
+                cone_driver_blob.extend(b'\x00' * (_align(pos, 16) - pos))
+                struct.pack_into('<QI', cone_driver_blob, array_at + k * CONE_DRIVER.size(version),
+                                 CONE_INFO_START + len(cone_driver_blob), len(curve))
+                for r in curve:
+                    cone_driver_blob.extend(COMPLEX_MAPPING.pack(r, version))
 
         # JointDriver_v2 section starts after that, 16-aligned.
         raw_src_start = CONE_INFO_START + len(cone_driver_blob)

@@ -9,6 +9,7 @@ versions make every constraint from its Empty; in-place versions patch the recor
 the Empty's position.
 """
 
+import json
 import os
 import sys
 import hashlib
@@ -507,7 +508,8 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
     parsed_c['ConeDriver'] = [{
         'CurveData': _hex_bytes(k.curve_data_hex, 12), 'OutMin': k.out_min, 'OutMax': k.out_max,
         'Interpolation': k.interpolation, 'ConeInputIndex': k.cone_input_index,
-        'CurveType': k.curve_type, 'ReservedByte': k.reserved_byte}
+        'CurveType': k.curve_type, 'ReservedByte': k.reserved_byte,
+        'Curve': json.loads(k.curve_json) if k.curve_json else None}
         for k in p.cone_drivers]
     parsed_c['ConeDriverCount'] = len(parsed_c['ConeDriver'])
     parsed_c['TailBytes']     = bytes([

@@ -630,6 +630,9 @@ class JCNSConeDriver(PropertyGroup):
                             default=0, min=0, max=255, update=_refresh_preview)
     curve_data_hex: StringProperty(name=T("props.cone.curve_data"), description=T("props.cone.curve_data_desc"),
                                    default="00" * 12)
+    # CurveType 1: the function curve CurveData points at, as a JSON list of ComplexMapping
+    # records; the writer lays it out and points CurveData at it.
+    curve_json: StringProperty(default="")
     reserved_byte: IntProperty(name="+23", default=0, min=0, max=255)
 
 
