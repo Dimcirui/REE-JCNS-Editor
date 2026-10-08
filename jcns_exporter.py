@@ -1,7 +1,7 @@
 """
 jcns_exporter.py
 ----------------
-Export operator for RE Engine JCNS files (v22, v35, v36 and v102 rebuilt, other versions in place).
+Export operator for RE Engine JCNS files (v21, v22, v35, v36 and v102 rebuilt, other versions in place).
 
 The source file is re-parsed (or a stub is built from what the import stored in the
 root when it is missing), and JCNSWriter.build_lossless() writes the result.  Rebuilt
@@ -52,7 +52,7 @@ def _build_stub_parser(root_props, version=None):
     cross-version export (see CONVERTIBLE_VERSIONS).
     """
     from jcns_parser import read_header, write_mode
-    from jcns_schema import file_header
+    from jcns_schema import file_header, section_count
 
     version = version or _root_version(root_props)
     orig = file_header(version, tuple(root_props.header_unknown_bytes))
@@ -63,7 +63,9 @@ def _build_stub_parser(root_props, version=None):
     parser = _StubParser()
     parser.constraints = []
     parser.hash_list = [h.hash & 0xFFFFFFFF for h in root_props.hash_list]
-    parser.section_order = [0, 1, 2, 3, 4] if version == 22 else [s.value for s in root_props.section_order]
+    # before v29 the table is a fixed list: ids 0..3 in v21, 0..4 in v22
+    parser.section_order = (list(range(section_count({}, version))) if version < 29
+                            else [s.value for s in root_props.section_order])
     parser.original_bytes = orig
     parser.filepath = root_props.source_filepath
     parser.header = read_header(orig, check_layout=False)
@@ -114,7 +116,7 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
 
     parser.conversion_notes = {}
     if parser.version < 35:
-        # RE4 files carry none of these sections; a converted copy loses them.
+        # v21 / v22 files carry none of these sections; a converted copy loses them.
         parser.conversion_notes.update({
             'multi': len(section_empties(root_obj, 'Multi')), 'aim': len(section_empties(root_obj, 'Aim')),
             'rot': len(section_empties(root_obj, 'RotExpression'))})
@@ -343,7 +345,7 @@ def _root_version(rp):
     """JCNS version of a root; roots without source_version fall back to detected_game."""
     if rp.source_version:
         return rp.source_version
-    return {'RE9': 35, 'ONIMUSHA': 36, 'RE4': 22}.get(rp.detected_game, 102)
+    return {'RE9': 35, 'ONIMUSHA': 36, 'RE4': 22, 'MH_RISE': 21}.get(rp.detected_game, 102)
 
 
 # Versions an export can turn into each other: same layout but for the header
@@ -360,10 +362,10 @@ def _root_version(rp):
 #   File constant             Multi tail[0], Multi source info and Aim +59: 0xFF in v35 /
 #                             v36, 5 in v102 (0 and 11 too, which are kept).
 #   ReadJointTable            v35 has none and v36 ships it empty; a v102 copy derives it.
-# v22 (RE4) differs more: no hash table, no Multi / Aim / RotExpression / Material / JXG (a
+# v21 (Rise) and v22 (RE4) differ more: no hash table, no Multi / Aim / RotExpression / Material / JXG (a
 # conversion drops them and says so), AttrFlags bits 4 / 5 never set, and its ConeInputs name
 # their axes instead of carrying a Matrix (see jcns_sections.convert_cone_inputs).
-CONVERTIBLE_VERSIONS = (22, 35, 36, 102)
+CONVERTIBLE_VERSIONS = (21, 22, 35, 36, 102)
 # The highest TransformElement a v22 file ships (0 position .. 4 scale-like); the later ones are
 # materials, component properties and named outputs.
 MAX_TRANSFORM_ELEMENT_PRE35 = 4
@@ -602,7 +604,8 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
                ('102', T("io.export.version.v102"), ""),
                ('35', T("io.export.version.v35"), ""),
                ('36', T("io.export.version.v36"), ""),
-               ('22', T("io.export.version.v22"), "")],
+               ('22', T("io.export.version.v22"), ""),
+               ('21', T("io.export.version.v21"), "")],
         default='SOURCE',
         options={'SKIP_SAVE'},          # every export starts from the file's own version
     )

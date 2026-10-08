@@ -1176,6 +1176,7 @@ class JCNSRootProperties(PropertyGroup):
             ('RE9',       T("props.root.game_re9"), "Resident Evil 9 / PRAGMATA"),
             ('ONIMUSHA',  T("props.root.game_onimusha"), "Onimusha: Way of the Sword"),
             ('RE4',       T("props.root.game_re4"), "Resident Evil 4 / Street Fighter 6"),
+            ('MH_RISE',    T("props.root.game_rise"), "Monster Hunter Rise"),
         ],
         default='MHW_WILDS',
     )

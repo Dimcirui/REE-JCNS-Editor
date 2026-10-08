@@ -227,14 +227,15 @@ STRINGS = {
     "io.export.clean_hashes.name": {"ZH": "清除冗余哈希", "EN": "Remove Unused Hashes"},
     "io.export.version.name": {"ZH": "导出版本", "EN": "Export Version"},
     "io.export.version.tip": {
-        "ZH": "v22（生化危机 4）、v35（生化危机 9）、v36（鬼武者）和 v102（荒野）可以互相导出。另存为另一个版本时，根节点仍指向原文件",
-        "EN": "v22 (Resident Evil 4), v35 (Resident Evil 9), v36 (Onimusha) and v102 (Wilds) can be exported as each other. A copy in another version leaves the root pointing at its own file",
+        "ZH": "v21（怪物猎人崛起）、v22（生化危机 4）、v35（生化危机 9）、v36（鬼武者）和 v102（荒野）可以互相导出。另存为另一个版本时，根节点仍指向原文件",
+        "EN": "v21 (Monster Hunter Rise), v22 (Resident Evil 4), v35 (Resident Evil 9), v36 (Onimusha) and v102 (Wilds) can be exported as each other. A copy in another version leaves the root pointing at its own file",
     },
     "io.export.version.same": {"ZH": "与导入时相同", "EN": "Same as Imported"},
     "io.export.version.v102": {"ZH": "v102（怪物猎人荒野）", "EN": "v102 (Monster Hunter Wilds)"},
     "io.export.version.v35": {"ZH": "v35（生化危机 9）", "EN": "v35 (Resident Evil 9)"},
     "io.export.version.v36": {"ZH": "v36（鬼武者）", "EN": "v36 (Onimusha)"},
     "io.export.version.v22": {"ZH": "v22（生化危机 4）", "EN": "v22 (Resident Evil 4)"},
+    "io.export.version.v21": {"ZH": "v21（怪物猎人崛起）", "EN": "v21 (Monster Hunter Rise)"},
     "io.export.version.note": {"ZH": "骨骼名字按另一个游戏的骨架填写", "EN": "Bone names must match the other game skeleton"},
     "io.export.clean_hashes.tip": {
         "ZH": "删除已无约束引用的哈希。不勾选则保留原文件的全部哈希",
@@ -284,8 +285,8 @@ STRINGS = {
     "io.export.lost.symmetry": {"ZH": "%d 个锥形的对称关节", "EN": "the symmetry joint of %d cones"},
     "io.export.lost.empty": {"ZH": "%d 条只靠被丢弃的锥形驱动的条目", "EN": "%d entries driven only by dropped cones"},
     "io.export.converted_target": {
-        "ZH": "「%s」里有 %d 条以材质、组件属性或命名输出为目标的条目。RE4 的文件里没有这类目标，不确定游戏是否识别。",
-        "EN": "“%s” has %d entries that target a material, a component property or a named output. RE4 files have none, so the game may not recognise them.",
+        "ZH": "「%s」里有 %d 条以材质、组件属性或命名输出为目标的条目。v21、v22 的文件里没有这类目标，不确定游戏是否识别。",
+        "EN": "“%s” has %d entries that target a material, a component property or a named output. v21 and v22 files have none, so the game may not recognise them.",
     },
     "io.export.done_upgraded": {
         "ZH": "已导出「%s」（v%s → v%s）。",
@@ -370,6 +371,7 @@ STRINGS = {
     "io.new.game_wilds": {"ZH": "怪物猎人荒野 (v102)", "EN": "Monster Hunter Wilds (v102)"},
     "io.new.game_requiem": {"ZH": "Resident Evil Requiem (v35)", "EN": "Resident Evil Requiem (v35)"},
     "io.new.game_re4": {"ZH": "生化危机 4 (v22)", "EN": "Resident Evil 4 (v22)"},
+    "io.new.game_rise": {"ZH": "怪物猎人崛起 (v21)", "EN": "Monster Hunter Rise (v21)"},
     "io.new.game_onimusha": {"ZH": "鬼武者 Way of the Sword (v36)", "EN": "Onimusha: Way of the Sword (v36)"},
     "io.new.done": {"ZH": "已新建「%s」（v%d）。", "EN": "Created “%s” (v%d)."},
     "io.export.done_new": {"ZH": "已导出「%s」。", "EN": "Exported “%s”."},

@@ -15,10 +15,10 @@ from jcns_schema import (
 # Versions the writer can rebuild from scratch (add / delete / rename).  Every
 # other version is written back in place: each record is re-packed at its
 # original offset, so values can change but the file's structure cannot.
-FULL_REBUILD_VERSIONS = frozenset({22, 35, 36, 102})
+FULL_REBUILD_VERSIONS = frozenset({21, 22, 35, 36, 102})
 
 # Versions whose ConeInput table is read (v35+ layout, and v22's older one).
-CONE_DRIVER_VERSIONS = frozenset({22})
+CONE_DRIVER_VERSIONS = frozenset({21, 22})
 
 
 # Header counts of the sections the pre-v35 rebuild does not write: their layouts before v35 are

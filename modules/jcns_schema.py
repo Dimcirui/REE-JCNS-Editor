@@ -158,7 +158,7 @@ SUPPORTED_VERSIONS = tuple(sorted(VERSION_GAMES))
 
 # Versions whose layout round-trips real files with every stored hash matching
 # its name.  The others are laid out from the templates alone.
-VERIFIED_VERSIONS = frozenset({22, 29, 35, 36, 102})
+VERIFIED_VERSIONS = frozenset({21, 22, 29, 35, 36, 102})
 
 # For Blender's file browser / drag-and-drop handler.
 FILE_GLOB = ';'.join(f'*.jcns.{v}' for v in SUPPORTED_VERSIONS)

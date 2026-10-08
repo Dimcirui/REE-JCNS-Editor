@@ -26,7 +26,7 @@ and applies the result to a target.
 | 35 | Resident Evil Requiem / PRAGMATA / MH Stories 3 | ✅ Full, requiem preview not usable yet |
 | 24 | Dragon's Dogma 2 | ✏️ Values only |
 | 22 | RE4 Remake / Street Fighter 6 | ✅ Full |
-| 21 | Monster Hunter Rise | ✏️ Values only |
+| 21 | Monster Hunter Rise | ✅ Full |
 | 19 | RE2 / RE3 / RE7 ray-tracing updates | ✏️ Values only |
 | 16 | RE Village | ✏️ Values only |
 | 12 | RE3 | ✏️ Values only |

@@ -211,6 +211,7 @@ STRINGS = {
     'props.root.game_wilds_desc': {"ZH": 'Monster Hunter Wilds TU4 之后', "EN": 'Monster Hunter Wilds, after TU4'},
     'props.root.game_re9': {"ZH": '生化危机9 / PRAGMATA (v35)', "EN": 'Resident Evil 9 / PRAGMATA (v35)'},
     'props.root.game_re4': {"ZH": '生化危机 4 (v22)', "EN": 'Resident Evil 4 (v22)'},
+    'props.root.game_rise': {"ZH": '怪物猎人崛起 (v21)', "EN": 'Monster Hunter Rise (v21)'},
     'props.root.game_onimusha': {"ZH": '鬼武者 Way of the Sword (v36)', "EN": 'Onimusha: Way of the Sword (v36)'},
     'props.scene.active_collection': {"ZH": '工作集合', "EN": 'Working Collection'},
     'props.scene.active_collection_desc': {"ZH": '导出等操作默认作用的 JCNS 集合。留空则改用当前选中的物体', "EN": 'The JCNS collection that operations like export act on by default. If empty, the selected object is used'},
