@@ -23,7 +23,7 @@ and applies the result to a target.
 | --- | --- | --- |
 | 29, 102 | Monster Hunter Wilds | ✅ Full |
 | 36 | Onimusha: Way of the Sword | ✅ Full |
-| 35 | Resident Evil Requiem / PRAGMATA / MH Stories 3 | ✅ Full |
+| 35 | Resident Evil Requiem / PRAGMATA / MH Stories 3 | ✅ Full, requiem preview not usable yet |
 | 24 | Dragon's Dogma 2 | ✏️ Values only |
 | 22 | RE4 Remake / Street Fighter 6 | ✅ Full |
 | 21 | Monster Hunter Rise | ✏️ Values only |
