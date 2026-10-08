@@ -11,8 +11,8 @@ Names are collected from
   * .jcns files: constraint targets, sources, property names, ConeInput names
   * .mesh files: the name table (joints and materials)
   * .motlist / .mot files: bone header names
-read from the vanilla paks of one game (MH Wilds here; needs its file list) and
-from any number of already-extracted trees.
+read from the vanilla paks (re_chunk and dlc/) of each game given with its file
+list, and from any number of already-extracted trees.
 
 Only vanilla data belongs in the dictionary: pak_mods/ is never read, and paks
 installed by a mod manager must be excluded by name (--skip-pak).
@@ -21,6 +21,10 @@ Example:
     python tools/build_name_dict.py \\
         --game "E:/Program/Steam/steamapps/common/MonsterHunterWilds" \\
         --filelist "E:/Data/MOD工具/RE9/REE PAK/ree-pak-tools/filelist/MHWs_STM_Release_MOD.list" \\
+        --game "E:/Program/Steam/steamapps/common/OnimushaWotS" \\
+        --filelist "E:/Downloads/ONIWOTS_STM.list" \\
+        --game "E:/Program/Steam/steamapps/common/PRAGMATA" \\
+        --filelist "E:/.../REasy/resources/data/lists/PRAGMATA_STM.list" \\
         --asset-lib "E:/Data/Github/Python/RE-Asset-Library-main" \\
         --skip-pak re_chunk_000.pak.sub_000.pak.patch_016.pak \\
         --skip-pak re_chunk_000.pak.sub_000.pak.patch_017.pak \\
@@ -144,13 +148,18 @@ def names_from_motion(d, out):
 # ── pak reading ────────────────────────────────────────────────────────────
 
 def vanilla_paks(game, skip):
+    """The game's re_chunk paks in load order, then its DLC paks."""
     names = [n for n in os.listdir(game) if n.startswith('re_chunk_000.pak') and n.endswith('.pak') and n not in skip]
 
     def key(n):
         sub = re.search(r'sub_(\d+)', n)
         patch = re.search(r'patch_(\d+)\.pak$', n)
         return (int(sub.group(1)) + 1 if sub else 0, int(patch.group(1)) if patch else 0)
-    return [os.path.join(game, n) for n in sorted(names, key=key)]
+    paks = [os.path.join(game, n) for n in sorted(names, key=key)]
+    dlc = os.path.join(game, 'dlc')
+    if os.path.isdir(dlc):
+        paks += [os.path.join(dlc, n) for n in sorted(os.listdir(dlc)) if n.endswith('.pak') and n not in skip]
+    return paks
 
 
 def read_from_paks(game, filelist, asset_lib, skip, out):
@@ -255,8 +264,10 @@ def write(out, path):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
-    ap.add_argument('--game', help='game folder holding the re_chunk_000 paks')
-    ap.add_argument('--filelist', help='REE PAK file list for that game')
+    ap.add_argument('--game', action='append', default=[],
+                    help='game folder holding the re_chunk_000 paks; repeat for more games')
+    ap.add_argument('--filelist', action='append', default=[],
+                    help='REE PAK file list, one per --game in the same order')
     ap.add_argument('--asset-lib', help='RE-Asset-Library checkout (its modules/pak reads the paks)')
     ap.add_argument('--skip-pak', action='append', default=[], help='pak file name to ignore (mod-manager paks)')
     ap.add_argument('--extract', action='append', default=[], help='extracted tree to scan as well')
@@ -265,9 +276,10 @@ def main():
     t0 = time.time()
     out = Names()
     if a.game:
-        if not (a.filelist and a.asset_lib):
-            ap.error('--game needs --filelist and --asset-lib')
-        read_from_paks(a.game, a.filelist, a.asset_lib, set(a.skip_pak), out)
+        if len(a.filelist) != len(a.game) or not a.asset_lib:
+            ap.error('each --game needs its --filelist, and --asset-lib')
+        for game, filelist in zip(a.game, a.filelist):
+            read_from_paks(game, filelist, a.asset_lib, set(a.skip_pak), out)
     for root in a.extract:
         read_from_tree(root, out)
     write(out, a.out)
