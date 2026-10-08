@@ -497,7 +497,8 @@ class JCNS_OT_ImportFile(Operator, ImportHelper):
                 summary += T("io.import.summary_pending")
         self.report({'INFO'}, summary)
         # Make its collection the working collection so export works without a selection.
-        bpy.ops.object.select_all(action='DESELECT')
+        for o in list(context.view_layer.objects.selected):      # select_all fails outside object mode
+            o.select_set(False)
         root.select_set(True)
         context.view_layer.objects.active = root
         if root.users_collection:
@@ -586,7 +587,8 @@ class JCNS_OT_NewFile(Operator):
 
     def execute(self, context):
         root = do_new(context, self.game, _armature_for_new(context))
-        bpy.ops.object.select_all(action='DESELECT')
+        for o in list(context.view_layer.objects.selected):      # select_all fails outside object mode
+            o.select_set(False)
         root.select_set(True)
         context.view_layer.objects.active = root
         context.scene.jcns_active_collection = root.users_collection[0]
