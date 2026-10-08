@@ -909,6 +909,9 @@ class JCNSConstraintProperties(PropertyGroup):
     aim_up_bone: StringProperty(name=T("props.cns.aim_up_bone"), description=T("props.cns.aim_up_bone_desc"),
                                 default="", update=_refresh_preview, search=_search_target_bone)
     aim_influence: FloatProperty(name=T("props.cns.aim_influence"), default=1.0, update=_refresh_preview_values)
+    aim_target2_bone: StringProperty(name=T("props.cns.aim_target2_bone"), description=T("props.cns.aim_target2_bone_desc"),
+                                     default="", update=_refresh_preview, search=_search_target_bone)
+    aim_weight2: FloatProperty(name=T("props.cns.aim_weight2"), default=0.5)
     aim_offset: FloatVectorProperty(name=T("props.cns.aim_offset"), size=3, default=(0.0, 0.0, 0.0), subtype='EULER',
                                     description=T("props.cns.aim_offset_desc"),
                                     update=_refresh_preview)
@@ -921,7 +924,7 @@ class JCNSConstraintProperties(PropertyGroup):
                                     description=T("props.cns.aim_up_dir_desc"))
     world_up_type: EnumProperty(name=T("props.cns.world_up_type"), items=WORLD_UP_TYPE_ITEMS, default='SCENE_UP',
                            update=_refresh_preview)
-    aim_bytes: IntVectorProperty(name=T("props.cns.aim_bytes"), size=3, default=(1, 0, 5), min=0, max=255)
+    aim_bytes: IntVectorProperty(name=T("props.cns.aim_bytes"), size=2, default=(0, 5), min=0, max=255)
 
     # --- RotExpression (target_bone is the driven joint) ---
     rot_source_bone: StringProperty(name=T("props.common.driver"), default="", update=_refresh_preview,

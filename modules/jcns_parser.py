@@ -567,6 +567,15 @@ class JCNSParser:
                 target = self._hash_at(tgt['TargetHashIndex'])
             else:
                 joint, unk, target = rec['JointHash'], rec['UnkJointHash'], tgt['TargetHash']
+            # Byte +57 counts the targets; a second one fills the block's last
+            # 8 bytes as (hash index or hash, weight).
+            t2_idx, t2 = -1, None
+            if rec['Body'][49] >= 2:
+                if v >= 35:
+                    t2_idx = struct.unpack_from('<i', tgt['Body'], 4)[0]
+                    t2 = self._hash_at(t2_idx)
+                else:
+                    t2 = struct.unpack_from('<I', tgt['Body'], 4)[0]
             self.aim_constraints.append({
                 'JointHashIndex':    rec.get('JointHashIndex', -1),
                 'JointHash':         joint,
@@ -574,6 +583,8 @@ class JCNSParser:
                 'UnkJointHash':      unk,
                 'TargetHashIndex':   tgt.get('TargetHashIndex', -1),
                 'TargetHash':        target,
+                'Target2HashIndex':  t2_idx,
+                'Target2Hash':       t2,
                 'inline_body':       bytes(data[base + 8:base + size]),   # everything after the pointer
                 'target_body':       tgt['Body'],
             })

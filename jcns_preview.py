@@ -101,7 +101,8 @@ def _plan_for(kind_id, p):
     if kind_id == 'Aim':
         from . import WORLD_UP_TYPE_TO_INT
         return plan.plan_aim(p.target_bone, p.aim_target_bone, tuple(p.aim_axis),
-                             p.aim_influence, p.aim_up_bone, WORLD_UP_TYPE_TO_INT[p.world_up_type], tuple(p.aim_offset))
+                             p.aim_influence, p.aim_up_bone, WORLD_UP_TYPE_TO_INT[p.world_up_type], tuple(p.aim_offset),
+                             p.aim_target2_bone.strip())
     if kind_id == 'RotExpression':
         return plan.plan_rot(p.target_bone, p.rot_source_bone, tuple(p.rot_gains))
     return plan.ConstraintPlan(False, T("ui.preview.no_preview_kind"))

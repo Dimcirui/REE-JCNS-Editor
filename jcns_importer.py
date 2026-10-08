@@ -336,13 +336,15 @@ def do_import(filepath, context, armature_obj=None):
         p2.aim_target_bone = _nm(a['target'])
         p2.aim_up_bone = _nm(a['up']) if a['up'] is not None else ''
         p2.aim_influence = a['influence']
+        p2.aim_target2_bone = _nm(a['target2']) if a['target2'] is not None else ''
+        p2.aim_weight2 = a['weight2']
         p2.aim_offset, p2.aim_axis, p2.aim_up_axis, p2.aim_up_dir = a['vectors']
         world_up_type = INT_TO_WORLD_UP_TYPE.get(a['world_up_type'])
         if world_up_type is None:
             print("[JCNS] Aim %d: WorldUpType %r is unknown, read as 0" % (idx, a['world_up_type']))
             world_up_type = 'SCENE_UP'
         p2.world_up_type = world_up_type
-        p2.aim_bytes = a['bytes']
+        p2.aim_bytes = a['bytes'][1:]          # byte 0 is the target count
         obj.name = section_empty_name('Aim', idx, p2)
 
     rot_recs, rot_meta = rot_editable(parser)

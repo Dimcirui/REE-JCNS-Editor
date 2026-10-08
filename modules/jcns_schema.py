@@ -456,13 +456,13 @@ AIM = Struct('ConstraintAim', [
     F('UnkJointHashIndex',  'i', since(35)),
     F('JointHash',          'I', before(35)),
     F('UnkJointHash',       'I', before(35)),
-    F('Body',               '64s'),               # 4 vec3 + WorldUpType + 15 bytes
+    F('Body',               '64s'),               # 4 vec3 + WorldUpType + TargetCount + 14 bytes
 ])
 
 AIM_TARGET = Struct('AimTargetInfo', [
     F('TargetHashIndex',    'i', since(35)),
     F('TargetHash',         'I', before(35)),
-    F('Body',               '12s'),               # Influence + UnknownQWORD
+    F('Body',               '12s'),               # Weight, then a second (target, weight) or 8 zero bytes
 ])
 
 MATERIAL = Struct('MatCnsInfo', [

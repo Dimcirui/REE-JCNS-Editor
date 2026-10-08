@@ -86,7 +86,7 @@ def aim_track_axis(vec):
     return ''
 
 
-def plan_aim(bone, target, vec1, influence, up_bone='', world_up_type=4, offset=(0.0, 0.0, 0.0)):
+def plan_aim(bone, target, vec1, influence, up_bone='', world_up_type=4, offset=(0.0, 0.0, 0.0), target2=''):
     """Aim `bone` at `target`: a Damped Track along the record's aim axis (Vec1).
 
     Damped Track is the shortest-arc turn from the rest pose, which is what
@@ -111,6 +111,8 @@ def plan_aim(bone, target, vec1, influence, up_bone='', world_up_type=4, offset=
         warnings.append(T("core.plan.aim_offset"))
     if up_bone:
         warnings.append(T("core.plan.aim_up"))
+    if target2:
+        warnings.append(T("core.plan.aim_target2"))
     infl = min(1.0, max(0.0, float(influence)))
     if infl != influence:
         warnings.append(T("core.plan.aim_infl_range", influence, infl))

@@ -134,7 +134,8 @@ class JCNSWriter:
         for ac in getattr(p, 'aim_constraints', []):
             for idx_key, hash_key in (('JointHashIndex', 'JointHash'),
                                       ('UnkJointHashIndex', 'UnkJointHash'),
-                                      ('TargetHashIndex', 'TargetHash')):
+                                      ('TargetHashIndex', 'TargetHash'),
+                                      ('Target2HashIndex', 'Target2Hash')):
                 if ac.get(idx_key, -1) >= 0:
                     ac[idx_key] = _get_or_add_hash(ac[hash_key])
 
@@ -556,8 +557,12 @@ class JCNSWriter:
                                         'UnkJointHashIndex': ac['UnkJointHashIndex']}, version)
                 aim_blob.extend(body)
             for ac in aim_list:
+                tgt_body = bytearray(ac['target_body'])
+                if ac.get('Target2Hash') is not None:
+                    struct.pack_into('<I', tgt_body, 4, ac['Target2Hash'] if version < 35
+                                     else ac['Target2HashIndex'] & 0xFFFFFFFF)
                 aim_blob.extend(AIM_TARGET.pack({'TargetHashIndex': ac['TargetHashIndex'],
-                                                 'Body': ac['target_body']}, version))
+                                                 'Body': bytes(tgt_body)}, version))
 
         # ── Phase 8f: build MultiConstraint section ──────────────────────
         # Four tables, all carried over as parsed: the records, their weighted

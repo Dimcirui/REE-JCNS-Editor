@@ -149,8 +149,10 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
             'joint': H(p.target_bone), 'target': H(p.aim_target_bone),
             'up': H(p.aim_up_bone) if p.aim_up_bone.strip() else None,
             'influence': p.aim_influence,
+            'target2': H(p.aim_target2_bone) if p.aim_target2_bone.strip() else None,
+            'weight2': p.aim_weight2,
             'vectors': [tuple(p.aim_offset), tuple(p.aim_axis), tuple(p.aim_up_axis), tuple(p.aim_up_dir)],
-            'world_up_type': WORLD_UP_TYPE_TO_INT[p.world_up_type], 'bytes': tuple(p.aim_bytes),
+            'world_up_type': WORLD_UP_TYPE_TO_INT[p.world_up_type], 'bytes': (0,) + tuple(p.aim_bytes),
         })
     parser.aim_constraints = X.aim_parser_form(aims)
 

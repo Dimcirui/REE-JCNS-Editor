@@ -554,6 +554,10 @@ class JCNS_PT_Ed_Aim(_EditorMain, Panel):
         row.active = p.world_up_type in ('OBJECT_UP', 'OBJECT_ROTATION_UP')
         _field_row(row, T("editors.field.up_bone"), p, "aim_up_bone")
         _field_row(col, T("editors.field.influence"), p, "aim_influence")
+        _field_row(col, T("editors.field.aim_target2"), p, "aim_target2_bone")
+        row = col.row(align=True)
+        row.active = bool(p.aim_target2_bone.strip())
+        _field_row(row, T("editors.field.aim_weight2"), p, "aim_weight2")
         vec = c.body.box().column(align=True)
         vec.label(text=T("editors.aim.vectors"), icon='ORIENTATION_LOCAL')
         for name in ("aim_axis", "aim_up_axis"):

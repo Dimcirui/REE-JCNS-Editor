@@ -200,6 +200,10 @@ def aim_editable(parser):
                                          else a['UnkJointHash']) else None),
             'target': a['TargetHash'],
             'influence': struct.unpack_from('<f', a['target_body'], 0)[0],
+            # byte +57 (bytes[0]) is the target count; aim_parser_form derives it
+            'target2': a.get('Target2Hash'),
+            'weight2': (struct.unpack_from('<f', a['target_body'], 8)[0]
+                        if a.get('Target2Hash') is not None else 0.0),
             'vectors': vecs,
             'world_up_type': body[56],
             'bytes': tuple(body[57:60]),
@@ -215,13 +219,17 @@ def aim_parser_form(records):
             struct.pack_into('<3f', body, 8 + 12 * k, *v)
         body[56] = r['world_up_type'] & 0xFF
         body[57:60] = bytes(b & 0xFF for b in r['bytes'])
+        t2 = r.get('target2')
+        body[57] = 1 if t2 is None else 2
         up = r.get('up')
         out.append({
             'JointHashIndex': 0, 'JointHash': r['joint'],
             'UnkJointHashIndex': 0 if up is not None else -1, 'UnkJointHash': up or 0,
             'TargetHashIndex': 0, 'TargetHash': r['target'],
+            'Target2HashIndex': -1 if t2 is None else 0, 'Target2Hash': t2,
             'inline_body': bytes(body),
-            'target_body': struct.pack('<f', r['influence']) + bytes(8),
+            'target_body': struct.pack('<f', r['influence']) + (
+                bytes(8) if t2 is None else struct.pack('<If', 0, r.get('weight2', 0.0))),
         })
     return out
 

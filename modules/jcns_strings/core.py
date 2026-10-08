@@ -97,6 +97,7 @@ STRINGS = {
         "EN": "Type %d also fixes the roll around the aim axis in the engine; the preview only does the shortest arc, so the roll differs"},
     "core.plan.aim_offset": {"ZH": "旋转偏移不参与预览", "EN": "The rotation offset is not previewed"},
     "core.plan.aim_up": {"ZH": "辅助骨骼（up）不参与预览", "EN": "The up bone is not previewed"},
+    "core.plan.aim_target2": {"ZH": "第二目标不参与预览", "EN": "The second target is not previewed"},
     "core.plan.aim_infl_range": {
         "ZH": "影响 %.2f 超出 0..1，预览按 %.0f 处理",
         "EN": "Influence %.2f is outside 0..1; the preview uses %.0f"},

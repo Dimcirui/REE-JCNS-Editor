@@ -59,6 +59,8 @@ STRINGS = {
     "editors.field.type": {"ZH": "类型：", "EN": "Type:"},
     "editors.field.up_bone": {"ZH": "辅助骨骼：", "EN": "Helper bone:"},
     "editors.field.influence": {"ZH": "影响：", "EN": "Influence:"},
+    "editors.field.aim_target2": {"ZH": "第二目标：", "EN": "Second target:"},
+    "editors.field.aim_weight2": {"ZH": "第二目标权重：", "EN": "Second target weight:"},
 
     # --- framework ------------------------------------------------------------------
     "editors.no_root": {
