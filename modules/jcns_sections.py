@@ -74,14 +74,32 @@ def multi_editable(parser):
             h = infos[ref]['SourceHash'] if parser.version >= 29 else ref
             srcs.append({'hash': h, 'weight': s['Weight']})
         records.append({'object': sk['ObjectHash'], 'tail': bytes(sk['Tail'][1:3]), 'sources': srcs})
-    constant = parser.multi_constraints[0]['Tail'][0] if parser.multi_constraints else 5
+    if parser.multi_constraints:
+        constant = parser.multi_constraints[0]['Tail'][0]
+    elif parser.aim_constraints:
+        constant = parser.aim_constraints[0]['inline_body'][59]
+    else:
+        constant = file_constant_default(parser.version)
     return records, {'constant': constant, 'read_joint_table': list(parser.read_joint_table)}
 
 
-def multi_default_tail(records):
-    """Tail bytes for a new record: the file's most common, else zero."""
+# The file constant is one byte shared by every Multi tail[0], every Multi source info
+# and every Aim +59 of a file.
+_FILE_CONSTANT_BY_VERSION = {35: 0xFF, 36: 0xFF}
+
+
+def file_constant_default(version):
+    return _FILE_CONSTANT_BY_VERSION.get(version, 5)
+
+
+# Shipped v36 records all end 00 01; elsewhere a file with no record falls back to zero.
+_MULTI_TAIL_BY_VERSION = {36: b'\x00\x01'}
+
+
+def multi_default_tail(records, version=102):
+    """Tail bytes for a new record: the file's most common, else the version's."""
     tails = [bytes(r['tail']) for r in records]
-    return max(set(tails), key=tails.count) if tails else bytes(2)
+    return max(set(tails), key=tails.count) if tails else _MULTI_TAIL_BY_VERSION.get(version, bytes(2))
 
 
 def multi_parser_form(records, meta):
@@ -187,6 +205,12 @@ def multi_weight_warnings(records, names=None):
 
 
 # ── Aim ────────────────────────────────────────────────────────────────────
+
+def aim_default_bytes(records, constant):
+    """Bytes +58..59 for a new record: the file's most common, else 0 and the file constant."""
+    pairs = [tuple(r) for r in records]
+    return max(set(pairs), key=pairs.count) if pairs else (0, constant & 0xFF)
+
 
 def aim_editable(parser):
     out = []

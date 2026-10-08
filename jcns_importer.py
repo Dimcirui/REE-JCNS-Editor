@@ -520,8 +520,9 @@ class JCNS_OT_ImportFile(Operator, ImportHelper):
 NEW_FILE_GAMES = (
     ('MHW_WILDS', 102, "io.new.game_wilds"),
     ('RE9', 35, "io.new.game_requiem"),
+    ('ONIMUSHA', 36, "io.new.game_onimusha"),
 )
-_NEW_NAME = {'MHW_WILDS': "wilds", 'RE9': "requiem"}
+_NEW_NAME = {'MHW_WILDS': "wilds", 'RE9': "requiem", 'ONIMUSHA': "onimusha"}
 
 
 def do_new(context, game, armature_obj=None):
@@ -545,6 +546,10 @@ def do_new(context, game, armature_obj=None):
         rp.target_armature = armature_obj
     rp.source_version = version
     rp.detected_game = game
+    from .modules_shim import ensure_path
+    ensure_path()
+    import jcns_sections
+    rp.file_constant = jcns_sections.file_constant_default(version)
     rp.sections_cached = True
     return root
 

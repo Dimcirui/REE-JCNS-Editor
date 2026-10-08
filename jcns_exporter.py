@@ -303,7 +303,7 @@ def _root_version(rp):
     """JCNS version of a root; roots without source_version fall back to detected_game."""
     if rp.source_version:
         return rp.source_version
-    return 35 if rp.detected_game == 'RE9' else 102
+    return {'RE9': 35, 'ONIMUSHA': 36}.get(rp.detected_game, 102)
 
 
 # Versions an export can turn into each other: same layout but for the header

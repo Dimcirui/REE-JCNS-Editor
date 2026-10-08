@@ -1576,6 +1576,11 @@ def _rebuild_root(context):
     return (root, rp) if root_write_mode(rp) == 'rebuild' else (None, None)
 
 
+def _root_version(rp):
+    from .jcns_exporter import _root_version as version_of
+    return version_of(rp)
+
+
 class JCNS_OT_AddSectionEntry(Operator):
     bl_idname = "jcns.add_section_entry"
     bl_label  = T("ops.label.add_section_entry")
@@ -1618,7 +1623,15 @@ class JCNS_OT_AddSectionEntry(Operator):
             ensure_path()
             import jcns_sections
             p.multi_tail = tuple(jcns_sections.multi_default_tail(
-                [{'tail': tuple(o.jcns_cns_props.multi_tail)} for o in section_empties(root, 'Multi') if o is not obj]))
+                [{'tail': tuple(o.jcns_cns_props.multi_tail)} for o in section_empties(root, 'Multi') if o is not obj],
+                _root_version(rp)))
+        elif self.kind == 'Aim':
+            from .modules_shim import ensure_path
+            ensure_path()
+            import jcns_sections
+            p.aim_bytes = jcns_sections.aim_default_bytes(
+                [tuple(o.jcns_cns_props.aim_bytes) for o in section_empties(root, 'Aim') if o is not obj],
+                rp.file_constant)
         elif self.kind == 'Material':
             p.mat_tail_1 = 1                     # 00 01 00, what most shipped records carry
         obj.name = section_empty_name(self.kind, idx, p)

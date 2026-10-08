@@ -1171,6 +1171,7 @@ class JCNSRootProperties(PropertyGroup):
         items=[
             ('MHW_WILDS', T("props.root.game_wilds"), T("props.root.game_wilds_desc")),
             ('RE9',       T("props.root.game_re9"), "Resident Evil 9 / PRAGMATA"),
+            ('ONIMUSHA',  T("props.root.game_onimusha"), "Onimusha: Way of the Sword"),
         ],
         default='MHW_WILDS',
     )
