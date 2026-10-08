@@ -369,6 +369,7 @@ STRINGS = {
     "io.new.game": {"ZH": "游戏", "EN": "Game"},
     "io.new.game_wilds": {"ZH": "怪物猎人荒野 (v102)", "EN": "Monster Hunter Wilds (v102)"},
     "io.new.game_requiem": {"ZH": "Resident Evil Requiem (v35)", "EN": "Resident Evil Requiem (v35)"},
+    "io.new.game_re4": {"ZH": "生化危机 4 (v22)", "EN": "Resident Evil 4 (v22)"},
     "io.new.game_onimusha": {"ZH": "鬼武者 Way of the Sword (v36)", "EN": "Onimusha: Way of the Sword (v36)"},
     "io.new.done": {"ZH": "已新建「%s」（v%d）。", "EN": "Created “%s” (v%d)."},
     "io.export.done_new": {"ZH": "已导出「%s」。", "EN": "Exported “%s”."},

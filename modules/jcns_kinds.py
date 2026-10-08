@@ -172,11 +172,19 @@ def capabilities(kind_id, st):
             msg = T("core.kinds.material_hash_only", v)
             return _caps(True, False, False, False, msg,
                          add=msg, remove=msg, move=msg)
+        if v < 35:
+            msg = T("core.kinds.no_section_before_35", v)
+            return _caps(False, False, False, False, msg,
+                         edit=msg, add=msg, remove=msg, move=msg)
         return _caps(True, True, True, False, '', move=T("core.kinds.no_reorder"))
 
     if k.id == 'JointExprGraph':
         if not st.rebuild:
             msg = T("core.kinds.jxg_locked", v)
+            return _caps(False, False, False, False, msg,
+                         edit=msg, add=msg, remove=msg, move=msg)
+        if v < 35:
+            msg = T("core.kinds.no_section_before_35", v)
             return _caps(False, False, False, False, msg,
                          edit=msg, add=msg, remove=msg, move=msg)
         # one path on the root, not an entry list: nothing to add, remove or move

@@ -522,8 +522,9 @@ NEW_FILE_GAMES = (
     ('MHW_WILDS', 102, "io.new.game_wilds"),
     ('RE9', 35, "io.new.game_requiem"),
     ('ONIMUSHA', 36, "io.new.game_onimusha"),
+    ('RE4', 22, "io.new.game_re4"),
 )
-_NEW_NAME = {'MHW_WILDS': "wilds", 'RE9': "requiem", 'ONIMUSHA': "onimusha"}
+_NEW_NAME = {'MHW_WILDS': "wilds", 'RE9': "requiem", 'ONIMUSHA': "onimusha", 'RE4': "re4"}
 
 
 def do_new(context, game, armature_obj=None):
