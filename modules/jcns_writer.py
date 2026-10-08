@@ -374,17 +374,18 @@ class JCNSWriter:
                 dep_sources[tgt_h] = []
                 dep_order.append(tgt_h)
             bucket = dep_sources[tgt_h]
-            for s in c.get('sources', []):
-                src_h = s['SourceHash']
-                if src_h not in bucket:
-                    bucket.append(src_h)
-            # A cone-driven constraint depends on each cone's joint.
+            # A cone-driven constraint depends on each cone's joint; shipped
+            # files list those before the constraint's own sources.
             for ci in c.get('ConeDriver') or []:
                 if ci['ConeInputIndex'] >= N_CONE:
                     continue
                 h = cones[ci['ConeInputIndex']]['JointHash']
                 if h not in bucket:
                     bucket.append(h)
+            for s in c.get('sources', []):
+                src_h = s['SourceHash']
+                if src_h not in bucket:
+                    bucket.append(src_h)
 
         M = len(dep_order)
         DEP_DATA_START = DEP_TABLE_START + M * 16
