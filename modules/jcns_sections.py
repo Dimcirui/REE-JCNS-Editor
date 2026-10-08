@@ -285,3 +285,85 @@ def rot_parser_form(records, meta, version=102):
         out.append({'JointHash': r['joint'], 'SourceJointHash': r['source'],
                     'SrcJointHashIndex': 0, 'JntHashIndex': 0, 'info_raw': raw})
     return out, bytes(new_map)
+
+
+# ── ConeInput across versions ───────────────────────────────────────────────
+
+# Tail[0] and Tail[1] of a ConeInput are ConeAxis values (0 X, 1 Y, 2 Z, 3 -X, 4 -Y, 5 -Z,
+# 6 Vector).  Before v35 they name the measured axis and the reference axis directly (RE4:
+# Y or -Y, and X) and there is no Matrix; v35 files write 6 and let Matrix say which axis it is.
+# The flag byte sits at Tail[2] before v35 and at Tail[3] from v35.
+CONE_AXIS_X, CONE_AXIS_VECTOR = 0, 6
+IDENTITY_MATRIX = (1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
+
+
+def _swap_flag_byte(tail):
+    t = bytearray(bytes(tail).ljust(8, b'\x00')[:8])
+    t[2], t[3] = t[3], t[2]
+    return t
+
+
+_AXIS_ENUM = {(1, 0, 0): 0, (0, 1, 0): 1, (0, 0, 1): 2, (-1, 0, 0): 3, (0, -1, 0): 4, (0, 0, -1): 5}
+
+
+def _axis_enum(vec):
+    """The ConeAxis value of a unit coordinate-axis vector, else None."""
+    ints = tuple(round(x) for x in vec)
+    return _AXIS_ENUM.get(ints) if all(abs(x - i) < 1e-4 for x, i in zip(vec, ints)) else None
+
+
+def _matrix_axes(matrix):
+    """(measured axis, reference axis) a Vector cone's Matrix stands for, as ConeAxis values, None
+    for one it cannot name.  The measured axis is the Matrix's Y image (its column 1); the
+    reference axis counts only when it is X, where the fixed X axis and the Matrix's row 0 agree."""
+    m = tuple(matrix)
+    measured = _axis_enum((m[1], m[5], m[9]))
+    reference = _axis_enum(m[0:3])
+    return measured, (CONE_AXIS_X if reference == CONE_AXIS_X else None)
+
+
+def convert_cone_inputs(cones, from_version, version):
+    """The ConeInput table of a file in another version, as (cones, index map, lost).
+
+    The index map sends an old ConeInputIndex to its new one, or to None when the cone cannot
+    be written in `version`.  `lost` counts symmetry joints dropped by a version without them.
+    Cones between two versions on the same side of 35 are returned unchanged."""
+    out, index_map, lost = [], {}, 0
+    for i, cd in enumerate(cones):
+        cd = dict(cd)
+        tail = bytes(cd.get('Tail') or bytes(8))
+        if from_version < 35 <= version:
+            cd['Matrix'] = IDENTITY_MATRIX
+            cd['Tail'] = bytes(_swap_flag_byte(tail))
+            cd['SymmetryJointHash'] = None
+            cd['UnknownUInt32'] = 0
+        elif version < 35 <= from_version:
+            measured, reference = tail[0], tail[1]
+            if CONE_AXIS_VECTOR in (measured, reference):
+                m_axis, r_axis = _matrix_axes(cd['Matrix'])
+                measured = m_axis if measured == CONE_AXIS_VECTOR else measured
+                reference = r_axis if reference == CONE_AXIS_VECTOR else reference
+                if measured is None or reference is None:
+                    index_map[i] = None
+                    continue
+            lost += cd.get('SymmetryJointHash') is not None
+            cd['Tail'] = bytes(_swap_flag_byte(bytes([measured, reference]) + tail[2:]))
+            cd['Translation'] = (0.0, 0.0, 0.0, 0.0)
+            cd['SymmetryJointHash'] = None
+        index_map[i] = len(out)
+        out.append(cd)
+    return out, index_map, lost
+
+
+def convert_cone_drivers(drivers, index_map, version):
+    """A constraint's ConeDriver list for the converted table, as (drivers, dropped).  An entry
+    whose cone was dropped goes, and so does a Function curve where `version` has no CurveData."""
+    out, dropped = [], 0
+    for d in drivers:
+        idx = d['ConeInputIndex']
+        new = idx if idx == 255 else index_map.get(idx)
+        if new is None or (version < 24 and (d.get('CurveType') or d.get('Curve'))):
+            dropped += 1
+            continue
+        out.append(dict(d, ConeInputIndex=new))
+    return out, dropped
