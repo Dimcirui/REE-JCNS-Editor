@@ -227,13 +227,14 @@ STRINGS = {
     "io.export.clean_hashes.name": {"ZH": "清除冗余哈希", "EN": "Remove Unused Hashes"},
     "io.export.version.name": {"ZH": "导出版本", "EN": "Export Version"},
     "io.export.version.tip": {
-        "ZH": "v35（生化危机 9）、v36（鬼武者）和 v102（荒野）可以互相导出。另存为另一个版本时，根节点仍指向原文件",
-        "EN": "v35 (Resident Evil 9), v36 (Onimusha) and v102 (Wilds) can be exported as each other. A copy in another version leaves the root pointing at its own file",
+        "ZH": "v22（生化危机 4）、v35（生化危机 9）、v36（鬼武者）和 v102（荒野）可以互相导出。另存为另一个版本时，根节点仍指向原文件",
+        "EN": "v22 (Resident Evil 4), v35 (Resident Evil 9), v36 (Onimusha) and v102 (Wilds) can be exported as each other. A copy in another version leaves the root pointing at its own file",
     },
     "io.export.version.same": {"ZH": "与导入时相同", "EN": "Same as Imported"},
     "io.export.version.v102": {"ZH": "v102（怪物猎人荒野）", "EN": "v102 (Monster Hunter Wilds)"},
     "io.export.version.v35": {"ZH": "v35（生化危机 9）", "EN": "v35 (Resident Evil 9)"},
     "io.export.version.v36": {"ZH": "v36（鬼武者）", "EN": "v36 (Onimusha)"},
+    "io.export.version.v22": {"ZH": "v22（生化危机 4）", "EN": "v22 (Resident Evil 4)"},
     "io.export.version.note": {"ZH": "骨骼名字按另一个游戏的骨架填写", "EN": "Bone names must match the other game skeleton"},
     "io.export.clean_hashes.tip": {
         "ZH": "删除已无约束引用的哈希。不勾选则保留原文件的全部哈希",
@@ -267,6 +268,24 @@ STRINGS = {
     "io.export.converted_multi": {
         "ZH": "已导出「%s」（v%s → v%s）。%d 条 Multi 记录的尾字节写成 %s，这个值的作用未知。",
         "EN": "Exported “%s” (v%s → v%s). %d Multi records got tail bytes %s, whose effect is unknown.",
+    },
+    "io.export.converted_lost": {
+        "ZH": "已导出「%s」（v%s → v%s）。目标版本没有这些内容，已丢弃：%s。",
+        "EN": "Exported “%s” (v%s → v%s). The target version cannot hold these, so they were dropped: %s.",
+    },
+    "io.export.lost.sep": {"ZH": "、", "EN": ", "},
+    "io.export.lost.multi": {"ZH": "%d 条 Multi", "EN": "%d Multi"},
+    "io.export.lost.aim": {"ZH": "%d 条 Aim", "EN": "%d Aim"},
+    "io.export.lost.rot": {"ZH": "%d 条 RotExpr", "EN": "%d RotExpr"},
+    "io.export.lost.material": {"ZH": "%d 条 Material", "EN": "%d Material"},
+    "io.export.lost.jxg": {"ZH": "JXG 路径", "EN": "the JXG path"},
+    "io.export.lost.cone": {"ZH": "%d 个读不出轴的锥形", "EN": "%d cones whose axis it cannot name"},
+    "io.export.lost.cone_driver": {"ZH": "%d 条锥形驱动", "EN": "%d cone drivers"},
+    "io.export.lost.symmetry": {"ZH": "%d 个锥形的对称关节", "EN": "the symmetry joint of %d cones"},
+    "io.export.lost.empty": {"ZH": "%d 条只靠被丢弃的锥形驱动的条目", "EN": "%d entries driven only by dropped cones"},
+    "io.export.converted_target": {
+        "ZH": "「%s」里有 %d 条以材质、组件属性或命名输出为目标的条目。RE4 的文件里没有这类目标，不确定游戏是否识别。",
+        "EN": "“%s” has %d entries that target a material, a component property or a named output. RE4 files have none, so the game may not recognise them.",
     },
     "io.export.done_upgraded": {
         "ZH": "已导出「%s」（v%s → v%s）。",

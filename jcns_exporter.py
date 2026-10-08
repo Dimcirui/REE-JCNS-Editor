@@ -1,7 +1,7 @@
 """
 jcns_exporter.py
 ----------------
-Export operator for RE Engine JCNS files (v102 and v35 rebuilt, other versions in place).
+Export operator for RE Engine JCNS files (v22, v35, v36 and v102 rebuilt, other versions in place).
 
 The source file is re-parsed (or a stub is built from what the import stored in the
 root when it is missing), and JCNSWriter.build_lossless() writes the result.  Rebuilt
@@ -63,7 +63,7 @@ def _build_stub_parser(root_props, version=None):
     parser = _StubParser()
     parser.constraints = []
     parser.hash_list = [h.hash & 0xFFFFFFFF for h in root_props.hash_list]
-    parser.section_order = [s.value for s in root_props.section_order]
+    parser.section_order = [0, 1, 2, 3, 4] if version == 22 else [s.value for s in root_props.section_order]
     parser.original_bytes = orig
     parser.filepath = root_props.source_filepath
     parser.header = read_header(orig, check_layout=False)
@@ -111,6 +111,16 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
 
     def H(name):
         return _name_to_hash(name.strip())
+
+    parser.conversion_notes = {}
+    if parser.version < 35:
+        # RE4 files carry none of these sections; a converted copy loses them.
+        parser.conversion_notes.update({
+            'multi': len(section_empties(root_obj, 'Multi')), 'aim': len(section_empties(root_obj, 'Aim')),
+            'rot': len(section_empties(root_obj, 'RotExpression'))})
+        parser.multi_constraints, parser.multi_source_infos, parser.read_joint_table = [], [], []
+        parser.aim_constraints, parser.rot_expressions, parser.rot_expression_map = [], [], b''
+        return _sync_cone_inputs(root_obj, root_props, parser, converted_from=getattr(parser, 'converted_from', 0))
 
     records = [{'object': H(o.jcns_cns_props.target_bone),
                 'tail': bytes(o.jcns_cns_props.multi_tail),
@@ -171,8 +181,18 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
             for o in section_empties(root_obj, 'RotExpression')]
     parser.rot_expressions, parser.rot_expression_map = X.rot_parser_form(
         rots, {'map_value': root_props.rot_map_value}, parser.version)
+    return _sync_cone_inputs(root_obj, root_props, parser, converted_from)
 
-    # The ConeInput table, as edited on the root.  Bone names may be "0x%08X" hashes.
+
+def _sync_cone_inputs(root_obj, root_props, parser, converted_from):
+    """The ConeInput table as edited on the root, converted when the file changes version, and
+    (for the stub) the ObjectSettings.  Returns refusals; empty == OK."""
+    import json
+    from . import get_constraint_empties
+    _ensure_modules_path()
+    import jcns_sections as X
+
+    # Bone names may be "0x%08X" hashes.
     parser.cone_inputs = []
     for i, ci in enumerate(root_props.cone_inputs):
         if not ci.joint.strip() or not ci.parent_joint.strip():
@@ -194,6 +214,13 @@ def _sync_sections_to_parser(root_obj, root_props, parser):
             return [T("io.export.cone_bad_index", o.name, bad[0], n)]
         if any(_hex_bytes(k.curve_data_hex, 12) is None for k in cds):
             return [T("io.export.cone_bad_curve_data", o.name)]
+
+    parser.cone_index_map = None
+    if converted_from and (converted_from < 35) != (parser.version < 35):
+        parser.cone_inputs, parser.cone_index_map, lost = X.convert_cone_inputs(
+            parser.cone_inputs, converted_from, parser.version)
+        parser.conversion_notes['cone'] = n - len(parser.cone_inputs)
+        parser.conversion_notes['symmetry'] = lost
 
     # ObjectSettings are not editable; the stub gets them back from the root
     if getattr(parser, 'is_stub', False) and root_props.object_settings_json:
@@ -281,6 +308,10 @@ def _sync_non_range_to_parser(root_obj, parser):
     orig_jxg = getattr(parser, 'joint_export_graph', None) or {}
     parser.joint_export_graph = ({'path': path, '_orig_path': orig_jxg.get('_orig_path')}
                                  if path else None)
+    if parser.version < 35 and getattr(parser, 'write_mode', 'rebuild') == 'rebuild':
+        notes = getattr(parser, 'conversion_notes', {})
+        notes['material'], notes['jxg'] = len(parser.material_cns), int(parser.joint_export_graph is not None)
+        parser.material_cns, parser.joint_export_graph = [], None
 
 
 def format_problems_early(problems, filename):
@@ -312,7 +343,7 @@ def _root_version(rp):
     """JCNS version of a root; roots without source_version fall back to detected_game."""
     if rp.source_version:
         return rp.source_version
-    return {'RE9': 35, 'ONIMUSHA': 36}.get(rp.detected_game, 102)
+    return {'RE9': 35, 'ONIMUSHA': 36, 'RE4': 22}.get(rp.detected_game, 102)
 
 
 # Versions an export can turn into each other: same layout but for the header
@@ -329,7 +360,13 @@ def _root_version(rp):
 #   File constant             Multi tail[0], Multi source info and Aim +59: 0xFF in v35 /
 #                             v36, 5 in v102 (0 and 11 too, which are kept).
 #   ReadJointTable            v35 has none and v36 ships it empty; a v102 copy derives it.
-CONVERTIBLE_VERSIONS = (35, 36, 102)
+# v22 (RE4) differs more: no hash table, no Multi / Aim / RotExpression / Material / JXG (a
+# conversion drops them and says so), AttrFlags bits 4 / 5 never set, and its ConeInputs name
+# their axes instead of carrying a Matrix (see jcns_sections.convert_cone_inputs).
+CONVERTIBLE_VERSIONS = (22, 35, 36, 102)
+# The highest TransformElement a v22 file ships (0 position .. 4 scale-like); the later ones are
+# materials, component properties and named outputs.
+MAX_TRANSFORM_ELEMENT_PRE35 = 4
 _MULTI_TAILS = {35: (b'\x01\x01', {b'\x01\x01', b'\x02\x01', b'\x01\x00', b'\x02\x00'}),
                 36: (b'\x00\x01', {b'\x00\x01', b'\x01\x01'}),
                 102: (b'\x00\x00', {b'\x00\x00'})}
@@ -352,15 +389,35 @@ def convert_file_constant(constant, from_version, version):
     return constant
 
 
-def convert_constraint(c, version):
-    """Outputs record values that differ between v35 and v102, for `version`."""
+def convert_constraint(c, version, cone_index_map=None):
+    """Outputs record values that differ between versions, for `version`.  With a `cone_index_map`
+    (see jcns_sections.convert_cone_inputs) the ConeDriver list follows the converted cone table;
+    returns how many ConeDriver entries went."""
     tail = bytearray(c.get('TailBytes') or bytes(6))
-    if version == 35:
+    if version < 35:
+        c['AttrFlags'] = c['AttrFlags'] & ~0x30
+        tail[1] = 0
+    elif version == 35:
         c['AttrFlags'] = c['AttrFlags'] & ~0x20
         tail[1] = 0
     elif tail[1] == 0:
         tail[1] = 2
     c['TailBytes'] = bytes(tail)
+    if cone_index_map is None:
+        return 0
+    import jcns_sections as X
+    c['ConeDriver'], dropped = X.convert_cone_drivers(c.get('ConeDriver') or [], cone_index_map, version)
+    c['ConeDriverCount'] = len(c['ConeDriver'])
+    return dropped
+
+
+def _conversion_losses(notes):
+    """What a conversion dropped or could not carry, as one line ('' when nothing)."""
+    keys = (('multi', "io.export.lost.multi"), ('aim', "io.export.lost.aim"), ('rot', "io.export.lost.rot"),
+            ('material', "io.export.lost.material"), ('jxg', "io.export.lost.jxg"),
+            ('cone', "io.export.lost.cone"), ('cone_driver', "io.export.lost.cone_driver"),
+            ('symmetry', "io.export.lost.symmetry"), ('empty', "io.export.lost.empty"))
+    return T("io.export.lost.sep").join(T(key, notes[k]) for k, key in keys if notes.get(k))
 
 
 def _hex_bytes(text, size):
@@ -544,7 +601,8 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
         items=[('SOURCE', T("io.export.version.same"), ""),
                ('102', T("io.export.version.v102"), ""),
                ('35', T("io.export.version.v35"), ""),
-               ('36', T("io.export.version.v36"), "")],
+               ('36', T("io.export.version.v36"), ""),
+               ('22', T("io.export.version.v22"), "")],
         default='SOURCE',
         options={'SKIP_SAVE'},          # every export starts from the file's own version
     )
@@ -685,7 +743,15 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
             _patch_constraint_from_empty(parsed_c, empty, parser.hash_list,
                                          root_props.sections_cached, parser.version)
             if converted_from:
-                convert_constraint(parsed_c, parser.version)
+                notes = parser.conversion_notes
+                had_cones = bool(parsed_c['ConeDriver'])
+                notes['cone_driver'] = notes.get('cone_driver', 0) + convert_constraint(
+                    parsed_c, parser.version, getattr(parser, 'cone_index_map', None))
+                if had_cones and not parsed_c['ConeDriver'] and not parsed_c['sources']:
+                    notes['empty'] = notes.get('empty', 0) + 1       # nothing is left to drive it
+                    continue
+                if parser.version < 35 and parsed_c['TransformElement'] > MAX_TRANSFORM_ELEMENT_PRE35:
+                    notes['target'] = notes.get('target', 0) + 1
             final_constraints.append(parsed_c)
 
         parser.constraints = final_constraints
@@ -726,7 +792,13 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
         if converted_from:
             # Every shipped v102 tail is 0000; the other versions' tails vary.
             n_tails = getattr(parser, 'replaced_multi_tails', 0) if parser.version != 102 else 0
-            if n_tails:
+            notes = getattr(parser, 'conversion_notes', {})
+            lost = _conversion_losses(notes)
+            if notes.get('target'):
+                self.report({'WARNING'}, T("io.export.converted_target", basename, notes['target']))
+            if lost:
+                self.report({'WARNING'}, T("io.export.converted_lost", basename, converted_from, parser.version, lost))
+            elif n_tails:
                 self.report({'WARNING'}, T("io.export.converted_multi", basename, converted_from, parser.version,
                                            n_tails, convert_multi_tail(b'', parser.version).hex()))
             else:
