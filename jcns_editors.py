@@ -224,16 +224,19 @@ def _draw_rules(layout, lines):
 
 
 def _early_read_axes(c, p, sp):
-    """Axes of the driving bone that this entry or a later one drives: the engine
-    evaluates entries in file order, so those are read before they are constrained."""
+    """(axes, earlier) for the driving bone: the axes that this entry or a later one
+    drives, which the engine reads before they are constrained (it evaluates entries
+    in file order), and those of them an earlier entry has already written."""
     from . import jcns_operators
     if c.root is None or not sp.source_bone:
-        return []
+        return [], []
     later = jcns_operators._written_from(c.root, c.obj)
+    before = jcns_operators._written_before(c.root, c.obj)
     q = _mapping().source_quantity(sp.input_type)
     path = jcns_operators.QUANTITY_PATH[q]
     axes = (0, 1, 2) if q != 'Scale' else ({'X': 0, 'Y': 1, 'Z': 2}.get(sp.source_axis, 0),)
-    return [a for a in axes if (sp.source_bone, path, a) in later]
+    return ([a for a in axes if (sp.source_bone, path, a) in later],
+            [a for a in axes if (sp.source_bone, path, a) in before])
 
 
 _TARGET_LABEL = {
@@ -332,9 +335,12 @@ class JCNS_PT_Ed_Ranges_Sources(_Editor, Panel):
         row.label(text=T("editors.field.ref_frame"))
         for axis in "xyzw":
             row.prop(sp, "ref_frame_" + axis, text=axis.upper())
-        early = _early_read_axes(c, p, sp)
+        early, earlier = _early_read_axes(c, p, sp)
+        early = [a for a in early if a not in earlier]
         if early:
             _warn_row(c.body, T("editors.sources.early_read", "/".join("XYZ"[a] for a in early)))
+        if earlier:
+            _warn_row(c.body, T("editors.sources.earlier_write", "/".join("XYZ"[a] for a in earlier)))
 
 
 class JCNS_PT_Ed_Ranges_Mapping(_Editor, Panel):

@@ -271,19 +271,34 @@ def _written_from(root_obj, owner):
     entry after it in the file.
 
     Entries run in file order within one frame, so when `owner` reads one of these
-    channels the writer has not run yet and the bone is at its unconstrained pose.
+    channels the live writer has not run yet: the game reads the value from before
+    this pass (usually the animation's), or what an earlier entry on the channel wrote
+    (_written_before).  The preview reads such a channel at its unconstrained pose.
     """
+    return _channel_writes(root_obj, owner)[0]
+
+
+def _written_before(root_obj, owner):
+    """The channels of _written_from that an entry before `owner` also writes: the
+    game reads that earlier entry's output there."""
+    return _channel_writes(root_obj, owner)[1]
+
+
+def _channel_writes(root_obj, owner):
     from . import AXIS_TO_INT, get_constraint_empties, group_constraints_by_channel
     order = {e.name: i for i, e in enumerate(get_constraint_empties(root_obj))}
     here = order.get(owner.name, -1)
-    out = set()
+    later, before = set(), set()
     for (bone, transform, axis), members in group_constraints_by_channel(root_obj).items():
         entry = _DRIVABLE.get(transform)
         if entry is None or axis == 'W':
             continue
         if order.get(members[-1].name, -1) >= here:
-            out.add((bone, entry[0], AXIS_TO_INT.get(axis, 0)))
-    return out
+            key = (bone, entry[0], AXIS_TO_INT.get(axis, 0))
+            later.add(key)
+            if order.get(members[0].name, -1) < here:
+                before.add(key)
+    return later, before
 
 
 def _rest_transform(armature_obj, bone_name):
