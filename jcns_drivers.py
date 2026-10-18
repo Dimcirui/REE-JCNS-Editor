@@ -12,7 +12,8 @@ Engine rules the reads follow:
     without it, the bone's whole parent-relative rotation or position, rest included;
     +25 picks the decomposition (modules/jcns_source_read.py).
   * entries run in file order within one frame, so a source channel written by
-    this entry or a later one reads its rest value and gets no variable.
+    this entry or a later one reads what the last earlier entry on it wrote, evaluated
+    in this driver from that entry's own sources, or its rest value when none did.
   * a ConeDriver is one more summed term, read off its cone joint's rotation
     (jcns_source_read.cone_value, measured in Wilds round 20).
 
@@ -41,22 +42,29 @@ import jcns_source_read  # noqa: E402
 # * k), all already in the driver's units.  A read says which driver
 # variables feed the source:
 #   ('v',)                        one variable, used as is
+#   ('n', key, specs, k, sub)     the hidden channel `key` (an earlier entry's write,
+#                                 see below) from len(specs) variables, times k less sub
 #   ('c', value)                  none; the source is not live yet, use value
 #   ('sc', rest_scale, base)      one variable (pose scale), times the bone's rest scale,
 #                                 less 1 when `base` (the source's BasePose bit)
 #   ('rot', mode, axis, rest, order, frame, base, live)
-#                                 one variable per axis in `live` (XYZ Euler, radians,
-#                                 the others read 0); rest and frame are (w, x, y, z);
+#                                 the XYZ Euler channels (radians) `live` gives, the
+#                                 others read 0; rest and frame are (w, x, y, z);
 #                                 mode is a jcns_source_read.ROTATION_MODES value, order
 #                                 the source's +27 RotOrder; `base` reads relative to rest
 #   ('loc', axis, rest, offset, live)
-#                                 one variable per axis in `live` (location, metres);
+#                                 the location channels (metres) `live` gives;
 #                                 offset is the rest offset from the parent, metres
 #                                 (zero for a BasePose source)
 #   ('cone', rest, direction, matrix, angle, base_pose, self_parent, live)
 #                                 a ConeDriver: the cone joint's XYZ Euler channels in
 #                                 `live` (none when its ParentJoint is the joint itself);
 #                                 its map is ('CONE', out_min, out_max, interpolation)
+# An element of `live` is an axis, read from one variable, or a channel an earlier entry
+# wrote: ('n', axis, key, specs) for one channel, ('g', keys, specs) for all three of a
+# bone previewed as a group.  `specs` are the (bone, transform type, rotation mode) of
+# the variables the hidden channel reads, in order.  Hidden keys never appear in a
+# driver expression.
 _CHANNELS = {}
 
 READ_VALUE = ('v',)
@@ -77,15 +85,33 @@ def read_width(read):
     if read[0] == 'c':
         return 0
     if read[0] in ('rot', 'loc', 'cone'):
-        return len(read[-1])
+        return sum(1 if isinstance(e, int) else len(e[-1]) for e in read[-1])
+    if read[0] == 'n':
+        return len(read[2])
     return 1
 
 
-def _read(read, vals):
-    """The source value for one 'rot' / 'loc' read from its live channels."""
+def _live_channels(live, vals):
+    """The three channels a 'rot' / 'loc' / 'cone' read sees, from its variables."""
     chans = [0.0, 0.0, 0.0]
-    for a, val in zip(read[-1], vals):
-        chans[a] = val
+    at = 0
+    for e in live:
+        if isinstance(e, int):
+            chans[e] = vals[at]
+            at += 1
+            continue
+        part = vals[at:at + len(e[-1])]
+        at += len(e[-1])
+        if e[0] == 'n':
+            chans[e[1]] = jcns_ch(e[2], *part)
+        else:
+            chans = [jcns_ch(k, *part) for k in e[1]]
+    return chans
+
+
+def _read(read, vals):
+    """The source value for one 'rot' / 'loc' / 'cone' read from its variables."""
+    chans = _live_channels(read[-1], vals)
     if read[0] == 'rot':
         _, mode, axis, rest, order, frame, base, _live = read
         return jcns_source_read.rotation(
@@ -154,6 +180,22 @@ def channel_reads(key):
     return ch['reads'] if ch else None
 
 
+def _nests(read):
+    return read[0] == 'n' or (read[0] in ('rot', 'loc', 'cone')
+                              and any(not isinstance(e, int) for e in read[-1]))
+
+
+def channel_nests(key):
+    """Channel `key` evaluates an earlier entry's write inside its driver."""
+    ch = _CHANNELS.get(key)
+    if ch is None:
+        return False
+    if 'group' in ch:
+        g = _GROUPS.get(ch['group'])
+        return bool(g) and any(_nests(r) for part in g['parts'] for r in part[4])
+    return any(_nests(r) for r in ch['reads'])
+
+
 def clear_channels():
     _CHANNELS.clear()
     _GROUPS.clear()
@@ -200,6 +242,8 @@ def _total(maps, reads, values, out=SUM_OUTPUT):
             v = read[1]
         elif read[0] in ('rot', 'loc', 'cone'):
             v = _read(read, values[at:at + width])
+        elif read[0] == 'n':
+            v = jcns_ch(read[1], *values[at:at + width]) * read[3] - read[4]
         elif read[0] == 'sc':
             v = values[at] * read[1]       # Blender pose scale -> engine scale
             if len(read) > 2 and read[2]:

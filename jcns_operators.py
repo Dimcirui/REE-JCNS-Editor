@@ -272,33 +272,95 @@ def _written_from(root_obj, owner):
 
     Entries run in file order within one frame, so when `owner` reads one of these
     channels the live writer has not run yet: the game reads the value from before
-    this pass (usually the animation's), or what an earlier entry on the channel wrote
-    (_written_before).  The preview reads such a channel at its unconstrained pose.
+    this pass (usually the animation's; the preview takes the rest value), or what an
+    earlier entry on the channel wrote (_written_before).
     """
-    return _channel_writes(root_obj, owner)[0]
+    return _channel_writes(root_obj, owner)[1]
 
 
 def _written_before(root_obj, owner):
     """The channels of _written_from that an entry before `owner` also writes: the
-    game reads that earlier entry's output there."""
-    return _channel_writes(root_obj, owner)[1]
+    game reads that earlier entry's output there, and so does the preview
+    (_earlier_writes)."""
+    return _channel_writes(root_obj, owner)[2]
 
 
 def _channel_writes(root_obj, owner):
+    """(file position of `owner`, _written_from, _written_before).  The rotation types
+    all write rotation_euler, so a channel's writers are counted across them."""
     from . import AXIS_TO_INT, get_constraint_empties, group_constraints_by_channel
     order = {e.name: i for i, e in enumerate(get_constraint_empties(root_obj))}
     here = order.get(owner.name, -1)
-    later, before = set(), set()
+    first, last = {}, {}
     for (bone, transform, axis), members in group_constraints_by_channel(root_obj).items():
         entry = _DRIVABLE.get(transform)
         if entry is None or axis == 'W':
             continue
-        if order.get(members[-1].name, -1) >= here:
-            key = (bone, entry[0], AXIS_TO_INT.get(axis, 0))
-            later.add(key)
-            if order.get(members[0].name, -1) < here:
-                before.add(key)
-    return later, before
+        key = (bone, entry[0], AXIS_TO_INT.get(axis, 0))
+        first[key] = min(first.get(key, here), order.get(members[0].name, -1))
+        last[key] = max(last.get(key, -1), order.get(members[-1].name, -1))
+    later = {k for k, i in last.items() if i >= here}
+    return here, later, {k for k in later if first[k] < here}
+
+
+# Driver variables the earlier writes read inside one entry's sources may add.  The
+# driver expression names every variable and stops at 255 characters; past this the
+# channel reads its rest value instead.
+_NEST_BUDGET = 24
+
+
+def _chans_before(root_obj, bone, path, here):
+    """{axis: members} of `bone`'s `path` as _rotation_channels / translation_channels
+    give them, counting only the entries before file position `here`."""
+    from . import AXIS_TO_INT, get_constraint_empties, group_constraints_by_channel
+    order = {e.name: i for i, e in enumerate(get_constraint_empties(root_obj))}
+    out = {}
+    for (b, transform, axis), members in group_constraints_by_channel(root_obj).items():
+        entry = _DRIVABLE.get(transform)
+        if b != bone or axis == 'W' or entry is None or entry[0] != path:
+            continue
+        pre = [e for e in members if order.get(e.name, -1) < here]
+        a = AXIS_TO_INT.get(axis, 0)
+        if pre and (a not in out or order[pre[-1].name] > order[out[a][-1].name]):
+            out[a] = pre
+    arm = _armature_of(root_obj)
+    return {a: m for a, m in out.items() if _previewable(m, arm)}
+
+
+def _earlier_writes(armature_obj, root_obj, bone, path, here, budget):
+    """`bone`'s `path` as the entry at file position `here` reads it, put in the channel
+    table under hidden keys: ('g', keys, specs) when the bone is previewed as a group,
+    else {axis: ('n', axis, key, specs)} for the axes an earlier entry wrote (see
+    jcns_drivers._CHANNELS).  Each hidden channel is the last earlier writer evaluated
+    with its own sources, which read the file as that entry does."""
+    from . import jcns_drivers
+    chans = _chans_before(root_obj, bone, path, here)
+    if not chans:
+        return {}
+    tag = 'Pre%d:' % here
+    if path == 'location' or (path == 'rotation_euler' and _needs_group(armature_obj, bone, chans)):
+        register = register_translation_group if path == 'location' else register_bone_group
+        made = register(armature_obj, root_obj, bone, chans, tag=tag, budget=budget)
+        if made is None:
+            return {}
+        keys, sources, reads = made
+        return ('g', tuple(keys), _var_specs(sources, reads))
+    out = {}
+    for a, members in chans.items():
+        writer = members[-1]
+        sources = channel_sources(armature_obj, root_obj, writer, budget)
+        if not sources or any(s['axis_name'] == 'W' for s in sources):
+            continue
+        transform = writer.jcns_cns_props.transform_element
+        target_q = _DRIVABLE[transform][2]
+        reads = [jcns_drivers.source_read(s) for s in sources]
+        key = jcns_drivers.channel_id(armature_obj.name, bone, tag + transform, _AXIS_NAME[a])
+        jcns_drivers.register_channel(
+            key, [jcns_drivers.source_map(s, target_q) for s in sources], reads,
+            post=target_post_factor(armature_obj, bone, transform, a),
+            out=jcns_drivers.output_settings(writer.jcns_cns_props, target_q))
+        out[a] = ('n', a, key, _var_specs(sources, reads))
+    return out
 
 
 def _rest_transform(armature_obj, bone_name):
@@ -345,58 +407,130 @@ def source_rest_input_of(sp):
                          base_pose=sp.base_pose)
 
 
-def channel_sources(armature_obj, root_obj, owner):
+def channel_sources(armature_obj, root_obj, owner, budget=_NEST_BUDGET):
     """The source dicts of constraint Empty `owner`, each with the 'read' that tells
     the driver how to feed it (see jcns_drivers._CHANNELS).
 
     * rotation (+25 = 1/3/4/5) and translation (+25 = 0) sources take all three
       channels and decompose the bone's rotation or position relative to its rest pose
       (AttrFlags bit0) or whole (modules/jcns_source_read.py);
-    * a channel written by this entry or a later one is read at its rest value;
+    * a channel written by this entry or a later one reads what the last earlier entry
+      on it wrote (_earlier_writes), or its rest value when none did or the `budget`
+      of nested variables is spent;
     * scale (+25 = 2) keeps one variable, multiplied by the bone's rest scale.
     """
     from . import jcns_drivers
     from .modules_shim import get_mapping
     mp = get_mapping()
     sources = [s for s in _sources_for_driver(owner.jcns_cns_props) if s['bone']]
-    later = _written_from(root_obj, owner) if root_obj is not None else set()
+    here, later, before = (_channel_writes(root_obj, owner) if root_obj is not None
+                           else (-1, set(), set()))
+    spent = [0]
+    snaps = {}
+
+    def take(element):
+        """`element` if its variables still fit the budget, else None."""
+        if element is None or spent[0] + len(element[-1]) > budget:
+            return None
+        spent[0] += len(element[-1])
+        return element
+
+    def earlier(bone, path):
+        if (bone, path) not in snaps:
+            left = budget - spent[0]
+            snaps[bone, path] = (_earlier_writes(armature_obj, root_obj, bone, path, here,
+                                                 left - 1) if left > 0 else {})
+        return snaps[bone, path]
+
+    def live(bone, path):
+        """The `live` of a three-channel read of `bone`'s `path`."""
+        if not any((bone, path, a) in before for a in range(3)):
+            return tuple(a for a in range(3) if (bone, path, a) not in later)
+        snap = earlier(bone, path)
+        if isinstance(snap, tuple) and take(snap):
+            return (snap,)
+        out = []
+        for a in range(3):
+            if (bone, path, a) not in later:
+                out.append(a)
+            elif isinstance(snap, dict):
+                e = take(snap.get(a))
+                if e is not None:
+                    out.append(e)
+        return tuple(out)
+
+    def single(bone, path, a, k, sub):
+        """An 'n' read of one channel an earlier entry wrote, or None."""
+        if (bone, path, a) not in before:
+            return None
+        snap = earlier(bone, path)
+        if isinstance(snap, tuple):
+            return ('n', snap[1][a], snap[2], k, sub) if take(snap) else None
+        e = take(snap.get(a))
+        return ('n', e[2], e[3], k, sub) if e else None
+
     for s in sources:
         sid = s.get('input_type')
         q = mp.source_quantity(sid)
         path = QUANTITY_PATH[q]
         axis = min(s.get('axis_idx', 0), 2)
-        live = tuple(a for a in range(3) if (s['bone'], path, a) not in later)
         mode = jcns_drivers.jcns_source_read.ROTATION_MODES.get(sid)
         base = bool(s['attr_flags'] & 1)
         if q == 'Rotation' and mode:
             rest, _off = _rest_transform(armature_obj, s['bone'])
-            s['read'] = ('rot', mode, axis, rest, s['rot_order'], s['frame'], base, live)
+            s['read'] = ('rot', mode, axis, rest, s['rot_order'], s['frame'], base,
+                         live(s['bone'], path))
         elif q == 'Translation' and sid == 0:
             rest, off = _rest_transform(armature_obj, s['bone'])
-            s['read'] = ('loc', axis, rest, (0.0, 0.0, 0.0) if base else off, live)
+            s['read'] = ('loc', axis, rest, (0.0, 0.0, 0.0) if base else off,
+                         live(s['bone'], path))
         elif q == 'Scale':
             k = _rest_scale_axis(armature_obj, s['bone'], axis)
             if (s['bone'], path, axis) in later:
-                s['read'] = ('c', k - 1.0 if base else k)
+                s['read'] = (single(s['bone'], path, axis, k, 1.0 if base else 0.0)
+                             or ('c', k - 1.0 if base else k))
             else:
                 s['read'] = ('sc', k, base)
         elif (s['bone'], path, axis) in later:
-            s['read'] = ('c', _REST_VALUE[q])
+            s['read'] = single(s['bone'], path, axis, 1.0, 0.0) or ('c', _REST_VALUE[q])
         else:
             s['read'] = jcns_drivers.READ_VALUE
     plan, why = _cone_plan([owner], armature_obj)
     if why is None:
         for k, joint, ci, self_parent in plan:
             rest, _off = _rest_transform(armature_obj, joint)
-            live = () if self_parent else tuple(
-                a for a in range(3) if (joint, 'rotation_euler', a) not in later)
+            live_axes = () if self_parent else live(joint, 'rotation_euler')
             m = tuple(ci.matrix)
             sources.append({
                 'bone': joint, 'axis_idx': 0, 'axis_name': 'X',
                 'cone': {'out_min': k.out_min, 'out_max': k.out_max, 'interp': k.interpolation},
                 'read': ('cone', rest, tuple(ci.direction), (m[0:3], m[4:7], m[8:11]),
-                         ci.angle, ci.base_pose, self_parent, live)})
+                         ci.angle, ci.base_pose, self_parent, live_axes)})
     return sources
+
+
+def _var_specs(sources, reads):
+    """(bone, transform type, rotation mode) of every driver variable the reads take,
+    in order, the variables of the earlier writes they nest included."""
+    from .modules_shim import get_mapping
+    specs = []
+    for s, read in zip(sources, reads):
+        if read[0] == 'c':
+            continue
+        if read[0] == 'n':
+            specs += read[2]
+        elif read[0] in ('rot', 'cone', 'loc'):
+            for e in read[-1]:
+                if not isinstance(e, int):
+                    specs += e[-1]
+                elif read[0] == 'loc':
+                    specs.append((s['bone'], _LOC_TYPE[e], 'AUTO'))
+                else:
+                    specs.append((s['bone'], _ROT_TYPE[e], 'XYZ'))
+        else:
+            specs.append((s['bone'], _SOURCE_VARS[get_mapping().source_quantity(
+                s.get('input_type'))][min(s.get('axis_idx', 0), 2)], 'AUTO'))
+    return tuple(specs)
 
 
 def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
@@ -455,7 +589,6 @@ def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
 def _install_driver(armature_obj, bone_name, data_path, index, key, sources, reads):
     """Create the jcns_ch driver on one pose-bone channel, with the variables the
     sources' reads ask for, in order.  -> the expression (callers check its length)."""
-    from .modules_shim import get_mapping
     from .jcns_drivers import ensure_namespace
     ensure_namespace()
     pose_bone = armature_obj.pose.bones[bone_name]
@@ -472,8 +605,7 @@ def _install_driver(armature_obj, bone_name, data_path, index, key, sources, rea
         drv.variables.remove(drv.variables[0])
 
     names = []
-
-    def add_var(bone, transform_type, rotation_mode='AUTO'):
+    for bone, transform_type, rotation_mode in _var_specs(sources, reads):
         var = drv.variables.new()
         var.name = 'v%d' % len(names)
         names.append(var.name)
@@ -485,23 +617,19 @@ def _install_driver(armature_obj, bone_name, data_path, index, key, sources, rea
         tgt.rotation_mode = rotation_mode
         tgt.transform_space = 'LOCAL_SPACE'
 
-    for s, read in zip(sources, reads):
-        if read[0] == 'c':
-            continue
-        if read[0] in ('rot', 'cone'):
-            for a in read[-1]:
-                add_var(s['bone'], _ROT_TYPE[a], 'XYZ')
-            continue
-        if read[0] == 'loc':
-            for a in read[-1]:
-                add_var(s['bone'], _LOC_TYPE[a])
-            continue
-        add_var(s['bone'], _SOURCE_VARS[get_mapping().source_quantity(
-            s.get('input_type'))][min(s.get('axis_idx', 0), 2)])
-
-    expr = 'jcns_ch("%s"%s)' % (key, "".join("," + n for n in names))
+    expr = _expression(key, len(names))
     drv.expression = expr
     return expr
+
+
+def _expression(key, n):
+    """The driver expression of channel `key` with `n` variables."""
+    return 'jcns_ch("%s"%s)' % (key, "".join(",v%d" % i for i in range(n)))
+
+
+def _fits(key, sources, reads):
+    """The driver of these reads stays within Blender's 255-character expression."""
+    return len(_expression(key, len(_var_specs(sources, reads)))) <= 255
 
 
 # ---------------------------------------------------------------------------
@@ -521,13 +649,14 @@ def translation_channels(root_obj, bone):
             and _previewable(members, _armature_of(root_obj))}
 
 
-def register_translation_group(armature_obj, root_obj, bone, chans):
+def register_translation_group(armature_obj, root_obj, bone, chans, tag='', budget=_NEST_BUDGET):
+    """`tag` prefixes the group's keys (_earlier_writes); `budget` is channel_sources'."""
     from . import jcns_drivers, get_constraint_empties
     order = {e.name: i for i, e in enumerate(get_constraint_empties(root_obj))}
     parts, all_sources, all_reads = [], [], []
     for axis in sorted(chans, key=lambda a: order.get(chans[a][-1].name, -1)):
         members = chans[axis]
-        sources = channel_sources(armature_obj, root_obj, members[-1])
+        sources = channel_sources(armature_obj, root_obj, members[-1], budget)
         if not sources or any(s['axis_name'] == 'W' for s in sources):
             return None
         reads = [jcns_drivers.source_read(s) for s in sources]
@@ -537,9 +666,9 @@ def register_translation_group(armature_obj, root_obj, bone, chans):
         all_sources += sources
         all_reads += reads
     rest, offset = _rest_transform(armature_obj, bone)
-    gid = jcns_drivers.channel_id(armature_obj.name, bone, _LOCATION_GROUP_TAG, '')
-    keys = [jcns_drivers.channel_id(armature_obj.name, bone, _LOCATION_GROUP_TAG, _AXIS_NAME[a])
-            for a in range(3)]
+    gid = jcns_drivers.channel_id(armature_obj.name, bone, tag + _LOCATION_GROUP_TAG, '')
+    keys = [jcns_drivers.channel_id(armature_obj.name, bone, tag + _LOCATION_GROUP_TAG,
+                                    _AXIS_NAME[a]) for a in range(3)]
     parent = armature_obj.data.bones[bone].parent
     parent_scale = mesh_rest_scale(parent) if parent is not None else (1.0, 1.0, 1.0)
     jcns_drivers.register_group(gid, rest, parts, keys, offset=offset, parent_scale=parent_scale)
@@ -550,6 +679,8 @@ def _apply_translation_bone(armature_obj, root_obj, bone, chans):
     if armature_obj.pose.bones.get(bone) is None:
         return False, T("ops.driver.no_driven_bone", bone)
     made = register_translation_group(armature_obj, root_obj, bone, chans)
+    if made is not None and not _fits(made[0][0], made[1], made[2]):
+        made = register_translation_group(armature_obj, root_obj, bone, chans, budget=0)
     if made is None:
         return False, T("ops.driver.none_or_w")
     keys, sources, reads = made
@@ -651,9 +782,10 @@ def _group_orders(empties):
     return out
 
 
-def register_bone_group(armature_obj, root_obj, bone, chans):
+def register_bone_group(armature_obj, root_obj, bone, chans, tag='', budget=_NEST_BUDGET):
     """Put one bone's rotation group in the channel table.  -> (keys, sources,
-    reads) for the drivers, or None when a channel cannot be previewed."""
+    reads) for the drivers, or None when a channel cannot be previewed.  `tag`
+    prefixes the keys (_earlier_writes); `budget` is channel_sources'."""
     from . import jcns_drivers, get_constraint_empties
     empties = get_constraint_empties(root_obj)
     order = {e.name: i for i, e in enumerate(empties)}
@@ -662,7 +794,7 @@ def register_bone_group(armature_obj, root_obj, bone, chans):
     # File order of the live entries: for a single-axis type the last one wins.
     for axis in sorted(chans, key=lambda a: order.get(chans[a][-1].name, -1)):
         members = chans[axis]
-        sources = channel_sources(armature_obj, root_obj, members[-1])
+        sources = channel_sources(armature_obj, root_obj, members[-1], budget)
         if any(s['axis_name'] == 'W' for s in sources):
             return None
         reads = [jcns_drivers.source_read(s) for s in sources]
@@ -673,8 +805,8 @@ def register_bone_group(armature_obj, root_obj, bone, chans):
         all_sources += sources
         all_reads += reads
     rest, _off = _rest_transform(armature_obj, bone)
-    gid = jcns_drivers.channel_id(armature_obj.name, bone, _GROUP_TAG, '')
-    keys = [jcns_drivers.channel_id(armature_obj.name, bone, _GROUP_TAG, _AXIS_NAME[a])
+    gid = jcns_drivers.channel_id(armature_obj.name, bone, tag + _GROUP_TAG, '')
+    keys = [jcns_drivers.channel_id(armature_obj.name, bone, tag + _GROUP_TAG, _AXIS_NAME[a])
             for a in range(3)]
     jcns_drivers.register_group(gid, rest, parts, keys)
     return keys, all_sources, all_reads
@@ -687,6 +819,8 @@ def _apply_bone(armature_obj, root_obj, bone, chans):
     if pose_bone is None:
         return False, T("ops.driver.no_driven_bone", bone)
     made = register_bone_group(armature_obj, root_obj, bone, chans)
+    if made is not None and not _fits(made[0][0], made[1], made[2]):
+        made = register_bone_group(armature_obj, root_obj, bone, chans, budget=0)
     if made is None:
         return False, T("ops.driver.w_unsupported")
     keys, sources, reads = made
@@ -775,12 +909,59 @@ def _caps_for(root_props, kind_id):
 # Driver refresh (the Ranges preview backend)
 # ---------------------------------------------------------------------------
 
+def refresh_later_readers(obj):
+    """Re-apply the previewed channels whose live entry comes after entry `obj` and
+    may evaluate it as an earlier write (_earlier_writes): those reading its target
+    bone, and those already nesting an earlier write.  -> how many were re-applied."""
+    from . import get_jcns_root_from_constraint, get_constraint_empties, group_constraints_by_channel
+    from . import jcns_drivers
+    p = getattr(obj, 'jcns_cns_props', None)
+    if p is None or not p.is_jcns_constraint or p.constraint_type != 'Outputs':
+        return 0
+    root_obj, rp = get_jcns_root_from_constraint(obj)
+    if root_obj is None or rp is None or rp.target_armature is None:
+        return 0
+    arm = rp.target_armature
+    order = {e.name: i for i, e in enumerate(get_constraint_empties(root_obj))}
+    here = order.get(obj.name, -1)
+    seen = set()
+    done = 0
+    for (bone, transform, axis), members in group_constraints_by_channel(root_obj).items():
+        live = members[-1]
+        if order.get(live.name, -1) <= here or not any(e.jcns_cns_props.preview_on for e in members):
+            continue
+        keys = [jcns_drivers.channel_id(arm.name, bone, t, axis)
+                for t in (transform, _GROUP_TAG, _LOCATION_GROUP_TAG)]
+        unit = next((jcns_drivers._CHANNELS[k].get('group', k) for k in keys
+                     if k in jcns_drivers._CHANNELS), None)
+        if unit is None or unit in seen:
+            continue
+        reads_it = any(sp.source_bone == p.target_bone for sp in live.jcns_cns_props.sources)
+        if not (reads_it or any(jcns_drivers.channel_nests(k) for k in keys)):
+            continue
+        seen.add(unit)
+        try:
+            ok, _e, _l = _apply_channel(arm, rp, members)
+            done += bool(ok)
+        except Exception as exc:                  # never break the UI over this
+            print("[JCNS] auto-refresh failed: %r" % exc)
+    if done:
+        arm.update_tag()
+    return done
+
+
 def refresh_channel_values(obj):
-    """Update an applied driver's anchors without rebuilding the driver.
+    """Update an applied driver's anchors without rebuilding the driver, and the
+    drivers that evaluate it as an earlier write (refresh_later_readers).
 
     For value edits, which fire per mouse tick.  Structural edits (bone, axis,
     transform type) change the driver's variables and key and take the full path.
     """
+    own = _refresh_own_values(obj)
+    return bool(refresh_later_readers(obj)) or own
+
+
+def _refresh_own_values(obj):
     from . import (get_jcns_root_from_constraint, group_constraints_by_channel,
                    channel_key)
     from . import jcns_drivers
@@ -856,11 +1037,17 @@ def refresh_cone_users(root_obj, cone_index):
 
 
 def refresh_applied_driver(obj):
-    """Re-apply the driver for obj's channel if one is already on it.
+    """Re-apply the driver for obj's channel if one is already on it, and the drivers
+    that evaluate it as an earlier write (refresh_later_readers).
 
     jcns_drivers._CHANNELS is filled at apply time, so an edit must re-register
     the channel.  Silent no-op when nothing is applied; must never interrupt editing.
     """
+    own = _refresh_applied_own(obj)
+    return bool(refresh_later_readers(obj)) or own
+
+
+def _refresh_applied_own(obj):
     from . import (get_jcns_root_from_constraint, group_constraints_by_channel,
                    channel_key, get_constraint_empties)
 
@@ -911,7 +1098,7 @@ def _apply_channel(armature_obj, root_props, members):
     file order.  Only the last one has any effect, so the driver is built from
     members[-1] alone.
     """
-    from . import AXIS_TO_INT
+    from . import AXIS_TO_INT, jcns_drivers
     bone, transform, axis = _channel_of(members[0])
 
     from . import get_jcns_root_from_constraint
@@ -943,6 +1130,9 @@ def _apply_channel(armature_obj, root_props, members):
                     _apply_channel(armature_obj, root_props, other)
 
     sources = channel_sources(armature_obj, root_obj, winner)
+    key = jcns_drivers.channel_id(armature_obj.name, bone, transform, axis)
+    if not _fits(key, sources, [jcns_drivers.source_read(s) for s in sources]):
+        sources = channel_sources(armature_obj, root_obj, winner, budget=0)
 
     label = "%s(%s) <- %d source(s)" % (bone or '???', axis, len(sources))
     if len(members) > 1:

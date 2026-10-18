@@ -121,10 +121,6 @@ STRINGS = {
         "ZH": "驱动的 %s 轴由本条或后面的条目驱动，游戏读到本帧约束前的值（通常来自动画），预览按静止值算",
         "EN": "The driver's %s axis is driven by this or a later entry; the game reads its value before the constraints (usually the animation's), the preview uses the rest value",
     },
-    "editors.sources.earlier_write": {
-        "ZH": "驱动的 %s 轴已由前面的条目写入，游戏读到那次写入的值，预览按静止值算",
-        "EN": "The driver's %s axis was already written by an earlier entry; the game reads that value, the preview uses the rest value",
-    },
     "editors.mapping.driver_item": {"ZH": "驱动 %d：%s %s", "EN": "Driver %d: %s %s"},
     "editors.tools.mirror": {"ZH": "镜像到另一侧…", "EN": "Mirror to Other Side…"},
 

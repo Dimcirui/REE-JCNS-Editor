@@ -226,7 +226,8 @@ def _draw_rules(layout, lines):
 def _early_read_axes(c, p, sp):
     """(axes, earlier) for the driving bone: the axes that this entry or a later one
     drives, which the engine reads before they are constrained (it evaluates entries
-    in file order), and those of them an earlier entry has already written."""
+    in file order), and those of them an earlier entry has already written, which it
+    and the preview read that entry's output from."""
     from . import jcns_operators
     if c.root is None or not sp.source_bone:
         return [], []
@@ -339,8 +340,6 @@ class JCNS_PT_Ed_Ranges_Sources(_Editor, Panel):
         early = [a for a in early if a not in earlier]
         if early:
             _warn_row(c.body, T("editors.sources.early_read", "/".join("XYZ"[a] for a in early)))
-        if earlier:
-            _warn_row(c.body, T("editors.sources.earlier_write", "/".join("XYZ"[a] for a in earlier)))
 
 
 class JCNS_PT_Ed_Ranges_Mapping(_Editor, Panel):
