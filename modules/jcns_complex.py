@@ -124,17 +124,28 @@ def mirrored(keys, in_sign, out_sign):
     return out
 
 
-def from_mid_point(fs, fk, fe, ts, tk, te, two_point=False):
-    """Keys drawing the same segments as a three-point mapping, sorted
-    ascending in x."""
+# Segment end slopes, as multiples of the segment's rise over run, that make the
+# Hermite cubic the mapping's interpolation (+28, eased from the smaller input):
+# linear, t^3, 1-(1-t)^3, smoothstep.
+_EASE_SLOPES = {0: (1.0, 1.0), 1: (0.0, 3.0), 2: (3.0, 0.0), 3: (0.0, 0.0)}
+
+
+def from_mid_point(fs, fk, fe, ts, tk, te, two_point=False, interp=0):
+    """Keys drawing the same segments as a three-point mapping with interpolation
+    `interp`, sorted ascending in x."""
     pts = [(fs, ts), (fe, te)] if two_point else [(fs, ts), (fk, tk), (fe, te)]
     pts.sort(key=lambda p: p[0])
+    k_out, k_in = _EASE_SLOPES.get(interp, _EASE_SLOPES[0])
+
+    def slope(a, b):
+        return (b[1] - a[1]) / (b[0] - a[0]) if b[0] != a[0] else 0.0
+
     keys = []
     for i, (x, y) in enumerate(pts):
-        def slope(a, b):
-            return (b[1] - a[1]) / (b[0] - a[0]) if b[0] != a[0] else 0.0
-        s_in = slope(pts[i - 1], pts[i]) if i > 0 else (slope(pts[0], pts[1]) if len(pts) > 1 else 0.0)
-        s_out = slope(pts[i], pts[i + 1]) if i + 1 < len(pts) else s_in
+        before = slope(pts[i - 1], pts[i]) if i > 0 else None
+        after = slope(pts[i], pts[i + 1]) if i + 1 < len(pts) else None
+        s_in = before * k_in if before is not None else (after * k_out if after is not None else 0.0)
+        s_out = after * k_out if after is not None else s_in
         keys.append((x, y, s_in, s_out))
     return keys
 
