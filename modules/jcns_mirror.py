@@ -172,6 +172,17 @@ def mirror_source(source, source_axis, target_axis, flags,
             in_sign, out_sign)
 
 
+def mirror_output(output_mode, clamp, out_sign):
+    """An entry's OutputMode and clamps (use_min, min, use_max, max) for its mirror
+    whose output is `out_sign` times the original: with the sign flipped, the minimum
+    and maximum swap and so do the limits, negated."""
+    if out_sign is None or out_sign > 0:
+        return output_mode, tuple(clamp)
+    use_min, lo, use_max, hi = clamp
+    mode = {'MIN': 'MAX', 'MAX': 'MIN'}.get(output_mode, output_mode)
+    return mode, (use_max, -hi, use_min, -lo)
+
+
 # ---------------------------------------------------------------------------
 # Bone-name side handling
 # ---------------------------------------------------------------------------

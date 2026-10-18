@@ -1528,6 +1528,11 @@ class JCNS_OT_MirrorConstraints(Operator):
             q.transform_element = p.transform_element
             q.base_pose, q.attr_flags_other = p.base_pose, p.attr_flags_other
             q.target_property, q.property_hash = p.target_property, p.property_hash
+            q.unknown_byte_74, q.lod_threshold = p.unknown_byte_74, p.lod_threshold
+            q.output_mode, (q.use_clamp_min, q.clamp_min, q.use_clamp_max, q.clamp_max) = \
+                mirror.mirror_output(p.output_mode,
+                                     (p.use_clamp_min, p.clamp_min, p.use_clamp_max, p.clamp_max),
+                                     new_sources[0][5] if new_sources else None)
             for old in q.sources:
                 jcns_cm.remove(old)
             q.sources.clear()
