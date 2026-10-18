@@ -107,10 +107,22 @@ STRINGS = {
         "ZH": "与 %s 共用通道，只有最后一条生效",
         "EN": "Shares a channel with %s; only the last one takes effect",
     },
+    "io.merge.panel.shared_first": {
+        "ZH": "与 %s 重名，只有第一条有效",
+        "EN": "Same name as %s; only the first one takes effect",
+    },
     "io.merge.panel.button": {"ZH": "合并", "EN": "Merge"},
     "io.merge.panel.shared_count": {
         "ZH": "%d 个通道有多条约束，只有最后一条生效",
         "EN": "%d channels have several constraints; only the last one takes effect",
+    },
+    "io.merge.panel.shared_count_first": {
+        "ZH": "%d 个命名输出重名，只有第一条有效",
+        "EN": "%d named outputs share a name; only the first one takes effect",
+    },
+    "io.merge.warning.shared_first": {
+        "ZH": "有 %d 个命名输出重名，只有第一条有效：%s。",
+        "EN": "%d named outputs share a name; only the first one takes effect: %s.",
     },
     "io.merge.warning.shared": {
         "ZH": "有 %d 个通道被多条约束共用，只有最后一条生效：%s。",

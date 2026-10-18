@@ -76,6 +76,11 @@ def _caps_reason(rp):
     return caps.reason('remove') or caps.reason('add') or T("io.merge.no_add_remove")
 
 
+def _is_named_output(empty):
+    from .jcns_exporter import _transform_int
+    return _transform_int(empty.jcns_cns_props.transform_element) == 12
+
+
 def _label(empty):
     name = empty.name
     return name[:name.index(']') + 1] if name.startswith('[') and ']' in name else name
@@ -294,11 +299,15 @@ def draw_channel_merge(layout, context, members, rp, active):
     `members` are the Empties on the active entry's channel, in file order.
     """
     others = [e for e in members if e is not active]
-    last = members[-1] is active
+    # A named output (12) is looked up by name and the first one found wins.
+    first_wins = _is_named_output(active)
+    live = (members[0] if first_wins else members[-1]) is active
     row = layout.row()
-    row.alert = not last
-    row.label(text=T("io.merge.panel.shared", T("io.sep.list").join(_label(e) for e in others)),
-              icon='INFO' if last else 'ERROR')
+    row.alert = not live
+    names = T("io.sep.list").join(_label(e) for e in others)
+    row.label(text=T("io.merge.panel.shared_first", names) if first_wins
+              else T("io.merge.panel.shared", names),
+              icon='INFO' if live else 'ERROR')
     why = _caps_reason(rp)
     if why:
         layout.label(text=why, icon='LOCKED')
@@ -314,11 +323,15 @@ def draw_channel_merge(layout, context, members, rp, active):
 def draw_merge_all(layout, context, groups, rp):
     """File-level entry point, for the by-bone view.  `groups` is
     group_constraints_by_channel(root)."""
-    n = sum(1 for members in groups.values() if len(members) > 1)
-    if not n:
+    shared = [members for members in groups.values() if len(members) > 1]
+    if not shared:
         return
+    named = sum(1 for members in shared if _is_named_output(members[0]))
     box = layout.box()
-    box.label(text=T("io.merge.panel.shared_count", n), icon='INFO')
+    if len(shared) > named:
+        box.label(text=T("io.merge.panel.shared_count", len(shared) - named), icon='INFO')
+    if named:
+        box.label(text=T("io.merge.panel.shared_count_first", named), icon='INFO')
     why = _caps_reason(rp)
     if why:
         box.label(text=why, icon='LOCKED')
@@ -333,16 +346,25 @@ def draw_merge_all(layout, context, groups, rp):
 def shared_channel_warning(empties, rp):
     """One line for the export report when several entries write one channel, or ''."""
     entries = [_describe(e, with_sources=False) for e in empties]
-    shared = plan_mod.contested(entries)
-    if not shared:
+    contested = plan_mod.contested(entries)
+    if not contested:
         return ''
-    shown = T("io.sep.clause").join(
-        T("io.merge.channel_with_note", _channel_text(entries[g[0]]),
-          T("io.sep.list").join(_label(empties[i]) for i in g))
-        for g in shared[:3])
-    if len(shared) > 3:
-        shown += T("io.merge.more_suffix")
-    text = T("io.merge.warning.shared", len(shared), shown)
+
+    def listed(groups):
+        shown = T("io.sep.clause").join(
+            T("io.merge.channel_with_note", _channel_text(entries[g[0]]),
+              T("io.sep.list").join(_label(empties[i]) for i in g))
+            for g in groups[:3])
+        return shown + (T("io.merge.more_suffix") if len(groups) > 3 else '')
+
+    named = [g for g in contested if _is_named_output(empties[g[0]])]
+    shared = [g for g in contested if g not in named]
+    parts = []
+    if shared:
+        parts.append(T("io.merge.warning.shared", len(shared), listed(shared)))
+    if named:
+        parts.append(T("io.merge.warning.shared_first", len(named), listed(named)))
+    text = ''.join(parts)
     return text if _caps_reason(rp) else text + T("io.merge.warning.hint")
 
 
