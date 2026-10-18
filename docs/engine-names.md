@@ -16,7 +16,7 @@
 | 锥形 | `cone_infos` → `cone_drivers`，`cone_index` → `cone_input_index`，`cone_drivers_json` → `cone_inputs_json` |
 | 枚举标识 | 变换类型、读取方式（TRANS/ROT/SCALE/ROT_RPY/ROT_PYR/EXP_MAP）、插值（LINEAR/SLOW/FAST/SMOOTH）、WorldUpType（SCENE_UP…NONE_MAYA_LIKE）全部用引擎名 |
 
-没有引擎名的保持原样：`ref_frame`、`from_*`/`to_*` 锚点、ComplexMapping、`UnknownByte72`（推断是 OutputMode，未实测）、`TailBytes`。
+没有引擎名的保持原样：`ref_frame`、`from_*`/`to_*` 锚点、ComplexMapping、`TailBytes`。+72 已定名 `OutputMode`（Blender `output_mode`），+64 定名 `Clamp`（Blender `clamp_min`/`clamp_max`，开关 `use_clamp_min`/`use_clamp_max` 即 Flags bit2/bit3）。
 
 ## 来源
 
@@ -84,7 +84,7 @@ jcns 资源在运行时叫 `JointExMultiRemapValue`，资源类型是 `via.motio
 | 16 | OutJoint | bit4"驱动骨骼" ✓ |
 | 32 | OutRot | bit5"角度量" ✓ |
 
-**`OutputMode` = UnknownByte72（推断，语料取值 0–4 正好 5 种）**
+**`OutputMode` = +72 ✓**（求值器按它合并各驱动，见 Physics_Sim 的 jcns_runtime.md §5.4）
 
 | 值 | 引擎名 |
 |---|---|
@@ -120,13 +120,11 @@ jcns 资源在运行时叫 `JointExMultiRemapValue`，资源类型是 `via.motio
 
 | 位 | 引擎名 | 含义 |
 |---|---|---|
-| 1 | BasePose | 待测（见下） |
+| 1 | BasePose | 1 = 相对静止姿态读：静止⁻¹·当前、当前 − 静止、缩放 − 1 ✓ |
 | 2 | MidPoint | bit1"三点曲线" ✓ |
 | 4 | World | 新：按世界空间读（语料 4/5 共 23 条） |
 
-`BasePose` 位：语料里 3（BasePose+MidPoint）占 64%，0 和 2 共 6000 多条。我们"读取含静止姿态"的
-结论是在值为 3 的源上测的；bit0=0 时是否改为相对静止姿态读（exprgraph 的 `CoordSpace.LocalDiffBase`），
-**还没测**，预览目前对所有源都按含静止姿态处理。
+`BasePose` 位：语料里 3（BasePose+MidPoint）占 64%。测试台各轮的源都写了 0，所以当时测到的「含静止姿态」只是 bit0=0 的情况；预览现在按位分别处理（Blender 属性 `base_pose`）。
 
 **`CurveType` = +29 ComplexMappingFlag ✓**：0 MinMax（锚点）/ 1 Function（ComplexMapping 曲线）/ 2 Scaling（新，语料里没见过）
 
@@ -255,7 +253,7 @@ Wilds 的 native 求值器**会算锥形**，算法和第 2 节的托管原型�
 ## 5. 还没解决的
 
 - native 锥形：BasePose 位（测试骨静止旋转是单位旋转，测不出）、SymmetryJoint、Function 曲线、插值 1–3、参考轴是否取 Matrix 第 0 行。
-- 源 AttrFlags 的 BasePose 位（bit0=0 的源）到底怎么读（求值器 A623DA0 里的 6 路 InputType switch 是下一步要读的地方）。
+- 源 AttrFlags 的 World 位（bit2，世界空间读）没有预览。
 - TailBytes[1] 比较的级别是哪个组件的哪个量；TailBytes[0] 在 Rot2 以外的元素上有没有作用。
 - ConeDriverInfo 里那个 0/2 字节。
 - exe 里还有一组手写脚本的字段（`_ConeVector`、`_HalfAngleTbl`、`_ConeInputs`、`_ConeOutMax`、
