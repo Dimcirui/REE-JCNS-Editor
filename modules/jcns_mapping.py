@@ -12,27 +12,18 @@ Anchors are in the file's own units (degrees, centimetres; see driver_anchors):
     B = (from_kink,  to_kink)    slope change
     C = (from_end,   to_end)     second endpoint
 
-Segment 1 maps [A.x -> B.x] onto [A.y -> B.y], segment 2 [B.x -> C.x] onto
-[B.y -> C.y]; both are strictly linear, and outside the range the output clamps
-to the nearer segment's bound.
+Bit 1 (MidPoint) of the source's +24 AttrFlags selects the shape, as the engine's
+remap does it:
 
-The per-source byte at +24 (`AttrFlags`; RE_Engine_JCNS.bt misnames it
-UpdateTiming) selects the shape:
-
-    0, 1  two-point: the kink is ignored; straight line A -> C
-    2, 3  three-point: the piecewise curve above
-    4, 5  unknown; treated as three-point
-
-Degenerate anchors:
-
-    two-point    collapsing a segment changes nothing; all three `from` equal
-                 -> flat 0.
-    three-point  start == kink -> segment 2 governs, `to_start` ignored;
-                 kink == end   -> segment 1 governs, `to_end` ignored;
-                 all three equal -> step at the kink from `to_start` to
-                 `to_end`, `to_kink` unused;
-                 a descending `from` range equals the ascending one;
-                 a kink strictly outside [start, end] kills the source: flat 0.
+    two-point    t = clamp01((x - A.x) / (C.x - A.x)), eased, then lerp A.y -> C.y;
+                 A.x == C.x gives 0.
+    three-point  the `from` anchors must be monotone (A <= B <= C, or all descending,
+                 when the ends swap roles), else 0.  With low / high the smaller and
+                 larger end: below low -> low's output; [low, B) eases low -> B;
+                 [B, high) eases B -> high; at or above high -> high's output.  So
+                 start == kink gives `to_start` below it and segment 2 above it, and
+                 kink == end gives `to_end` from the kink on.  Each segment eases from
+                 its lower `from` end, so a descending range runs the ease mirrored.
 """
 
 from jcns_source_read import read_quantity, input_type_value, rot_order_value  # noqa: F401
@@ -178,14 +169,18 @@ def source_interpolation(source):
 
 
 def is_folded(from_start, from_kink, from_end):
-    """Does the polyline double back on itself along x?
+    """Are the `from` anchors not monotone (a '<' or '>' shape)?
 
-    True when the kink lies strictly outside the [start, end] span (a '<' or
-    '>' shape).  In three-point mode such a source outputs a flat 0; in
-    two-point mode the kink is ignored.
+    In three-point mode such a source outputs a flat 0; in two-point mode the kink
+    is ignored.
     """
-    lo, hi = (from_start, from_end) if from_start <= from_end else (from_end, from_start)
-    return from_kink < lo - 1e-9 or from_kink > hi + 1e-9
+    return not (from_start <= from_kink <= from_end or from_start >= from_kink >= from_end)
+
+
+def _ease(interp, t):
+    t = 0.0 if t < 0.0 else (t if t < 1.0 else 1.0)
+    f = EASING.get(interp)
+    return f(t) if f else t
 
 
 def eval_piecewise(from_start, from_kink, from_end,
@@ -195,38 +190,24 @@ def eval_piecewise(from_start, from_kink, from_end,
     `interp` is the source's interpolation byte +28: each segment runs straight (0) or
     follows an easing curve (see EASING).
     """
-    span1 = from_kink - from_start
-    span2 = from_end - from_kink
-    total = from_end - from_start
-
-    def seg(x0, y0, x1, y1, span):
-        if interp in EASING:
-            t = max(0.0, min(1.0, (x - x0) / span))
-            return y0 + (y1 - y0) * EASING[interp](t)
-        k = (y1 - y0) / span
-        lo, hi = min(y0, y1), max(y0, y1)
-        return max(lo, min(hi, y0 + (x - x0) * k))
-
     if two_point:
-        if abs(total) < 1e-9:
+        if from_start == from_end:
             return 0.0
-        return seg(from_start, to_start, from_end, to_end, total)
+        return (to_end - to_start) * _ease(interp, (x - from_start) / (from_end - from_start)) + to_start
 
-    if is_folded(from_start, from_kink, from_end):
+    if from_start <= from_kink <= from_end:
+        low, high, lo, hi = from_start, from_end, to_start, to_end
+    elif from_start >= from_kink >= from_end:
+        low, high, lo, hi = from_end, from_start, to_end, to_start
+    else:
         return 0.0
-
-    if abs(span1) < 1e-9 and abs(span2) < 1e-9:
-        return to_start if x <= from_kink else to_end
-    if abs(span2) < 1e-9:                      # only segment 1 is live
-        return seg(from_start, to_start, from_kink, to_kink, span1)
-    if abs(span1) < 1e-9:                      # only segment 2 is live
-        return seg(from_kink, to_kink, from_end, to_end, span2)
-
-    # Segment by which side of the kink `x` is on; a descending range flips it.
-    on_first = (x <= from_kink) if from_start <= from_end else (x >= from_kink)
-    if on_first:
-        return seg(from_start, to_start, from_kink, to_kink, span1)
-    return seg(from_kink, to_kink, from_end, to_end, span2)
+    if x < low:
+        return lo
+    if x < from_kink:
+        return (to_kink - lo) * _ease(interp, (x - low) / (from_kink - low)) + lo
+    if x < high:
+        return (hi - to_kink) * _ease(interp, (x - from_kink) / (high - from_kink)) + to_kink
+    return hi
 
 
 def rest_position(from_start, from_kink, from_end):
