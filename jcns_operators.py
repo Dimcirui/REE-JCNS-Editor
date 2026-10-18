@@ -69,7 +69,7 @@ QUANTITY_PATH = {'Translation': 'location', 'Rotation': 'rotation_euler', 'Scale
 
 def _sources_for_driver(cns_props):
     """Convert a constraint's JCNSSourceProperties collection into driver dicts."""
-    from . import AXIS_TO_INT
+    from . import AXIS_TO_INT, CURVE_WRAP_TO_INT
     from .modules_shim import get_mapping
     out = []
     for sp in cns_props.sources:
@@ -90,8 +90,12 @@ def _sources_for_driver(cns_props):
             # rotation reads (modules/jcns_source_read.py).
             'rot_order': get_mapping().rot_order_value(sp.rot_order),
             'frame': (sp.ref_frame_w, sp.ref_frame_x, sp.ref_frame_y, sp.ref_frame_z),
-            # ComplexMapping keys, which replace the anchors when present.
+            # ComplexMapping keys, which replace the anchors when present, and how the
+            # curve continues before and after them (+22 / +23).
             'cm': jcns_cm.keys(sp),
+            'cm_wrap': (CURVE_WRAP_TO_INT[sp.curve_pre_wrap], CURVE_WRAP_TO_INT[sp.curve_post_wrap]),
+            # +29 = 2: the output is the reading times from_start.
+            'scale_mapping': sp.curve_type == 2 and not jcns_cm.has_curve(sp),
         })
     return out
 
@@ -576,11 +580,24 @@ def _rotation_channels(root_obj, bone):
     return {a: m for a, m in out.items() if _previewable(m, arm)}
 
 
+def _euler_order_of(members):
+    """The RotOrder (+74 of its joint group's first entry) a channel's live entry
+    composes in."""
+    from . import get_constraint_empties, get_jcns_root_from_constraint
+    root, _ = get_jcns_root_from_constraint(members[-1])
+    if root is None:
+        return 0
+    grp = _group_orders(get_constraint_empties(root)).get(members[-1].name)
+    return grp[1] if grp else 0
+
+
 def _needs_group(armature_obj, bone, chans):
     """A bone whose rotation cannot be one independent driver per Euler channel:
-    a non-Euler rotation type (swing-twist, rotation vector, single axis), or an
-    Euler channel replacing a rest rotation."""
+    a non-Euler rotation type (swing-twist, rotation vector, single axis), an Euler
+    order other than XYZ, or an Euler channel replacing a rest rotation."""
     if any(_target_mode(m) != 'euler' for m in chans.values()):
+        return True
+    if any(_euler_order_of(m) for m in chans.values()):
         return True
     if not any(_replaces(m) for m in chans.values()):
         return False
@@ -601,18 +618,19 @@ def replacing_bones(armature_obj, root_obj):
     return out
 
 
-def _rot2_groups(empties):
-    """{entry name: (group start, RotOrder)} for the Rot2 (13) entries: the joint
-    group each sits in (+77 counts) and that group's TailBytes[0], which the engine
-    uses as the Euler order of the whole group."""
+def _group_orders(empties):
+    """{entry name: (group start, RotOrder)} for the Euler (1) and Rot2 (13) entries:
+    the joint group each sits in (+77 counts, at most three members) and that group's
+    TailBytes[0], the Euler order the engine takes the whole group's rotation apart and
+    composes it in."""
     from .jcns_exporter import _transform_int
     out = {}
     i = 0
     while i < len(empties):
         head = empties[i].jcns_cns_props
-        k = max(0, head.group_count)
+        k = min(max(0, head.group_count), 3)
         for e in empties[i:i + k + 1]:
-            if _transform_int(e.jcns_cns_props.transform_element) == 13:
+            if _transform_int(e.jcns_cns_props.transform_element) in (1, 13):
                 out[e.name] = (i, head.unknown_byte_74)
         i += k + 1
     return out
@@ -624,7 +642,7 @@ def register_bone_group(armature_obj, root_obj, bone, chans):
     from . import jcns_drivers, get_constraint_empties
     empties = get_constraint_empties(root_obj)
     order = {e.name: i for i, e in enumerate(empties)}
-    rot2 = _rot2_groups(empties)
+    groups = _group_orders(empties)
     parts, all_sources, all_reads = [], [], []
     # File order of the live entries: for a single-axis type the last one wins.
     for axis in sorted(chans, key=lambda a: order.get(chans[a][-1].name, -1)):
@@ -636,7 +654,7 @@ def register_bone_group(armature_obj, root_obj, bone, chans):
         parts.append((axis, _target_mode(members), _replaces(members),
                       [jcns_drivers.source_map(s, 'Rotation') for s in sources], reads,
                       jcns_drivers.output_settings(members[-1].jcns_cns_props, 'Rotation'),
-                      rot2.get(members[-1].name)))
+                      groups.get(members[-1].name)))
         all_sources += sources
         all_reads += reads
     rest, _off = _rest_transform(armature_obj, bone)

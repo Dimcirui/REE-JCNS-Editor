@@ -107,8 +107,8 @@ STRINGS = {
     },
     "editors.keys.more": {"ZH": "……共 %d 个", "EN": "... %d in total"},
     "editors.keys.anchors_nonzero": {
-        "ZH": "锚点不为 0，与曲线并存时效果未知",
-        "EN": "Anchors are not 0; the effect together with the curve is unknown",
+        "ZH": "曲线模式下锚点不参与计算",
+        "EN": "Anchors are not used in curve mode",
     },
 
     # --- Outputs: drivers ------------------------------------------------------------

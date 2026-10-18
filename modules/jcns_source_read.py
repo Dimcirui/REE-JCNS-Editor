@@ -114,7 +114,7 @@ def read_rotation(rest, euler, base_pose):
 
 
 # RotOrder -> (i, j, k) with R = R_i * R_j * R_k (k applied first).  4 YXZ and 5 XZY come
-# from the engine enum; only a Rot2 group's TailBytes[0] uses them so far.
+# from the engine enum; only a joint group's TailBytes[0] uses them so far.
 ROT_ORDERS = {0: (2, 1, 0), 1: (0, 2, 1), 2: (1, 0, 2), 3: (0, 1, 2), 4: (2, 0, 1), 5: (1, 2, 0)}
 # The same orders as Blender names them (first-applied axis first)
 ROT_ORDER_NAMES = {0: 'XYZ', 1: 'YZX', 2: 'ZXY', 3: 'ZYX'}
@@ -219,10 +219,11 @@ def _axis_q(axis, v):
     return tuple(r)
 
 
-def compose(mode, v):
-    """The rotation a target mode builds from channel values v = (x, y, z)."""
+def compose(mode, v, order=0):
+    """The rotation a target mode builds from channel values v = (x, y, z); `order` is
+    the RotOrder of the 'euler' mode."""
     if mode == 'euler':
-        return from_euler_xyz(v)
+        return from_euler_order(v, order)
     if mode in ('swing_twist', 'twist_swing'):
         t = _axis_q(0, v[0])
         s = (1.0, 0.0, math.tan(v[1] * 0.5), math.tan(v[2] * 0.5))
@@ -253,28 +254,31 @@ def target_basis(rest, parts):
     add and replace on types 1, 4, 5 and 6 (rounds 13 and 16) and pure replace on all four.
     Axis rotations (13 / 14) hold one rotation and replacing drops the whole rest.
 
-    A part may carry a fifth item, (group, order), for a Rot2 entry: the engine builds
-    one joint group's Rot2 entries into a single Euler rotation in the group's
-    TailBytes[0] order (RemapValue evaluator, disassembly), so the last group wins as a
-    whole.  Without it each entry is its own group and the last entry wins.
+    A part may carry a fifth item, (group, order): its joint group and that group's
+    TailBytes[0] RotOrder.  The engine builds one joint group's Rot2 entries into a
+    single Euler rotation in that order (RemapValue evaluator, disassembly), so the last
+    group wins as a whole; without it each entry is its own group and the last entry
+    wins.  An Euler (1) bone takes itself apart and composes again in the order of its
+    last entry's group, XYZ without one.
     """
     if not parts:
         return (0.0, 0.0, 0.0)
     last = parts[-1]
     mode = last[1]
+    grp = last[4] if len(last) > 4 else None
     if mode == 'axis':
-        grp = last[4] if len(last) > 4 else None
         if grp is None:
             q = _axis_q(last[0], last[3])
         else:
             v = [0.0, 0.0, 0.0]
             for p in parts:
-                if len(p) > 4 and p[4] is not None and p[4][0] == grp[0]:
+                if p[1] == 'axis' and len(p) > 4 and p[4] is not None and p[4][0] == grp[0]:
                     v[p[0]] = p[3]
             q = from_euler_order(v, grp[1])
         if not last[2]:
             q = qmul(rest, q)
         return tuple(_euler(_pos_w(qmul(_conj(rest), q)), 0))
+    order = grp[1] if mode == 'euler' and grp is not None else 0
     replaced = {p[0]: p[3] for p in parts if p[2]}
     added = {p[0]: p[3] for p in parts if not p[2]}
     q = rest
@@ -282,12 +286,12 @@ def target_basis(rest, parts):
         add = [0.0, 0.0, 0.0]
         for a, v in added.items():
             add[a] = v
-        q = qmul(rest, compose(mode, add))
+        q = qmul(rest, compose(mode, add, order))
     if replaced:
-        c = [rotation(mode, q, a) for a in range(3)]
+        c = [rotation(mode, q, a, order) for a in range(3)]
         for a, v in replaced.items():
             c[a] = v
-        q = compose(mode, c)
+        q = compose(mode, c, order)
     return tuple(_euler(_pos_w(qmul(_conj(rest), q)), 0))
 
 

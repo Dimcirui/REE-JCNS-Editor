@@ -6,7 +6,10 @@ three-point mapping (whose six anchors are then all zero).
   * (FromY, ToY) is the incoming tangent and (FromZ, ToZ) the outgoing one, as a
     (dx, dy) vector; segments are cubic Hermite on the slopes dy/dx;
   * the per-key UnknownUInt32 does not affect the result;
-  * outside the keyed range the output holds the end value;
+  * outside the keyed range each end continues by its wrap mode (the source's +22
+    before the first key, +23 after the last): 0 holds the end value, 1 extends the
+    end tangent, 2 ping-pongs, 3 repeats, 4 repeats with each cycle offset by the
+    rise of the curve (the evaluator names them; only 0 occurs in the shipped files);
   * equal FromX on neighbouring keys make a step.
 
 The shipped layout writes dx as the neighbouring segment length: FromY the one
@@ -16,6 +19,8 @@ the last key's FromZ a copy of its FromY.  All-zero tangents mean flat tangents.
 A Blender Bezier F-Curve with each handle at the key +- (segment dx, rise)/3 is
 the same cubic.  No `bpy` import.
 """
+
+import math
 
 # A key: (x, y, slope_in, slope_out), in the file's own units (degrees /
 # centimetres / scale factors).
@@ -51,12 +56,40 @@ def records_from_keys(keys, flags=None):
     return out
 
 
-def evaluate(keys, x):
-    """The engine's output for input x.  Keys must be sorted by x."""
+# Wrap modes of +22 / +23.
+WRAP_CLAMP, WRAP_LINEAR, WRAP_PINGPONG, WRAP_REPEAT, WRAP_OFFSET = range(5)
+
+
+def evaluate(keys, x, pre=WRAP_CLAMP, post=WRAP_CLAMP):
+    """The engine's output for input x.  Keys must be sorted by x; `pre` / `post`
+    are the wrap modes before the first and after the last key."""
     if not keys:
         return 0.0
-    if x < keys[0][0]:
+    x0, x1 = keys[0][0], keys[-1][0]
+    span = x1 - x0
+    if (x < x0 or x > x1) and span > 0.0:
+        mode = pre if x < x0 else post
+        if mode == WRAP_LINEAR:
+            if x < x0:
+                return keys[0][1] + (x - x0) * keys[0][3]
+            return keys[-1][1] + (x - x1) * keys[-1][2]
+        if mode in (WRAP_PINGPONG, WRAP_REPEAT, WRAP_OFFSET):
+            cycle = math.floor((x - x0) / span)
+            u = x - x0 - cycle * span
+            if mode == WRAP_PINGPONG and cycle % 2:
+                u = span - u
+            y = _inside(keys, x0 + u)
+            if mode == WRAP_OFFSET:
+                y += cycle * (keys[-1][1] - keys[0][1])
+            return y
+    if x < x0:
         return keys[0][1]
+    if x >= x1:
+        return keys[-1][1]
+    return _inside(keys, x)
+
+
+def _inside(keys, x):
     if x >= keys[-1][0]:
         return keys[-1][1]
     # Last segment starting at or before x: at a step the later key applies.

@@ -36,8 +36,9 @@ import jcns_source_read  # noqa: E402
 # key -> {'maps': [map, …], 'reads': [read, …], 'out': settings}, one map and read per
 # source of the single constraint that owns the channel; `out` is how the entry combines
 # them (output_settings).  A map is
-# either the three-point (fs, fk, fe, ts, tk, te, two_point, interpolation) or ('CM', keys) for a
-# ComplexMapping, both already in the driver's units.  A read says which driver
+# the three-point (fs, fk, fe, ts, tk, te, two_point, interpolation), ('CM', keys, (pre, post))
+# for a ComplexMapping with its wrap modes, or ('SCALE', k) for CurveType 2 (output = reading
+# * k), all already in the driver's units.  A read says which driver
 # variables feed the source:
 #   ('v',)                        one variable, used as is
 #   ('c', value)                  none; the source is not live yet, use value
@@ -110,7 +111,10 @@ def source_map(s, target_q):
     src_q = m.source_quantity(s.get('input_type'))
     if s.get('cm'):
         return ('CM', tuple(jcns_complex.scaled(s['cm'], _unit_scale(src_q),
-                                                _unit_scale(target_q))))
+                                                _unit_scale(target_q))),
+                tuple(s.get('cm_wrap', (0, 0))))
+    if s.get('scale_mapping'):
+        return ('SCALE', s['from_start'] * _unit_scale(target_q) / _unit_scale(src_q))
     vals = (s['from_start'], s['from_kink'], s['from_end'],
             s['to_start'],   s['to_kink'],   s['to_end'])
     return tuple(m.driver_anchors(vals, src_q, target_q)) + (m.is_two_point(s.get('attr_flags')),
@@ -204,7 +208,9 @@ def _total(maps, reads, values, out=SUM_OUTPUT):
             v = values[at]
         at += width
         if m[0] == 'CM':
-            mapped.append(jcns_complex.evaluate(m[1], v))
+            mapped.append(jcns_complex.evaluate(m[1], v, *(m[2] if len(m) > 2 else ())))
+        elif m[0] == 'SCALE':
+            mapped.append(v * m[1])
         elif m[0] == 'CONE':
             mapped.append(m[1] + (m[2] - m[1]) * jcns_source_read.cone_ease(m[3], v))
         else:
