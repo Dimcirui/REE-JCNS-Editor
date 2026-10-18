@@ -6,11 +6,11 @@ STRINGS = {
     # ---- modules/jcns_merge.py: fields that must agree ----
     "io.merge.field.base_pose": {"ZH": "叠加", "EN": "Additive"},
     "io.merge.field.attr_flags_other": {"ZH": "其余标志位", "EN": "Other flags"},
-    "io.merge.field.vec4": {"ZH": "Vec4", "EN": "Vec4"},
+    "io.merge.field.output_ref": {"ZH": "输出参考系", "EN": "Output reference"},
     "io.merge.field.clamp": {"ZH": "输出上下限", "EN": "Output limits"},
     "io.merge.field.output_mode": {"ZH": "合并方式", "EN": "Combine mode"},
-    "io.merge.field.byte_74": {"ZH": "+74", "EN": "+74"},
-    "io.merge.field.byte_75": {"ZH": "+75", "EN": "+75"},
+    "io.merge.field.byte_74": {"ZH": "欧拉顺序", "EN": "Euler order"},
+    "io.merge.field.lod_threshold": {"ZH": "LOD 门槛", "EN": "LOD threshold"},
     "io.merge.field.reserved_tail": {"ZH": "保留字节", "EN": "Reserved bytes"},
 
     # ---- modules/jcns_merge.py: why a merge is blocked ----

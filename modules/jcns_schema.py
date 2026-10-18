@@ -293,7 +293,7 @@ OUTPUT_DATA = Struct('OutputData', [
     F('UnkByte_Pre35_2',       'B', before(35)),
     F('Axis_pre35',   'B', before(35)),
     F('UnkBytes_Pre35_4',      '2s', before(35)),
-    F('ReservedVec4',            '4f'),
+    F('OutputRef',            '4f'),
     F('Clamp',          '2f', since(21)),
     F('OutputMode',        'B', since(21)),
     F('Axis_v35',     'B', since(35)),
@@ -349,7 +349,8 @@ JOINT_DRIVER_V2 = Struct('JointDriver_v2', [
     F('SourceHashIndex',          'I', since(35)),
     F('SourceHash',               'I', before(35)),
     F('ComplexMappingInfoCount',  'H'),
-    F('UnknownUInt16_22',            'H'),
+    F('CurvePreWrap',             'B'),               # +22 / +23: ComplexMapping before the
+    F('CurvePostWrap',            'B'),               # first / after the last key
     F('AttrFlags',                'B'),
     F('InputType',                 'B'),
     F('source_axis',              'B'),

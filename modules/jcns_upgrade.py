@@ -177,7 +177,7 @@ def _read_joint_table(records, aim_joints, parent, names):
 
 def _upgrade_constraint(c, const):
     keep = ('ObjectName', 'PropertyName', 'ObjectHash', 'PropertyHash', 'ObjectHashMatchesName',
-            'ReservedVec4', 'Clamp', 'TransformElement', 'ConeDriver',
+            'OutputRef', 'Clamp', 'TransformElement', 'ConeDriver',
             'sources', 'TargetHash')
     d = {k: c[k] for k in keep if k in c}
     d['sources'] = [_upgrade_source(s) for s in c['sources']]

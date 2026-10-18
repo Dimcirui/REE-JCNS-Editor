@@ -101,6 +101,7 @@ def do_import(filepath, context, armature_obj=None):
     """
     from . import (
         AXIS_TO_INT, INT_TO_AXIS, TRANSFORM_ELEMENT_MAP, INT_TO_WORLD_UP_TYPE, INT_TO_ROT_REST, INT_TO_INTERPOLATION, INT_TO_OUTPUT_MODE,
+        INT_TO_CURVE_WRAP,
         INT_TO_MAT_APPLY_MODE, make_constraint_empty_name,
     )
 
@@ -246,7 +247,13 @@ def do_import(filepath, context, armature_obj=None):
                 order = 'XYZ'
             sp.rot_order = order
             sp.complex_mapping_info_count = s.get('ComplexMappingInfoCount', 0)
-            sp.unknown_uint16_22   = s.get('UnknownUInt16_22', 0)
+            for name, key in (('curve_pre_wrap', 'CurvePreWrap'), ('curve_post_wrap', 'CurvePostWrap')):
+                wrap = INT_TO_CURVE_WRAP.get(s.get(key, 0))
+                if wrap is None:
+                    print("[JCNS] %s <- %s: %s %r is unknown, read as 0"
+                          % (c.get('ObjectName', '?'), s.get('SourceName', '?'), key, s.get(key)))
+                    wrap = 'CLAMP'
+                setattr(sp, name, wrap)
             interp = INT_TO_INTERPOLATION.get(s.get('Interpolation', 0))
             if interp is None:
                 print("[JCNS] %s <- %s: interpolation byte %r is unknown, read as 0"
@@ -260,8 +267,8 @@ def do_import(filepath, context, armature_obj=None):
         flags = c.get('AttrFlags', 0x30)
         p.base_pose, p.attr_flags_other = bool(flags & 1), flags & ~0x0D & 0xFF
         p.use_clamp_min, p.use_clamp_max = bool(flags & 4), bool(flags & 8)
-        vec4                    = c.get('ReservedVec4', (0.0, 0.0, 0.0, 1.0))
-        p.reserved_vec4_x, p.reserved_vec4_y, p.reserved_vec4_z, p.reserved_vec4_w = vec4
+        p.output_ref_x, p.output_ref_y, p.output_ref_z, p.output_ref_w = c.get(
+            'OutputRef', (0.0, 0.0, 0.0, 1.0))
         p.clamp_min, p.clamp_max = c.get('Clamp', (0.0, 0.0))
         mode = INT_TO_OUTPUT_MODE.get(c.get('OutputMode', 0))
         if mode is None:
@@ -286,7 +293,7 @@ def do_import(filepath, context, armature_obj=None):
             from . import constraint_name_from_props
             obj.name = constraint_name_from_props(idx, p)
         tail = c.get('TailBytes', b'\x00' * 6)
-        p.unknown_byte_74, p.unknown_byte_75, p.group_count = tail[0], tail[1], tail[3]
+        p.unknown_byte_74, p.lod_threshold, p.group_count = tail[0], tail[1], tail[3]
         p.reserved_tail = (tail[2], tail[4], tail[5])
 
 

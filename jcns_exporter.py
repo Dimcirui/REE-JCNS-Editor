@@ -457,7 +457,7 @@ def _make_default_constraint_dict(empty_obj):
         'ConeDriver':        [],
         'AttrFlags':                 0x30,
         'TransformElement':         _transform_int(p.transform_element),
-        'ReservedVec4':            (0.0, 0.0, 0.0, 1.0),
+        'OutputRef':            (0.0, 0.0, 0.0, 1.0),
         'Clamp':          (0.0, 0.0),
         'OutputMode':        0,
         'Axis_parent':  tgt_ax,
@@ -486,7 +486,7 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
     index of a bone target from ObjectName; a direct target (see jcns_targets) is
     flagged here with ObjectHashIndex = 0xFFFFFFFF.
     """
-    from . import AXIS_TO_INT, INTERPOLATION_TO_INT, OUTPUT_MODE_TO_INT, flags_byte
+    from . import AXIS_TO_INT, CURVE_WRAP_TO_INT, INTERPOLATION_TO_INT, OUTPUT_MODE_TO_INT, flags_byte
     from .modules_shim import get_mapping
     _ensure_modules_path()
     try:
@@ -532,7 +532,8 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
         base['AttrFlags']    = get_mapping().attr_flags_value(sp)
         base['InputType']        = jcns_source_read.input_type_value(sp.input_type)
         base['RotOrder']      = jcns_source_read.rot_order_value(sp.rot_order)
-        base['UnknownUInt16_22']   = sp.unknown_uint16_22
+        base['CurvePreWrap']  = CURVE_WRAP_TO_INT[sp.curve_pre_wrap]
+        base['CurvePostWrap'] = CURVE_WRAP_TO_INT[sp.curve_post_wrap]
         base['Interpolation'] = INTERPOLATION_TO_INT[sp.interpolation]
         base['CurveType'] = sp.curve_type
         if sections_cached:
@@ -552,8 +553,8 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
     flags = get_flags()
     parsed_c['AttrFlags'] = (flags.apply_derived_bits(flags_byte(p), p.transform_element)
                          if version in flags.DERIVED_BITS_VERSIONS else flags_byte(p))
-    parsed_c['ReservedVec4']          = (p.reserved_vec4_x, p.reserved_vec4_y,
-                                       p.reserved_vec4_z, p.reserved_vec4_w)
+    parsed_c['OutputRef']             = (p.output_ref_x, p.output_ref_y,
+                                         p.output_ref_z, p.output_ref_w)
     parsed_c['Clamp']               = (p.clamp_min, p.clamp_max)
     parsed_c['OutputMode']          = OUTPUT_MODE_TO_INT[p.output_mode]
     prop = p.target_property.strip()
@@ -573,7 +574,7 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
         for k in p.cone_drivers]
     parsed_c['ConeDriverCount'] = len(parsed_c['ConeDriver'])
     parsed_c['TailBytes']     = bytes([
-        p.unknown_byte_74, p.unknown_byte_75, p.reserved_tail[0],
+        p.unknown_byte_74, p.lod_threshold, p.reserved_tail[0],
         p.group_count, p.reserved_tail[1], p.reserved_tail[2],
     ])
 

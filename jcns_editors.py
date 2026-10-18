@@ -473,11 +473,14 @@ class JCNS_PT_Ed_Ranges_Advanced(_Editor, _Sub, Panel):
         if sp is not None:
             _draw_raw_group(layout, T("editors.word.driver"), 'PREFERENCES', [
                 (sp, [("attr_flags_other", T("editors.adv.attr_flags_other"))]),
-                (sp, [("unknown_uint16_22", "+22"), ("curve_type", "+29")]),
+                (sp, [("curve_type", T("editors.adv.mapping_mode"))]),
+                (sp, [("curve_pre_wrap", T("editors.adv.curve_pre_wrap")),
+                      ("curve_post_wrap", T("editors.adv.curve_post_wrap"))]),
             ])
         box = _draw_raw_group(layout, T("editors.word.driven"), 'PREFERENCES', [
             (p, [("attr_flags_other", T("editors.adv.attr_flags_other"))]),
-            (p, [("unknown_byte_74", "+74"), ("unknown_byte_75", "+75")]),
+            (p, [("unknown_byte_74", T("editors.adv.rot_order")),
+                 ("lod_threshold", T("editors.adv.lod_threshold"))]),
         ])
         box.label(text=T("editors.adv.flags_note"), icon='INFO')
         info = box.column(align=True)
@@ -485,9 +488,9 @@ class JCNS_PT_Ed_Ranges_Advanced(_Editor, _Sub, Panel):
         _draw_raw_group(layout, T("editors.adv.hash_override"), 'PREFERENCES', [
             (p, [("property_hash", T("editors.adv.property_hash")), ("object_hash", T("editors.adv.object_hash"))]),
         ])
-        _draw_raw_group(layout, T("editors.adv.fixed_vec4"), 'PREFERENCES', [
-            (p, [("reserved_vec4_x", "X"), ("reserved_vec4_y", "Y"),
-                 ("reserved_vec4_z", "Z"), ("reserved_vec4_w", "W")]),
+        _draw_raw_group(layout, T("editors.adv.output_ref"), 'PREFERENCES', [
+            (p, [("output_ref_x", "X"), ("output_ref_y", "Y"),
+                 ("output_ref_z", "Z"), ("output_ref_w", "W")]),
         ])
         _draw_raw_group(layout, T("editors.adv.fixed_zero"), 'PREFERENCES',
                     [(p, [("reserved_tail", "+76 / +78 / +79")])])

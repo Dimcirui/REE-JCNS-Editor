@@ -139,7 +139,10 @@ class JCNSParser:
                                              winning whatever its axis (13 is 20% of all
                                              constraints; 14 behaved identically).  3 and 7-12
                                              drive blend shapes / materials, unmeasured.
-      +48:  ReservedVec4          vec4     (0,0,0,1) in every constraint.
+      +48:  OutputRef             vec4     output reference quaternion (x, y, z, w) of
+                                             TransformElement 4/5/6/14/15/16 (evaluator; its
+                                             math is not transcribed).  (0,0,0,1) in every
+                                             constraint.
       +64:  Clamp                 float[2] (min, max) of the output, applied when AttrFlags
                                              bit2 / bit3 is set, after combining and before the
                                              unit conversion (degrees, centimetres).  (0,0) in
@@ -148,18 +151,21 @@ class JCNSParser:
                                              2 product, 3 min, 4 max.  0 in 98.7%.
       +73:  TransformAxis         uint8    bt: AxisID, the target axis; equals target_axis in
                                              every entry.  Takes W (1.1%), sources never do.
-      +74:  TailBytes[0..5]        6 bytes  +74: 0 in 98.9% (else 5/2/1).  The RotOrder a joint group of Rot2 (13)
-                                             entries composes its axes in, read off the group's
-                                             first entry (round 19); no effect on 0/1/2 (rounds 15-16).
-                                             +75: 2 in 69%, also 5/0/1/3/6/8; one value per file
-                                             in 940 of 971 files (mixed files split translation 2
-                                             / rotation 8 on one bone).  The native evaluator skips the entry when
-                                             it is below a per-object level (looks like LOD; disassembly only).
+      +74:  TailBytes[0..5]        6 bytes  +74: 0 in 98.9% (else 5/2/1).  The RotOrder of the
+                                             joint group, read off its first entry: Rot2 (13)
+                                             composes its axes in it (round 19), Euler (1) takes
+                                             the current rotation apart and composes it again in
+                                             it (evaluator); 0/2 ignore it.
+                                             +75: LOD threshold, 2 in 69%, also 5/0/1/3/6/8; one
+                                             value per file in 940 of 971 files (mixed files split
+                                             translation 2 / rotation 8 on one bone).  The
+                                             evaluator skips the group when its first entry's +75
+                                             is below Motion.ExpressionLOD.
                                              +76, +78, +79: always 0.
-                                             +77: joint-group count -- the N entries right after
-                                             this one (same target, property, TransformElement and
-                                             AttrFlags) are written to THIS entry's target (measured;
-                                             see jcns_writer.tail_group_counts, which derives it).
+                                             +77: joint-group count -- the min(N, 3) entries right
+                                             after this one are written to THIS entry's target
+                                             (measured; the evaluator takes at most three; see
+                                             jcns_writer.tail_group_counts, which derives it).
 
     72-byte JointDriver_v2 layout (pointed to by OffsetSourceList):
       +0:   ComplexMappingInfoOffset  uint64   bt: ComplexMappingInfoOffset (0=none)
@@ -168,7 +174,10 @@ class JCNSParser:
       +20:  ComplexMappingInfoCount   uint16   records in the ComplexMapping curve; nonzero in 78
                                               sources ({3, 4, 7}).  The curve is a cubic Hermite
                                               (measured, see jcns_complex).
-      +22:  UnknownUInt16_22             uint16   0 in every source but one (flower_ziva, 1).
+      +22:  CurvePreWrap              uint8    how the ComplexMapping continues before its first
+      +23:  CurvePostWrap             uint8    / after its last key: 0 clamp, 1 linear, 2 ping-pong,
+                                              3 repeat, 4 repeat with offset (evaluator).  0 in
+                                              every source but one (flower_ziva, +22 = 1).
       +24:  AttrFlags                 uint8    bt: UpdateTiming (wrong).  bit 0 (BasePose) reads
                                               relative to the bone's rest pose (rest^-1 * q,
                                               position - rest offset, scale - 1); clear, the whole
@@ -200,11 +209,12 @@ class JCNSParser:
                                               2 cubic ease out (1-(1-t)^3), 3 smoothstep (3t^2-2t^3).
                                               0 92%, 3 8%, 1 / 2 rare, mostly on non-joint targets
                                               and InputType 1/4.
-      +29:  CurveType         uint8    1 exactly when ComplexMappingInfoCount > 0 (derived on write); 2 in
-                                              90 further sources, all material 2D/3D targets with
-                                              InputType 1 and AttrFlags 1/5.  +29 = 2 on a rotation
-                                              entry gave an output of -90 * input, unclamped, and
-                                              overrode +28 = 3 (round 15); no meaning for bones.
+      +29:  CurveType                 uint8    the mapping: 0 the anchors, 1 the ComplexMapping (set
+                                              exactly when ComplexMappingInfoCount > 0, derived on
+                                              write; the anchors are then unused), 2 reading *
+                                              from_start, unclamped (round 15 measured -90 * input).
+                                              2 in 90 sources, all material 2D/3D targets with
+                                              InputType 1 and AttrFlags 1/5.
       +30:  ReservedWord30             uint16   always 0
       +32:  from_start / from_kink / from_end   float   input anchors A, B, C
       +44:  to_start / to_kink / to_end         float   output anchors A, B, C; the curve
@@ -428,7 +438,8 @@ class JCNSParser:
         # v2-only fields, so downstream code sees the same keys for every version.
         s.setdefault('ComplexMappingInfoOffset', 0)
         s.setdefault('ComplexMappingInfoCount', 0)
-        s.setdefault('UnknownUInt16_22', 0)
+        s.setdefault('CurvePreWrap', 0)
+        s.setdefault('CurvePostWrap', 0)
         if v >= 35:
             s['SourceHash'] = self._hash_at(rec['SourceHashIndex'])
         # ComplexMappingInfo[count]; the bt template aligns the pointer up to 16

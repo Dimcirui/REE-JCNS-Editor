@@ -34,11 +34,11 @@ CHANNEL_FIELDS = ('target_bone', 'target_property', 'transform_element', 'target
 ENTRY_FIELDS = (
     ('base_pose', "io.merge.field.base_pose"),
     ('attr_flags_other', "io.merge.field.attr_flags_other"),
-    ('reserved_vec4', "io.merge.field.vec4"),
+    ('output_ref', "io.merge.field.output_ref"),
     ('clamp', "io.merge.field.clamp"),
     ('output_mode', "io.merge.field.output_mode"),
     ('unknown_byte_74', "io.merge.field.byte_74"),
-    ('unknown_byte_75', "io.merge.field.byte_75"),
+    ('lod_threshold', "io.merge.field.lod_threshold"),
     ('reserved_tail', "io.merge.field.reserved_tail"),
 )
 

@@ -16,10 +16,10 @@ from jcns_parser import header_field_offset
 # edited dicts.  Everything else — pointers, hashes, hash indices, counts — is
 # re-packed from the original record, because in place the surrounding data
 # (strings, source arrays, hash table) does not move.
-INPLACE_CNS_FIELDS = ('AttrFlags', 'TransformElement', 'ReservedVec4', 'Clamp',
+INPLACE_CNS_FIELDS = ('AttrFlags', 'TransformElement', 'OutputRef', 'Clamp',
                       'OutputMode', 'PropertyHash', 'TailBytes')
 INPLACE_SRC_FIELDS = ('AttrFlags', 'InputType', 'source_axis', 'RotOrder',
-                      'UnknownUInt16_22', 'Interpolation', 'CurveType', 'ReservedWord30',
+                      'CurvePreWrap', 'CurvePostWrap', 'Interpolation', 'CurveType', 'ReservedWord30',
                       'from_start', 'from_kink', 'from_end',
                       'to_start', 'to_kink', 'to_end',
                       'ref_frame_x', 'ref_frame_y', 'ref_frame_z', 'ref_frame_w')
@@ -781,12 +781,12 @@ class JCNSWriter:
 _CNS_DEFAULTS = {
     'ConeDriverOffset': 0, 'PropertyOffset': 0, 'PropertyHash': 0,
     'ConeDriverCount': 0, 'AttrFlags': 0x30, 'TransformElement': 1,
-    'ReservedVec4': (0.0, 0.0, 0.0, 1.0), 'Clamp': (0.0, 0.0),
+    'OutputRef': (0.0, 0.0, 0.0, 1.0), 'Clamp': (0.0, 0.0),
     'OutputMode': 0, 'TailBytes': bytes(6),
 }
 _SOURCE_DEFAULTS = {
     'ComplexMappingInfoOffset': 0, 'SourceHashIndex': 0, 'ComplexMappingInfoCount': 0,
-    'UnknownUInt16_22': 0, 'AttrFlags': 3, 'InputType': 3, 'source_axis': 0,
+    'CurvePreWrap': 0, 'CurvePostWrap': 0, 'AttrFlags': 3, 'InputType': 3, 'source_axis': 0,
     'RotOrder': 0, 'Interpolation': 0, 'CurveType': 0, 'ReservedWord30': 0,
     'from_start': 0.0, 'from_kink': 0.0, 'from_end': 0.0,
     'to_start': 0.0, 'to_kink': 0.0, 'to_end': 0.0,

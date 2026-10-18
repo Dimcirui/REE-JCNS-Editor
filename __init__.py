@@ -99,6 +99,18 @@ OUTPUT_MODE_ITEMS = [
 OUTPUT_MODE_TO_INT = {item[0]: i for i, item in enumerate(OUTPUT_MODE_ITEMS)}
 INT_TO_OUTPUT_MODE = {i: ident for ident, i in OUTPUT_MODE_TO_INT.items()}
 
+# JointDriver +22 / +23: how a ComplexMapping curve continues outside its keys
+# (jcns_complex.WRAP_MODES).
+CURVE_WRAP_ITEMS = [
+    ('CLAMP', T("props.curve_wrap.clamp"), T("props.curve_wrap.clamp_desc")),
+    ('LINEAR', T("props.curve_wrap.linear"), T("props.curve_wrap.linear_desc")),
+    ('PINGPONG', T("props.curve_wrap.pingpong"), T("props.curve_wrap.pingpong_desc")),
+    ('REPEAT', T("props.curve_wrap.repeat"), T("props.curve_wrap.repeat_desc")),
+    ('OFFSET', T("props.curve_wrap.offset"), T("props.curve_wrap.offset_desc")),
+]
+CURVE_WRAP_TO_INT = {item[0]: i for i, item in enumerate(CURVE_WRAP_ITEMS)}
+INT_TO_CURVE_WRAP = {i: ident for ident, i in CURVE_WRAP_TO_INT.items()}
+
 # Aim WorldUpType: how the roll around the aim axis is fixed.
 WORLD_UP_TYPE_ITEMS = [
     ('SCENE_UP', T("props.world_up_type.scene_up"), T("props.world_up_type.scene_up_desc")),
@@ -767,9 +779,16 @@ class JCNSSourceProperties(PropertyGroup):
         name=T("props.source.cm_count"), description=T("props.source.cm_count_desc"),
         default=0, min=0, max=65535,
     )
-    unknown_uint16_22: IntProperty(
-        name=T("props.source.unknown_uint16_22"), description=T("props.common.unknown_usually_0"),
-        default=0, min=0, max=65535,
+    # +22 / +23: how the ComplexMapping curve continues before its first and after its last key.
+    curve_pre_wrap: EnumProperty(
+        update=_refresh_preview_values,
+        name=T("props.source.curve_pre_wrap"), description=T("props.source.curve_wrap_desc"),
+        items=CURVE_WRAP_ITEMS, default='CLAMP',
+    )
+    curve_post_wrap: EnumProperty(
+        update=_refresh_preview_values,
+        name=T("props.source.curve_post_wrap"), description=T("props.source.curve_wrap_desc"),
+        items=CURVE_WRAP_ITEMS, default='CLAMP',
     )
     interpolation: EnumProperty(
         update=_refresh_preview_values,
@@ -866,10 +885,15 @@ class JCNSConstraintProperties(PropertyGroup):
         name=T("props.cns.clamp_max"), description=T("props.cns.clamp_max_desc"),
         default=0.0, precision=3,
     )
-    reserved_vec4_x: FloatProperty(name="Vec4 X", default=0.0, precision=5, description=T("props.cns.vec4_zero_desc"))
-    reserved_vec4_y: FloatProperty(name="Vec4 Y", default=0.0, precision=5, description=T("props.cns.vec4_zero_desc"))
-    reserved_vec4_z: FloatProperty(name="Vec4 Z", default=0.0, precision=5, description=T("props.cns.vec4_zero_desc"))
-    reserved_vec4_w: FloatProperty(name="Vec4 W", default=1.0, precision=5, description=T("props.cns.vec4_one_desc"))
+    # +48: the output reference quaternion (x, y, z, w) of types 4/5/6/14/15/16.
+    output_ref_x: FloatProperty(name=T("props.cns.output_ref") + " X", default=0.0, precision=5,
+                                description=T("props.cns.output_ref_desc"))
+    output_ref_y: FloatProperty(name=T("props.cns.output_ref") + " Y", default=0.0, precision=5,
+                                description=T("props.cns.output_ref_desc"))
+    output_ref_z: FloatProperty(name=T("props.cns.output_ref") + " Z", default=0.0, precision=5,
+                                description=T("props.cns.output_ref_desc"))
+    output_ref_w: FloatProperty(name=T("props.cns.output_ref") + " W", default=1.0, precision=5,
+                                description=T("props.cns.output_ref_desc"))
     # Material / RSZ property targets (TransformElement 7-11) name a property on the target.
     target_property: StringProperty(
         name=T("props.cns.target_property"),
@@ -893,12 +917,13 @@ class JCNSConstraintProperties(PropertyGroup):
     # ConeDriver[]: the cones this constraint reads (RE9 uses them heavily)
     cone_drivers: CollectionProperty(type=JCNSConeDriver)
     active_cone_driver_index: IntProperty(default=0)
-    # +77 is the joint-group count (jcns_writer.tail_group_counts derives it); +74 and +75
-    # are unknown, and +75 defaults to its most common value.
-    unknown_byte_74: IntProperty(name="+74", default=0, min=0, max=255,
+    # TailBytes: +74 the joint group's Euler order, +75 its LOD threshold (defaults to the
+    # commonest value), +77 the joint-group count (jcns_writer.tail_group_counts derives it).
+    unknown_byte_74: IntProperty(update=_refresh_preview, name=T("props.cns.unknown_byte_74"),
+                                 default=0, min=0, max=255,
                                  description=T("props.cns.unknown_byte_74_desc"))
-    unknown_byte_75: IntProperty(name="+75", default=2, min=0, max=255,
-                                 description=T("props.cns.unknown_byte_75_desc"))
+    lod_threshold: IntProperty(name=T("props.cns.lod_threshold"), default=2, min=0, max=255,
+                               description=T("props.cns.lod_threshold_desc"))
     group_count: IntProperty(
         name=T("props.cns.group_count"),
         description=T("props.cns.group_count_desc"),

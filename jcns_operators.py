@@ -1507,7 +1507,8 @@ class JCNS_OT_MirrorConstraints(Operator):
                         setattr(ns, k, v)
                 for attr in ('ref_frame_x', 'ref_frame_y', 'ref_frame_z',
                              'ref_frame_w', 'base_pose', 'mid_point', 'attr_flags_other', 'input_type',
-                             'rot_order', 'unknown_uint16_22', 'interpolation', 'curve_type'):
+                             'rot_order', 'curve_pre_wrap', 'curve_post_wrap', 'interpolation',
+                             'curve_type'):
                     setattr(ns, attr, getattr(orig, attr))
                 if '_frame' in vals:
                     ns.ref_frame_x, ns.ref_frame_y, ns.ref_frame_z = vals['_frame']

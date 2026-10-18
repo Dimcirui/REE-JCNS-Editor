@@ -141,7 +141,12 @@ STRINGS = {
     },
     "editors.adv.property_hash": {"ZH": "属性", "EN": "Property"},
     "editors.adv.object_hash": {"ZH": "目标", "EN": "Target"},
-    "editors.adv.fixed_vec4": {"ZH": "固定为 (0,0,0,1)", "EN": "Fixed at (0,0,0,1)"},
+    "editors.adv.output_ref": {"ZH": "输出参考系 +48", "EN": "Output reference +48"},
+    "editors.adv.mapping_mode": {"ZH": "映射方式 +29", "EN": "Mapping mode +29"},
+    "editors.adv.curve_pre_wrap": {"ZH": "前端外推 +22", "EN": "Pre-infinity +22"},
+    "editors.adv.curve_post_wrap": {"ZH": "后端外推 +23", "EN": "Post-infinity +23"},
+    "editors.adv.rot_order": {"ZH": "欧拉顺序 +74", "EN": "Euler order +74"},
+    "editors.adv.lod_threshold": {"ZH": "LOD 门槛 +75", "EN": "LOD threshold +75"},
     "editors.adv.fixed_zero": {"ZH": "固定为 0", "EN": "Fixed at 0"},
     "editors.adv.fields_unknown": {"ZH": "未知字段", "EN": "Unknown fields"},
 
