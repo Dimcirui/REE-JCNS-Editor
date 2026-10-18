@@ -270,6 +270,15 @@ class JCNS_PT_Ed_Ranges(_EditorMain, Panel):
             _field_row(col, T("editors.field.parameter" if kind == 'material' else "editors.field.property"),
                        p, "target_property")
         _field_row(col, T("editors.field.base_pose"), p, "base_pose")
+        if len(p.sources) + len(p.cone_drivers) > 1 or p.output_mode != 'SUM':
+            _field_row(col, T("editors.field.output_mode"), p, "output_mode")
+        for use, value in (("use_clamp_min", "clamp_min"), ("use_clamp_max", "clamp_max")):
+            row = col.row(align=True)
+            split = row.split(factor=0.4)
+            split.prop(p, use)
+            sub = split.row(align=True)
+            sub.active = getattr(p, use)
+            sub.prop(p, value, text="")
 
         # 导出按 [N] 前缀排列；同一通道上后写的那条覆盖前面的。
         sibs = sibling_constraints(obj)
@@ -314,6 +323,7 @@ class JCNS_PT_Ed_Ranges_Sources(_Editor, Panel):
         _field_row(col, T("editors.field.bone"), sp, "source_bone")
         _field_row(col, T("editors.field.local_axis"), sp, "source_axis")
         _field_row(col, T("editors.field.input_type"), sp, "input_type")
+        _field_row(col, T("editors.field.source_base_pose"), sp, "base_pose")
         row = col.row(align=True)
         row.active = sp.input_type == 'EULER'          # the other reads ignore it
         _field_row(row, T("editors.field.rot_order"), sp, "rot_order")
@@ -457,7 +467,7 @@ class JCNS_PT_Ed_Ranges_Advanced(_Editor, _Sub, Panel):
         lines = list(sr.target_rule(_transform_int(p.transform_element), p.base_pose))
         if sp is not None:
             lines += sr.read_rule(sp.input_type, sr.rot_order_value(sp.rot_order),
-                                  abs(sp.ref_frame_w) >= 1.0 - 1e-9)
+                                  abs(sp.ref_frame_w) >= 1.0 - 1e-9, sp.base_pose)
         _draw_rules(layout.box(), lines)
 
         if sp is not None:
@@ -467,8 +477,7 @@ class JCNS_PT_Ed_Ranges_Advanced(_Editor, _Sub, Panel):
             ])
         box = _draw_raw_group(layout, T("editors.word.driven"), 'PREFERENCES', [
             (p, [("attr_flags_other", T("editors.adv.attr_flags_other"))]),
-            (p, [("unknown_float2_x", "Float2 X"), ("unknown_float2_y", "Y")]),
-            (p, [("unknown_byte_72", "+72"), ("unknown_byte_74", "+74"), ("unknown_byte_75", "+75")]),
+            (p, [("unknown_byte_74", "+74"), ("unknown_byte_75", "+75")]),
         ])
         box.label(text=T("editors.adv.flags_note"), icon='INFO')
         info = box.column(align=True)

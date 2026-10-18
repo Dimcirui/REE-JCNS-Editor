@@ -81,7 +81,7 @@ def main(dst):
         frm, to = e.get('frm', frm), e.get('to', to)
         c = copy.deepcopy(tmpl)
         c.update(ObjectName='TestTgt' + e['bone'], TransformElement=e['tt'], AttrFlags=e['flags'],
-                 Axis_parent=i, target_axis=i, UnknownByte72=e.get('b72', 0), UnknownFloat2=(0.0, 0.0))
+                 Axis_parent=i, target_axis=i, OutputMode=e.get('b72', 0), Clamp=(0.0, 0.0))
         tail = bytearray(c['TailBytes'])
         tail[0], tail[1], tail[3] = e.get('b74', 0), e.get('b75', 2), 0
         c['TailBytes'] = bytes(tail)
@@ -105,10 +105,10 @@ def check(dst):
         s = c['sources'][0]
         assert (c['ObjectName'], c['TransformElement'], c['AttrFlags'], 'XYZ'[c['target_axis']]) == \
             ('TestTgt' + e['bone'], e['tt'], e['flags'], e['axis']), i
-        assert (c['TailBytes'][0], c['TailBytes'][1], c['UnknownByte72']) == (e.get('b74', 0), e.get('b75', 2), e.get('b72', 0)), i
+        assert (c['TailBytes'][0], c['TailBytes'][1], c['OutputMode']) == (e.get('b74', 0), e.get('b75', 2), e.get('b72', 0)), i
         assert s['Interpolation'] == e.get('src28', 0) and s['AttrFlags'] == e.get('curve', 0), i
         print(f"[{FIRST_OUT + i:02}] {c['ObjectName']:<11} TT={e['tt']} F={e['flags']} .{e['axis']} curve={s['AttrFlags']} "
-              f"src+28={s['Interpolation']} +72/74/75={c['UnknownByte72']}/{c['TailBytes'][0]}/{c['TailBytes'][1]}"
+              f"src+28={s['Interpolation']} +72/74/75={c['OutputMode']}/{c['TailBytes'][0]}/{c['TailBytes'][1]}"
               f" map {s['from_start']:g},{s['from_kink']:g},{s['from_end']:g} -> {s['to_start']:.3g},{s['to_kink']:.3g},{s['to_end']:.3g}")
     return q
 

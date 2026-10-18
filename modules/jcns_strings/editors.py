@@ -58,6 +58,8 @@ STRINGS = {
     "editors.field.rest_pose": {"ZH": "静止姿态：", "EN": "Rest pose:"},
     "editors.field.aim_target": {"ZH": "瞄准目标：", "EN": "Aim target:"},
     "editors.field.type": {"ZH": "类型：", "EN": "Type:"},
+    "editors.field.output_mode": {"ZH": "合并方式：", "EN": "Combine:"},
+    "editors.field.source_base_pose": {"ZH": "相对静止：", "EN": "Relative to rest:"},
     "editors.field.up_bone": {"ZH": "辅助骨骼：", "EN": "Helper bone:"},
     "editors.field.influence": {"ZH": "影响：", "EN": "Influence:"},
     "editors.field.aim_target2": {"ZH": "第二目标：", "EN": "Second target:"},
@@ -126,8 +128,8 @@ STRINGS = {
     "editors.adv.attr_flags_other": {"ZH": "曲线模式其余位", "EN": "Other curve-mode bits"},
     "editors.adv.attr_flags_other": {"ZH": "其余标志位", "EN": "Other flag bits"},
     "editors.adv.flags_note": {
-        "ZH": "其余标志位：位4、位5 导出时按变换类型重算；位2、位3 只出现在形变和材质目标上",
-        "EN": "Other flag bits: bits 4 and 5 are recalculated from the transform type on export; bits 2 and 3 only appear on deform and material targets",
+        "ZH": "其余标志位：位4、位5 导出时按变换类型重算",
+        "EN": "Other flag bits: bits 4 and 5 are recalculated from the transform type on export",
     },
     "editors.adv.group_count": {
         "ZH": "关节组计数 +77：%d（导出时自动校验）",

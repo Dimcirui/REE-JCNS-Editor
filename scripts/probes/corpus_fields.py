@@ -107,8 +107,8 @@ def main():
     for name, fn in (('PropertyName', lambda c: c['PropertyName']),
                      ('SourceCount', lambda c: c['JointDriverCount']),
                      ('AttrFlags', lambda c: c['AttrFlags']), ('TransformElement', lambda c: c['TransformElement']),
-                     ('ReservedVec4', lambda c: c['ReservedVec4']), ('UnknownFloat2', lambda c: c['UnknownFloat2']),
-                     ('UnknownByte72', lambda c: c['UnknownByte72']),
+                     ('ReservedVec4', lambda c: c['ReservedVec4']), ('Clamp', lambda c: c['Clamp']),
+                     ('OutputMode', lambda c: c['OutputMode']),
                      ('TransformAxis', lambda c: c['Axis_v35'])):
         dist(name, [fn(c) for _, c in C], 12)
     for k in range(6):

@@ -88,6 +88,17 @@ INTERPOLATION_ITEMS = [
 INTERPOLATION_TO_INT = {item[0]: i for i, item in enumerate(INTERPOLATION_ITEMS)}
 INT_TO_INTERPOLATION = {i: ident for ident, i in INTERPOLATION_TO_INT.items()}
 
+# OutputData +72 OutputMode: how an entry combines its drivers (jcns_mapping.OUTPUT_MODES).
+OUTPUT_MODE_ITEMS = [
+    ('SUM', T("props.output_mode.sum"), T("props.output_mode.sum_desc")),
+    ('AVERAGE', T("props.output_mode.average"), T("props.output_mode.average_desc")),
+    ('MUL', T("props.output_mode.mul"), T("props.output_mode.mul_desc")),
+    ('MIN', T("props.output_mode.min"), T("props.output_mode.min_desc")),
+    ('MAX', T("props.output_mode.max"), T("props.output_mode.max_desc")),
+]
+OUTPUT_MODE_TO_INT = {item[0]: i for i, item in enumerate(OUTPUT_MODE_ITEMS)}
+INT_TO_OUTPUT_MODE = {i: ident for ident, i in OUTPUT_MODE_TO_INT.items()}
+
 # Aim WorldUpType: how the roll around the aim axis is fixed.
 WORLD_UP_TYPE_ITEMS = [
     ('SCENE_UP', T("props.world_up_type.scene_up"), T("props.world_up_type.scene_up_desc")),
@@ -330,9 +341,11 @@ def _update_base_pose(self, context):
 
 
 def flags_byte(p):
-    """The OutputData AttrFlags byte: bit 0 is the base_pose switch, the other bits
-    are kept as read (bits 4 and 5 are rederived from the transform type on export)."""
-    return (int(p.attr_flags_other) & 0xFE) | int(bool(p.base_pose))
+    """The OutputData AttrFlags byte: bit 0 is the base_pose switch, bits 2 and 3 the
+    clamp switches; the other bits are kept as read (bits 4 and 5 are rederived from
+    the transform type on export)."""
+    return ((int(p.attr_flags_other) & ~0x0D & 0xFF) | int(bool(p.base_pose))
+            | (4 if p.use_clamp_min else 0) | (8 if p.use_clamp_max else 0))
 
 
 def _refresh_flags_preview(self):
@@ -718,7 +731,13 @@ class JCNSSourceProperties(PropertyGroup):
                                update=_refresh_preview)
 
     # --- Raw bytes ---
-    # +24 and +25 default to 3, the most common value.
+    # +24 (base_pose bit0, mid_point bit1) and +25 default to 3, the most common value.
+    base_pose: BoolProperty(
+        update=_refresh_preview,
+        name=T("props.source.base_pose"),
+        description=T("props.source.base_pose_desc"),
+        default=True,
+    )
     mid_point: BoolProperty(
         update=_refresh_preview_values,
         name=T("props.source.mid_point"),
@@ -728,7 +747,7 @@ class JCNSSourceProperties(PropertyGroup):
     attr_flags_other: IntProperty(
         name=T("props.source.attr_flags_other"),
         description=T("props.source.attr_flags_other_desc"),
-        default=1, min=0, max=253,
+        default=0, min=0, max=252,
     )
     input_type: EnumProperty(
         update=_refresh_preview,
@@ -818,20 +837,39 @@ class JCNSConstraintProperties(PropertyGroup):
     attr_flags_other: IntProperty(
         name=T("props.cns.attr_flags_other"),
         description=T("props.cns.attr_flags_other_desc"),
-        default=0x30, min=0, max=254,
+        default=0x30, min=0, max=242,
+    )
+    output_mode: EnumProperty(
+        update=_refresh_preview_values,
+        name=T("props.cns.output_mode"),
+        description=T("props.cns.output_mode_desc"),
+        items=OUTPUT_MODE_ITEMS, default='SUM',
+    )
+    # +64 / +68, applied when Flags bit2 / bit3 is set; in degrees or centimetres.
+    use_clamp_min: BoolProperty(
+        update=_refresh_preview_values,
+        name=T("props.cns.use_clamp_min"), description=T("props.cns.use_clamp_min_desc"),
+        default=False,
+    )
+    clamp_min: FloatProperty(
+        update=_refresh_preview_values,
+        name=T("props.cns.clamp_min"), description=T("props.cns.clamp_min_desc"),
+        default=0.0, precision=3,
+    )
+    use_clamp_max: BoolProperty(
+        update=_refresh_preview_values,
+        name=T("props.cns.use_clamp_max"), description=T("props.cns.use_clamp_max_desc"),
+        default=False,
+    )
+    clamp_max: FloatProperty(
+        update=_refresh_preview_values,
+        name=T("props.cns.clamp_max"), description=T("props.cns.clamp_max_desc"),
+        default=0.0, precision=3,
     )
     reserved_vec4_x: FloatProperty(name="Vec4 X", default=0.0, precision=5, description=T("props.cns.vec4_zero_desc"))
     reserved_vec4_y: FloatProperty(name="Vec4 Y", default=0.0, precision=5, description=T("props.cns.vec4_zero_desc"))
     reserved_vec4_z: FloatProperty(name="Vec4 Z", default=0.0, precision=5, description=T("props.cns.vec4_zero_desc"))
     reserved_vec4_w: FloatProperty(name="Vec4 W", default=1.0, precision=5, description=T("props.cns.vec4_one_desc"))
-    unknown_float2_x: FloatProperty(name="Float2 X", default=0.0, precision=5,
-                                   description=T("props.common.unknown_usually_0"))
-    unknown_float2_y: FloatProperty(name="Float2 Y", default=0.0, precision=5,
-                                   description=T("props.common.unknown_usually_0"))
-    unknown_byte_72: IntProperty(
-        name=T("props.cns.unknown_byte_72"), description=T("props.cns.unknown_byte_72_desc"),
-        default=0, min=0, max=255,
-    )
     # Material / RSZ property targets (TransformElement 7-11) name a property on the target.
     target_property: StringProperty(
         name=T("props.cns.target_property"),

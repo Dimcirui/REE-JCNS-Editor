@@ -140,12 +140,12 @@ class JCNSParser:
                                              constraints; 14 behaved identically).  3 and 7-12
                                              drive blend shapes / materials, unmeasured.
       +48:  ReservedVec4          vec4     (0,0,0,1) in every constraint.
-      +64:  UnknownFloat2         float[2] (0,0) in 99.7%.  BlendShape targets mostly (0,1);
-                                             11 rotation targets carry pairs like (-45,0),
-                                             (-90,-90), (0,2), (-2,2) that do not match their
-                                             mapping ranges, so not an obvious clamp.
-                                             Unmeasured.
-      +72:  UnknownByte72          uint8    0 in 98.7%, else 1-4; follows the target bone (99.6%).  Unmeasured.
+      +64:  Clamp                 float[2] (min, max) of the output, applied when AttrFlags
+                                             bit2 / bit3 is set, after combining and before the
+                                             unit conversion (degrees, centimetres).  (0,0) in
+                                             99.7%; BlendShape targets mostly (0,1).
+      +72:  OutputMode            uint8    how the entry combines its sources: 0 sum, 1 average,
+                                             2 product, 3 min, 4 max.  0 in 98.7%.
       +73:  TransformAxis         uint8    bt: AxisID, the target axis; equals target_axis in
                                              every entry.  Takes W (1.1%), sources never do.
       +74:  TailBytes[0..5]        6 bytes  +74: 0 in 98.9% (else 5/2/1).  The RotOrder a joint group of Rot2 (13)
@@ -169,17 +169,17 @@ class JCNSParser:
                                               sources ({3, 4, 7}).  The curve is a cubic Hermite
                                               (measured, see jcns_complex).
       +22:  UnknownUInt16_22             uint16   0 in every source but one (flower_ziva, 1).
-      +24:  AttrFlags                 uint8    bt: UpdateTiming (wrong).  bit 1 selects the curve:
-                                              {0,1} two-point (kink ignored), {2,3} three-point
-                                              (measured).  bit 0 does nothing -- not to the curve,
-                                              not to the pose (measured); AttrFlags bit0 is the
-                                              base_pose switch it usually mirrors.  3 64%, 0 13%, 1 12%,
-                                              2 10%; 4/5 only in 34 sources on material targets,
-                                              unmeasured.
+      +24:  AttrFlags                 uint8    bt: UpdateTiming (wrong).  bit 0 (BasePose) reads
+                                              relative to the bone's rest pose (rest^-1 * q,
+                                              position - rest offset, scale - 1); clear, the whole
+                                              parent-relative transform.  bit 1 (MidPoint) selects
+                                              the curve: clear two-point (kink ignored), set
+                                              three-point.  bit 2 (World) reads the world-space
+                                              transform.  3 64%, 0 13%, 1 12%, 2 10%; 4/5 only in
+                                              34 sources on material targets.
       +25:  InputType                  uint8    How the source bone is read (bt: TransformIDSrc /
-                                              InterpolationID, both marked "Not sure").  Measured
-                                              for every value, off the bone's whole
-                                              parent-relative transform, rest included:
+                                              InterpolationID, both marked "Not sure"), relative
+                                              to rest or whole as bit0 of +24 says:
                                               0 position, 1 Euler (order: +27), 2 scale, 3 swing-twist
                                               about X (q = swing*twist), 4 the same with
                                               q = twist*swing, 5 rotation vector.  Only 0-5 occur

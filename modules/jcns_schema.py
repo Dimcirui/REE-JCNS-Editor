@@ -294,8 +294,8 @@ OUTPUT_DATA = Struct('OutputData', [
     F('Axis_pre35',   'B', before(35)),
     F('UnkBytes_Pre35_4',      '2s', before(35)),
     F('ReservedVec4',            '4f'),
-    F('UnknownFloat2',          '2f', since(21)),
-    F('UnknownByte72',        'B', since(21)),
+    F('Clamp',          '2f', since(21)),
+    F('OutputMode',        'B', since(21)),
     F('Axis_v35',     'B', since(35)),
     F('UnkByte_Pre35_73',      'B', between(21, 35)),
     F('TailBytes',       '6s', since(21)),
@@ -309,7 +309,7 @@ def output_axis_key(version):
 # ── OutputData before v35 <-> the neutral record ──────────────────────
 # The editor holds every version as the v35+ record.  Before v35 the same bytes sit elsewhere:
 #   AttrFlags              <- the first byte block's first byte
-#   UnknownByte72      <- its third byte (the +72 byte itself is always 0)
+#   OutputMode      <- its third byte (the +72 byte itself is always 0)
 #   TailBytes[0:2]     <- the +4 pair of the byte block
 #   TailBytes[3]       <- the +73 byte (how many following entries join this one's joint group)
 #   TailBytes[2,4,5]   <- the tail's own bytes 2, 4, 5 (its bytes 0, 1, 3 are always 0)
@@ -319,22 +319,22 @@ def pre35_to_neutral(rec):
     """Neutral keys for a record read with a version before 35 (the raw keys stay)."""
     tail = bytearray(bytes(rec['UnkBytes_Pre35_4']) + bytes(rec['TailBytes'])[2:])
     tail[3] = rec['UnkByte_Pre35_73']
-    return {'AttrFlags': rec['UnkByte_Pre35_0'], 'UnknownByte72': rec['UnkByte_Pre35_2'],
+    return {'AttrFlags': rec['UnkByte_Pre35_0'], 'OutputMode': rec['UnkByte_Pre35_2'],
             'TailBytes': bytes(tail)}
 
 
 def pre35_lossy(rec):
     """True when the record holds a byte the neutral form cannot carry."""
     tail = bytes(rec['TailBytes'])
-    return bool(rec['UnknownByte72'] or tail[0] or tail[1] or tail[3])
+    return bool(rec['OutputMode'] or tail[0] or tail[1] or tail[3])
 
 
 def neutral_to_pre35(rec):
     """The version-before-35 fields for a neutral record."""
     tail = bytes(rec.get('TailBytes') or bytes(6))
-    return {'UnkByte_Pre35_0': rec.get('AttrFlags', 0), 'UnkByte_Pre35_2': rec.get('UnknownByte72', 0),
+    return {'UnkByte_Pre35_0': rec.get('AttrFlags', 0), 'UnkByte_Pre35_2': rec.get('OutputMode', 0),
             'UnkBytes_Pre35_4': tail[0:2], 'UnkByte_Pre35_73': tail[3],
-            'UnknownByte72': 0, 'TailBytes': bytes([0, 0, tail[2], 0, tail[4], tail[5]])}
+            'OutputMode': 0, 'TailBytes': bytes([0, 0, tail[2], 0, tail[4], tail[5]])}
 
 
 # ── JointDriver ───────────────────────────────────────────────────────

@@ -160,7 +160,7 @@ def main():
         i = 'XYZ'.index(axis)
         c = copy.deepcopy(tmpl)
         c.update(ObjectName='TestTgt' + letter, TransformElement=tt, AttrFlags=flags, Axis_parent=i, target_axis=i,
-                 UnknownByte72=0, UnknownFloat2=(0.0, 0.0))
+                 OutputMode=0, Clamp=(0.0, 0.0))
         t = bytearray(c['TailBytes'])
         t[0], t[1], t[3] = 0, 2, 0
         c['TailBytes'] = bytes(t)

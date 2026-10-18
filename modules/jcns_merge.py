@@ -4,10 +4,10 @@ jcns_merge.py
 Plans for folding Ranges entries that drive one channel into a single
 multi-source entry.
 
-The engine sums the sources inside one entry, but when several entries write the
-same (target, transform, axis) channel only the last one in file order counts.
-Merging therefore changes behaviour (last-wins becomes a sum) and is always a
-user action; this module only decides whether a merge is expressible and what the
+The engine combines the sources inside one entry by its OutputMode, but when several
+entries write the same (target, transform, axis) channel only the last one in file
+order counts.  Merging therefore changes behaviour (last-wins becomes the entries'
+common OutputMode over all their sources) and is always a user action; this module only decides whether a merge is expressible and what the
 result looks like.  No bpy import; entries are plain dicts (see ENTRY_FIELDS).
 
 The merged entry takes the position of the group's last member.  That entry is
@@ -35,8 +35,8 @@ ENTRY_FIELDS = (
     ('base_pose', "io.merge.field.base_pose"),
     ('attr_flags_other', "io.merge.field.attr_flags_other"),
     ('reserved_vec4', "io.merge.field.vec4"),
-    ('unknown_float2', "io.merge.field.float2"),
-    ('unknown_byte_72', "io.merge.field.unknown_byte_72"),
+    ('clamp', "io.merge.field.clamp"),
+    ('output_mode', "io.merge.field.output_mode"),
     ('unknown_byte_74', "io.merge.field.byte_74"),
     ('unknown_byte_75', "io.merge.field.byte_75"),
     ('reserved_tail', "io.merge.field.reserved_tail"),

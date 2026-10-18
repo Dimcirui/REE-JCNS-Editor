@@ -556,6 +556,10 @@ STRINGS = {
         "ZH": "已有约束的驱动已满 %d 个",
         "EN": "The existing constraint already has %d drivers",
     },
+    "sdk.append.not_sum": {
+        "ZH": "已有约束的合并方式不是求和",
+        "EN": "The existing constraint does not sum its drivers",
+    },
     "sdk.append.base_pose_differs": {
         "ZH": "已有约束的「叠加」与新约束不同",
         "EN": "The existing constraint's \"Additive\" differs from the new constraint's",

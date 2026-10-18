@@ -11,7 +11,7 @@ v29 -> v102 differences, measured on the shipped pairs of the same file:
 
   OutputData  gains a hash-table index and a AttrFlags byte.  AttrFlags bit 0 is the old
                   first byte block's first byte; bits 4/5 follow the transform type.
-                  The old +2 byte becomes UnknownByte72; the +4 pair and the +73 byte
+                  The old +2 byte becomes OutputMode; the +4 pair and the +73 byte
                   (the joint-group count) move into the tail.  A non-bone target is
                   named by raw hash (index 0xFFFFFFFF).
   Multi / Aim / RotExpression  hold the same data; v102 stores hash-table indices where
@@ -177,13 +177,13 @@ def _read_joint_table(records, aim_joints, parent, names):
 
 def _upgrade_constraint(c, const):
     keep = ('ObjectName', 'PropertyName', 'ObjectHash', 'PropertyHash', 'ObjectHashMatchesName',
-            'ReservedVec4', 'UnknownFloat2', 'TransformElement', 'ConeDriver',
+            'ReservedVec4', 'Clamp', 'TransformElement', 'ConeDriver',
             'sources', 'TargetHash')
     d = {k: c[k] for k in keep if k in c}
     d['sources'] = [_upgrade_source(s) for s in c['sources']]
     d['Axis_parent'] = d['target_axis'] = c['Axis_pre35']
     d['JointDriverCount'] = len(c['sources'])
-    d['UnknownByte72'] = c['UnkByte_Pre35_2']
+    d['OutputMode'] = c['UnkByte_Pre35_2']
     name = TRANSFORM_ELEMENT_NAMES.get(c['TransformElement'])
     d['AttrFlags'] = jcns_flags.apply_derived_bits(c['UnkByte_Pre35_0'], name)
     # A target that is not a bone (blend shape, material, component property) is named by

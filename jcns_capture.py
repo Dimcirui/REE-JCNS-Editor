@@ -59,7 +59,7 @@ def read_source(arm, sp):
         sp.input_type, axis, rest, offset, euler, loc, scale,
         order=sp.rot_order,
         frame=(sp.ref_frame_w, sp.ref_frame_x, sp.ref_frame_y, sp.ref_frame_z),
-        rest_scale=mesh_rest_scale(bone))
+        rest_scale=mesh_rest_scale(bone), base_pose=sp.base_pose)
 
 
 def read_target(arm, p):

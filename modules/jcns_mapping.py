@@ -139,10 +139,12 @@ def is_two_point(attr_flags):
 
 def attr_flags_value(source):
     """The AttrFlags byte of a source: the parser dict's `AttrFlags` / `attr_flags`, or the
-    Blender PropertyGroup's `mid_point` (bit 1) plus `attr_flags_other` (the other bits)."""
+    Blender PropertyGroup's `base_pose` (bit 0), `mid_point` (bit 1) and
+    `attr_flags_other` (the other bits)."""
     if isinstance(source, dict):
         return source.get('AttrFlags', source.get('attr_flags', 3))
-    return (int(source.attr_flags_other) & ~2) | (2 if source.mid_point else 0)
+    return ((int(source.attr_flags_other) & ~3) | (2 if source.mid_point else 0)
+            | (1 if source.base_pose else 0))
 
 
 def source_two_point(source):
@@ -256,15 +258,84 @@ def describe(source):
     }
 
 
-def describe_channel(sources):
+# OutputData +72 OutputMode: how one entry combines its drivers' mapped values.
+OUTPUT_MODES = ('SUM', 'AVERAGE', 'MUL', 'MIN', 'MAX')
+
+
+def combine(mode, values):
+    """The entry's drivers combined by OutputMode `mode` (0-4); None without values."""
+    values = list(values)
+    if not values:
+        return None
+    if mode == 2:
+        acc = 1.0
+        for v in values:
+            acc *= v
+        return acc
+    if mode == 3:
+        return min(values)
+    if mode == 4:
+        return max(values)
+    return sum(values)
+
+
+def post_process(acc, count, mode, clamp_min=None, clamp_max=None, scale_base=False):
+    """The engine's steps after combining, before and around the unit conversion:
+    a base-pose scale entry (TransformElement 2, Flags bit0) takes the driver count off
+    a sum or average and adds 1 back at the end; an average divides by the count; then
+    the lower clamp (Flags bit2) and the upper clamp (bit3).  Clamps are in the same
+    units as `acc`."""
+    if scale_base and mode <= 1:
+        acc -= count
+    if mode == 1:
+        acc /= count
+    if clamp_min is not None and not acc > clamp_min:
+        acc = clamp_min
+    if clamp_max is not None and clamp_max < acc:
+        acc = clamp_max
+    if scale_base:
+        acc += 1.0
+    return acc
+
+
+def output_value(values, mode=0, clamp_min=None, clamp_max=None, scale_base=False):
+    """combine() then post_process(); 0 when there are no values."""
+    values = list(values)
+    acc = combine(mode, values)
+    if acc is None:
+        return 0.0
+    return post_process(acc, len(values), mode, clamp_min, clamp_max, scale_base)
+
+
+def output_settings(cns):
+    """(mode, clamp_min, clamp_max, scale_base) of an entry, in the file's units, from a
+    parser dict or a JCNSConstraintProperties."""
+    if isinstance(cns, dict):
+        mode = int(cns.get('OutputMode', 0))
+        flags = int(cns.get('AttrFlags', 0))
+        lo, hi = cns.get('Clamp', (0.0, 0.0))
+        scale = cns.get('TransformElement') == 2
+        base = bool(flags & 1)
+        use_lo, use_hi = bool(flags & 4), bool(flags & 8)
+    else:
+        mode = OUTPUT_MODES.index(cns.output_mode) if cns.output_mode in OUTPUT_MODES else 0
+        lo, hi = cns.clamp_min, cns.clamp_max
+        scale = cns.transform_element == 'Scale'
+        base = bool(cns.base_pose)
+        use_lo, use_hi = bool(cns.use_clamp_min), bool(cns.use_clamp_max)
+    return (mode, float(lo) if use_lo else None, float(hi) if use_hi else None,
+            scale and base)
+
+
+def describe_channel(sources, settings=(0, None, None, False)):
     """Diagnose a driven channel from the sources of the constraint that owns it.
 
-    Sources within one constraint are summed.  Pass only the live constraint's
-    sources: where several constraints target one channel the engine keeps the
-    last.
+    The sources combine by the entry's `settings` (output_settings()).  Pass only the
+    live constraint's sources: where several constraints target one channel the
+    engine keeps the last.
     """
     infos = [describe(s) for s in sources]
-    at_rest = sum(i['at_rest'] for i in infos)
+    at_rest = output_value([i['at_rest'] for i in infos], *settings)
     return {
         'at_rest': at_rest,
         'offset_at_rest': abs(at_rest) > 1e-4,

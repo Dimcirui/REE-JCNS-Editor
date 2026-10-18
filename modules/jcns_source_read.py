@@ -1,10 +1,11 @@
 """
 What a JCNS source reads off its bone, per the source's +25 byte, InputType.
 
-Every rotation read works on the bone's whole rotation relative to its parent,
-rest pose included (q = rest * Rz * Ry * Rx for a Blender XYZ Euler pose), and
-every translation read on its whole position relative to the parent, rest offset
-included:
+The source's AttrFlags bit0 (BasePose) picks the frame of the read.  Set (the usual
+case), the read is relative to the bone's rest pose: rotations decompose rest^-1 * q,
+positions read (current - rest offset), scales read (current - 1), so a bone at rest
+reads 0.  Clear, the read takes the bone's whole transform relative to its parent,
+rest pose and offset included (q = rest * Rz * Ry * Rx for a Blender XYZ Euler pose):
 
   +25=0  position component (the rest offset plus the posed offset turned by rest)
   +25=1  Euler component, in the order +27 names (0: Blender XYZ, R = Rz * Ry * Rx)
@@ -104,6 +105,12 @@ def from_euler_order(euler, order):
 def pose_rotation(rest, euler):
     """The bone's whole parent-relative rotation for a Blender XYZ Euler pose."""
     return _pos_w(qmul(rest, from_euler_xyz(euler)))
+
+
+def read_rotation(rest, euler, base_pose):
+    """The rotation a source decomposes for a Blender XYZ Euler pose: relative to the
+    rest pose with BasePose set (rest^-1 * rest * R = R), the whole rotation otherwise."""
+    return _pos_w(from_euler_xyz(euler)) if base_pose else pose_rotation(rest, euler)
 
 
 # RotOrder -> (i, j, k) with R = R_i * R_j * R_k (k applied first).  4 YXZ and 5 XZY come
@@ -331,18 +338,22 @@ def cone_ease(interpolation, x):
     return x
 
 
-def rest_input(mode, axis, rest, offset_cm, order=0, frame=None, scale=None):
+def rest_input(mode, axis, rest, offset_cm, order=0, frame=None, scale=None, base_pose=False):
     """What a source reads with its bone at rest, in the file's units (degrees,
-    centimetres, or 1 for a scale).
+    centimetres, or a scale).
 
     `mode` is a InputType value or identifier, `rest` the bone's parent-relative rest
     rotation (w, x, y, z), `offset_cm` its rest offset from the parent; `order` and
-    `frame` as for rotation(); `scale` its rest scale (default 1).
+    `frame` as for rotation(); `scale` its rest scale (default 1); `base_pose` the
+    source's AttrFlags bit0, which makes every read but the scale's 0 at rest.
     """
     value = input_type_value(mode)
     q = read_quantity(value)
     if q == 'Scale':
-        return float(scale[axis]) if scale is not None else 1.0
+        s = float(scale[axis]) if scale is not None else 1.0
+        return s - 1.0 if base_pose else s
+    if base_pose:
+        return 0.0
     if q == 'Translation':
         return float(offset_cm[axis])
     return math.degrees(rotation(ROTATION_MODES.get(value, 'swing_twist'), rest, axis,
@@ -350,7 +361,8 @@ def rest_input(mode, axis, rest, offset_cm, order=0, frame=None, scale=None):
 
 
 def position(rest, offset, loc, axis):
-    """Component `axis` of the whole parent-relative position: offset + rest * loc."""
+    """Component `axis` of the whole parent-relative position: offset + rest * loc.
+    A BasePose read passes a zero offset."""
     p = qmul(qmul(rest, (0.0, loc[0], loc[1], loc[2])), _conj(rest))
     return offset[axis] + p[axis + 1]
 
@@ -409,7 +421,7 @@ def target_rule(transform_element, base_pose):
     return list(rules.get(None) or rules[bool(base_pose)])
 
 
-def read_rule(input_type, rot_order=0, frame_is_identity=True):
+def read_rule(input_type, rot_order=0, frame_is_identity=True, base_pose=True):
     """Lines saying what the engine reads off the source bone.  -> [(text, measured)]"""
     v = input_type_value(input_type)
     base = {
@@ -422,7 +434,8 @@ def read_rule(input_type, rot_order=0, frame_is_identity=True):
     }.get(v)
     if base is None:
         return [(T("core.rule.read_unknown", input_type), False)]
-    lines = [(base, True)]
+    frame = T("core.rule.read_base") if base_pose else T("core.rule.read_whole")
+    lines = [(base, True), (frame, True)]
     if v in (3, 4, 5) and not frame_is_identity:
         lines.append((T("core.rule.read_frame"), True))
     return lines

@@ -100,7 +100,7 @@ def do_import(filepath, context, armature_obj=None):
     Returns (root_empty, count, error_str).  error_str is '' on success.
     """
     from . import (
-        AXIS_TO_INT, INT_TO_AXIS, TRANSFORM_ELEMENT_MAP, INT_TO_WORLD_UP_TYPE, INT_TO_ROT_REST, INT_TO_INTERPOLATION,
+        AXIS_TO_INT, INT_TO_AXIS, TRANSFORM_ELEMENT_MAP, INT_TO_WORLD_UP_TYPE, INT_TO_ROT_REST, INT_TO_INTERPOLATION, INT_TO_OUTPUT_MODE,
         INT_TO_MAT_APPLY_MODE, make_constraint_empty_name,
     )
 
@@ -229,7 +229,8 @@ def do_import(filepath, context, armature_obj=None):
             sp.ref_frame_z = s.get('ref_frame_z', 0.0)
             sp.ref_frame_w = s.get('ref_frame_w', 1.0)
             cm_value = s.get('AttrFlags', 3)
-            sp.mid_point, sp.attr_flags_other = bool(cm_value & 2), cm_value & ~2
+            sp.base_pose, sp.mid_point = bool(cm_value & 1), bool(cm_value & 2)
+            sp.attr_flags_other = cm_value & ~3
             mode = jcns_source_read.input_type_id(s.get('InputType', 3))
             if mode is None:
                 # The enum cannot hold an unknown mode.
@@ -257,12 +258,17 @@ def do_import(filepath, context, armature_obj=None):
                 jcns_cm.load(sp, s['ComplexMapping'])
 
         flags = c.get('AttrFlags', 0x30)
-        p.base_pose, p.attr_flags_other = bool(flags & 1), flags & 0xFE
+        p.base_pose, p.attr_flags_other = bool(flags & 1), flags & ~0x0D & 0xFF
+        p.use_clamp_min, p.use_clamp_max = bool(flags & 4), bool(flags & 8)
         vec4                    = c.get('ReservedVec4', (0.0, 0.0, 0.0, 1.0))
         p.reserved_vec4_x, p.reserved_vec4_y, p.reserved_vec4_z, p.reserved_vec4_w = vec4
-        f2                      = c.get('UnknownFloat2', (0.0, 0.0))
-        p.unknown_float2_x, p.unknown_float2_y = f2
-        p.unknown_byte_72       = c.get('UnknownByte72', 0)
+        p.clamp_min, p.clamp_max = c.get('Clamp', (0.0, 0.0))
+        mode = INT_TO_OUTPUT_MODE.get(c.get('OutputMode', 0))
+        if mode is None:
+            print("[JCNS] %s: OutputMode %r is unknown, read as SUM"
+                  % (c.get('ObjectName', '?'), c.get('OutputMode')))
+            mode = 'SUM'
+        p.output_mode = mode
         p.target_property       = c.get('PropertyName', '')
         p.property_hash         = jcns_targets.property_hash_override(
             c.get('PropertyHash', 0) & 0xFFFFFFFF, p.target_property)

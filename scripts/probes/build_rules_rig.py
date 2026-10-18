@@ -10,8 +10,8 @@ Round-11 mesh, reused as is.  Every entry reads L_Thigh.X (InputType 3) through 
   [15-16]  G  type 1 F49 X, then F48 Y         add and replace mixed on one bone (rest (-2, 17, -23))
   [17]     H  type 14 F48 Y                    does 14 drop the rest like 13 (round 9)?
   [18-20]  I  type 1 F49 X, type 4 F49 Y, type 1 F49 Z     two rotation types on one bone
-  [21]     J  type 1 F49 X, UnknownFloat2 (-45, 0)          the float's effect, against A
-  [22]     K  type 1 F49 X, UnknownFloat2 (-90, -90)
+  [21]     J  type 1 F49 X, Clamp (-45, 0)          the float's effect, against A
+  [22]     K  type 1 F49 X, Clamp (-90, -90)
   [23-25]  E  rotation X / Y / Z <- E.scale X / Y / Z, InputType 2, identity map 0..3
            (E's static scale is (1.4, 0.7, 1.8): is that what a scale source reads?)
   [26]     F  type 2 F17 Y <- L_Thigh.X, scale 1 +- 0.9 (a moving scale)
@@ -36,7 +36,7 @@ DIR = r"E:/Program/Steam/steamapps/common/MonsterHunterWilds/natives/STM/art/mod
 SRC = DIR + "/xaihi_constraint.jcns.102.orig_20260929"
 
 GAIN = {'X': 0.5, 'Y': 0.8, 'Z': -0.9}
-# (bone, TransformElement, AttrFlags, axis, UnknownFloat2, source) ; source = None for L_Thigh.X,
+# (bone, TransformElement, AttrFlags, axis, Clamp, source) ; source = None for L_Thigh.X,
 # else (bone, source_axis, InputType, (from), (to)); a scale driver sets its own gain.
 ENTRIES = [
     ('A', 1, 49, 'X', (0, 0), None),
@@ -74,7 +74,7 @@ def main(dst):
         i = 'XYZ'.index(axis)
         c = copy.deepcopy(tmpl)
         c.update(ObjectName='TestTgt' + bone, TransformElement=tt, AttrFlags=flags, Axis_parent=i,
-                 target_axis=i, UnknownByte72=0, UnknownFloat2=tuple(pf2))
+                 target_axis=i, OutputMode=0, Clamp=tuple(pf2))
         tail = bytearray(c['TailBytes'])
         tail[1], tail[3] = 2, 0
         c['TailBytes'] = bytes(tail)
@@ -110,7 +110,7 @@ def check(dst):
         s = c['sources'][0]
         assert (c['ObjectName'], c['TransformElement'], c['AttrFlags'], 'XYZ'[c['target_axis']]) == \
             ('TestTgt' + bone, tt, flags, axis), (i, c['ObjectName'])
-        assert tuple(round(v, 4) for v in c['UnknownFloat2']) == tuple(pf2), (i, c['UnknownFloat2'])
+        assert tuple(round(v, 4) for v in c['Clamp']) == tuple(pf2), (i, c['Clamp'])
         if isinstance(src, tuple):
             assert (s['SourceName'], s['source_axis'], s['InputType']) == ('TestTgt' + src[0], src[1], src[2])
         else:

@@ -322,16 +322,17 @@ def source_rest_input_of(sp):
     return sr.rest_input(sp.input_type, axis, rest, tuple(v / per_cm for v in off),
                          order=sr.rot_order_value(sp.rot_order),
                          frame=(sp.ref_frame_w, sp.ref_frame_x, sp.ref_frame_y, sp.ref_frame_z),
-                         scale=mesh_rest_scale(arm.data.bones[sp.source_bone]))
+                         scale=mesh_rest_scale(arm.data.bones[sp.source_bone]),
+                         base_pose=sp.base_pose)
 
 
 def channel_sources(armature_obj, root_obj, owner):
     """The source dicts of constraint Empty `owner`, each with the 'read' that tells
     the driver how to feed it (see jcns_drivers._CHANNELS).
 
-    * rotation (+25 = 1/3/4/5) and translation (+25 = 0) sources read the bone's
-      whole parent-relative transform, rest included (modules/jcns_source_read.py),
-      so the driver takes all three channels and the rest goes into the table;
+    * rotation (+25 = 1/3/4/5) and translation (+25 = 0) sources take all three
+      channels and decompose the bone's rotation or position relative to its rest pose
+      (AttrFlags bit0) or whole (modules/jcns_source_read.py);
     * a channel written by this entry or a later one is read at its rest value;
     * scale (+25 = 2) keeps one variable, multiplied by the bone's rest scale.
     """
@@ -347,15 +348,19 @@ def channel_sources(armature_obj, root_obj, owner):
         axis = min(s.get('axis_idx', 0), 2)
         live = tuple(a for a in range(3) if (s['bone'], path, a) not in later)
         mode = jcns_drivers.jcns_source_read.ROTATION_MODES.get(sid)
+        base = bool(s['attr_flags'] & 1)
         if q == 'Rotation' and mode:
             rest, _off = _rest_transform(armature_obj, s['bone'])
-            s['read'] = ('rot', mode, axis, rest, s['rot_order'], s['frame'], live)
+            s['read'] = ('rot', mode, axis, rest, s['rot_order'], s['frame'], base, live)
         elif q == 'Translation' and sid == 0:
             rest, off = _rest_transform(armature_obj, s['bone'])
-            s['read'] = ('loc', axis, rest, off, live)
+            s['read'] = ('loc', axis, rest, (0.0, 0.0, 0.0) if base else off, live)
         elif q == 'Scale':
             k = _rest_scale_axis(armature_obj, s['bone'], axis)
-            s['read'] = ('c', k) if (s['bone'], path, axis) in later else ('sc', k)
+            if (s['bone'], path, axis) in later:
+                s['read'] = ('c', k - 1.0 if base else k)
+            else:
+                s['read'] = ('sc', k, base)
         elif (s['bone'], path, axis) in later:
             s['read'] = ('c', _REST_VALUE[q])
         else:
@@ -376,11 +381,11 @@ def channel_sources(armature_obj, root_obj, owner):
 
 
 def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
-                  sources, transform_element='Rot'):
+                  sources, transform_element='Rot', owner=None):
     """Install (or replace) the SCRIPTED driver for one channel of one pose bone.
 
-    `sources` are the channel_sources dicts of a single constraint; their outputs
-    are summed.  The anchors go to jcns_drivers.register_channel() and the
+    `sources` are the channel_sources dicts of a single constraint `owner`, combined
+    by its OutputMode.  The anchors go to jcns_drivers.register_channel() and the
     expression is only a jcns_ch(...) call (see jcns_drivers).
     Returns (ok, error_str).
     """
@@ -412,7 +417,9 @@ def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
     key = jcns_drivers.channel_id(armature_obj.name, target_bone_name,
                                   transform_element, _AXIS_NAME[target_axis_idx])
     jcns_drivers.register_channel(key, maps, reads, post=target_post_factor(
-        armature_obj, target_bone_name, transform_element, target_axis_idx))
+        armature_obj, target_bone_name, transform_element, target_axis_idx),
+        out=(jcns_drivers.output_settings(owner.jcns_cns_props, target_q)
+             if owner is not None else jcns_drivers.SUM_OUTPUT))
 
     expr = _install_driver(armature_obj, target_bone_name, data_path, target_axis_idx,
                            key, usable, reads)
@@ -506,7 +513,8 @@ def register_translation_group(armature_obj, root_obj, bone, chans):
             return None
         reads = [jcns_drivers.source_read(s) for s in sources]
         parts.append((axis, 'location', _replaces(members),
-                      [jcns_drivers.source_map(s, 'Translation') for s in sources], reads))
+                      [jcns_drivers.source_map(s, 'Translation') for s in sources], reads,
+                      jcns_drivers.output_settings(members[-1].jcns_cns_props, 'Translation')))
         all_sources += sources
         all_reads += reads
     rest, offset = _rest_transform(armature_obj, bone)
@@ -627,6 +635,7 @@ def register_bone_group(armature_obj, root_obj, bone, chans):
         reads = [jcns_drivers.source_read(s) for s in sources]
         parts.append((axis, _target_mode(members), _replaces(members),
                       [jcns_drivers.source_map(s, 'Rotation') for s in sources], reads,
+                      jcns_drivers.output_settings(members[-1].jcns_cns_props, 'Rotation'),
                       rot2.get(members[-1].name)))
         all_sources += sources
         all_reads += reads
@@ -782,7 +791,8 @@ def refresh_channel_values(obj):
     jcns_drivers.register_channel(
         key, [jcns_drivers.source_map(s, target_q) for s in sources], reads,
         post=target_post_factor(rp.target_armature, p.target_bone, p.transform_element,
-                                AXIS_TO_INT.get(p.target_axis, 0)))
+                                AXIS_TO_INT.get(p.target_axis, 0)),
+        out=jcns_drivers.output_settings(members[-1].jcns_cns_props, target_q))
     rp.target_armature.update_tag()
     return True
 
@@ -865,8 +875,8 @@ def _apply_channel(armature_obj, root_props, members):
     """Apply the driver for one channel.
 
     `members` are constraint Empties with identical (bone, transform, axis), in
-    file order.  Only the last one has any effect, and its sources are summed, so
-    the driver is built from members[-1] alone.
+    file order.  Only the last one has any effect, so the driver is built from
+    members[-1] alone.
     """
     from . import AXIS_TO_INT
     bone, transform, axis = _channel_of(members[0])
@@ -914,7 +924,7 @@ def _apply_channel(armature_obj, root_props, members):
 
     ok, err = _apply_driver(
         armature_obj, bone, AXIS_TO_INT.get(axis, 0), sources,
-        transform_element=transform,
+        transform_element=transform, owner=winner,
     )
     if ok:
         for empty in members:
@@ -1234,7 +1244,7 @@ class JCNS_OT_AddSource(Operator):
         if len(p.sources) > 1:
             prev = p.sources[len(p.sources) - 2]
             for attr in ('source_axis', 'from_start', 'from_kink', 'from_end',
-                         'to_start', 'to_kink', 'to_end', 'mid_point', 'attr_flags_other', 'interpolation',
+                         'to_start', 'to_kink', 'to_end', 'base_pose', 'mid_point', 'attr_flags_other', 'interpolation',
                          'input_type', 'ref_frame_w'):
                 setattr(sp, attr, getattr(prev, attr))
         p.active_source_index = len(p.sources) - 1
@@ -1496,7 +1506,7 @@ class JCNS_OT_MirrorConstraints(Operator):
                     if not k.startswith('_'):
                         setattr(ns, k, v)
                 for attr in ('ref_frame_x', 'ref_frame_y', 'ref_frame_z',
-                             'ref_frame_w', 'mid_point', 'attr_flags_other', 'input_type',
+                             'ref_frame_w', 'base_pose', 'mid_point', 'attr_flags_other', 'input_type',
                              'rot_order', 'unknown_uint16_22', 'interpolation', 'curve_type'):
                     setattr(ns, attr, getattr(orig, attr))
                 if '_frame' in vals:

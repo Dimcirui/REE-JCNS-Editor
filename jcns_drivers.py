@@ -8,9 +8,9 @@ source bones for the depsgraph.  Values in _CHANNELS are already in driver
 units (radians for rotation), so jcns_ch does no unit conversion.
 
 Engine rules the reads follow:
-  * a rotation source is read off the bone's whole parent-relative rotation, rest
-    included, and a translation source off its whole position, rest offset
-    included; +25 picks the decomposition (modules/jcns_source_read.py).
+  * a source with AttrFlags bit0 (BasePose) reads relative to its bone's rest pose;
+    without it, the bone's whole parent-relative rotation or position, rest included;
+    +25 picks the decomposition (modules/jcns_source_read.py).
   * entries run in file order within one frame, so a source channel written by
     this entry or a later one reads its rest value and gets no variable.
   * a ConeDriver is one more summed term, read off its cone joint's rotation
@@ -33,22 +33,25 @@ import jcns_complex  # noqa: E402
 import jcns_source_read  # noqa: E402
 
 
-# key -> {'maps': [map, …], 'reads': [read, …]}, one of each per source of the
-# single constraint that owns the channel; their outputs are summed.  A map is
+# key -> {'maps': [map, …], 'reads': [read, …], 'out': settings}, one map and read per
+# source of the single constraint that owns the channel; `out` is how the entry combines
+# them (output_settings).  A map is
 # either the three-point (fs, fk, fe, ts, tk, te, two_point, interpolation) or ('CM', keys) for a
 # ComplexMapping, both already in the driver's units.  A read says which driver
 # variables feed the source:
 #   ('v',)                        one variable, used as is
 #   ('c', value)                  none; the source is not live yet, use value
-#   ('sc', rest_scale)            one variable (pose scale), times the bone's rest scale
-#   ('rot', mode, axis, rest, order, frame, live)
+#   ('sc', rest_scale, base)      one variable (pose scale), times the bone's rest scale,
+#                                 less 1 when `base` (the source's BasePose bit)
+#   ('rot', mode, axis, rest, order, frame, base, live)
 #                                 one variable per axis in `live` (XYZ Euler, radians,
 #                                 the others read 0); rest and frame are (w, x, y, z);
-#                                 mode is a jcns_source_read.ROTATION_MODES value and
-#                                 order the source's +27 RotOrder
+#                                 mode is a jcns_source_read.ROTATION_MODES value, order
+#                                 the source's +27 RotOrder; `base` reads relative to rest
 #   ('loc', axis, rest, offset, live)
 #                                 one variable per axis in `live` (location, metres);
 #                                 offset is the rest offset from the parent, metres
+#                                 (zero for a BasePose source)
 #   ('cone', rest, direction, matrix, angle, base_pose, self_parent, live)
 #                                 a ConeDriver: the cone joint's XYZ Euler channels in
 #                                 `live` (none when its ParentJoint is the joint itself);
@@ -83,9 +86,9 @@ def _read(read, vals):
     for a, val in zip(read[-1], vals):
         chans[a] = val
     if read[0] == 'rot':
-        _, mode, axis, rest, order, frame, _live = read
+        _, mode, axis, rest, order, frame, base, _live = read
         return jcns_source_read.rotation(
-            mode, jcns_source_read.pose_rotation(rest, chans), axis, order, frame)
+            mode, jcns_source_read.read_rotation(rest, chans, base), axis, order, frame)
     if read[0] == 'cone':
         _, rest, direction, matrix, angle, base_pose, self_parent, _live = read
         q = (1.0, 0.0, 0.0, 0.0) if self_parent else jcns_source_read.pose_rotation(rest, chans)
@@ -121,12 +124,25 @@ def channel_id(armature_name, bone, transform, axis):
     return "|".join(parts)
 
 
-def register_channel(key, maps, reads=None, post=1.0):
-    """`post` converts the summed engine value into the Blender channel's space
-    (1 / rest scale for a scale target; see jcns_operators.target_post_factor)."""
+SUM_OUTPUT = (0, None, None, False, 1.0)
+
+
+def output_settings(cns_props, target_q):
+    """jcns_mapping.output_settings of the entry plus the driver units per file unit of
+    its target quantity: the engine combines and clamps in degrees and centimetres, so the
+    mapped values go back to file units for that (a product of radians is not one of
+    degrees)."""
+    u = _unit_scale(target_q) if target_q else 1.0
+    return tuple(get_mapping().output_settings(cns_props)) + (u,)
+
+
+def register_channel(key, maps, reads=None, post=1.0, out=SUM_OUTPUT):
+    """`post` converts the entry's engine value into the Blender channel's space
+    (1 / rest scale for a scale target; see jcns_operators.target_post_factor); `out`
+    is output_settings()."""
     maps = list(maps)
     _CHANNELS[key] = {'maps': maps, 'reads': list(reads or [READ_VALUE] * len(maps)),
-                      'post': float(post)}
+                      'post': float(post), 'out': tuple(out)}
 
 
 def channel_reads(key):
@@ -139,7 +155,7 @@ def clear_channels():
     _GROUPS.clear()
 
 
-# gid -> {'rest': (w, x, y, z), 'parts': [(axis, mode, replaces, maps, reads[, rot2_group]), ...]}
+# gid -> {'rest': (w, x, y, z), 'parts': [(axis, mode, replaces, maps, reads, out[, rot2_group]), ...]}
 # for a bone whose rotation or location drivers are built together; parts are in
 # file order of their live entries.  Location groups also carry 'offset', the
 # parent-relative rest offset in metres.  The bone's channels are in _CHANNELS as
@@ -165,10 +181,12 @@ def group_parts(gid):
     return g['parts'] if g else None
 
 
-def _total(maps, reads, values):
-    """Sum of one channel's sources -> (total, number of values consumed)."""
-    ev = get_mapping().eval_piecewise
-    total = 0.0
+def _total(maps, reads, values, out=SUM_OUTPUT):
+    """One entry's output from its sources, combined and post-processed by `out`
+    (output_settings) -> (value, number of driver values consumed)."""
+    mp = get_mapping()
+    ev = mp.eval_piecewise
+    mapped = []
     at = 0
     for m, read in zip(maps, reads):
         width = read_width(read)
@@ -180,16 +198,20 @@ def _total(maps, reads, values):
             v = _read(read, values[at:at + width])
         elif read[0] == 'sc':
             v = values[at] * read[1]       # Blender pose scale -> engine scale
+            if len(read) > 2 and read[2]:
+                v -= 1.0
         else:
             v = values[at]
         at += width
         if m[0] == 'CM':
-            total += jcns_complex.evaluate(m[1], v)
+            mapped.append(jcns_complex.evaluate(m[1], v))
         elif m[0] == 'CONE':
-            total += m[1] + (m[2] - m[1]) * jcns_source_read.cone_ease(m[3], v)
+            mapped.append(m[1] + (m[2] - m[1]) * jcns_source_read.cone_ease(m[3], v))
         else:
-            total += ev(*m[:6], v, two_point=(len(m) > 6 and m[6]), interp=(m[7] if len(m) > 7 else 0))
-    return total, at
+            mapped.append(ev(*m[:6], v, two_point=(len(m) > 6 and m[6]),
+                             interp=(m[7] if len(m) > 7 else 0)))
+    u = out[4]
+    return mp.output_value([v / u for v in mapped], *out[:4]) * u, at
 
 
 def _group_value(ch, values):
@@ -199,10 +221,10 @@ def _group_value(ch, values):
     parts = []
     at = 0
     for part in g['parts']:
-        axis, mode, replaces, maps, reads = part[:5]
-        total, used = _total(maps, reads, values[at:])
+        axis, mode, replaces, maps, reads, out = part[:6]
+        total, used = _total(maps, reads, values[at:], out)
         at += used
-        parts.append((axis, mode, replaces, total) + tuple(part[5:]))
+        parts.append((axis, mode, replaces, total) + tuple(part[6:]))
     if 'offset' in g:
         return jcns_source_read.translation_basis(
             g['rest'], g['offset'], [(p[0], p[2], p[3]) for p in parts],
@@ -219,9 +241,9 @@ def jcns_ch(key, *values):
         return 0.0
     if 'group' in ch:
         return _group_value(ch, values)
-    # Each source maps independently and the outputs are summed.  A 6-long map
-    # entry (no two_point flag) is three-point.
-    return _total(ch['maps'], ch['reads'], values)[0] * ch.get('post', 1.0)
+    # Each source maps independently; the entry combines them by its OutputMode.  A
+    # 6-long map entry (no two_point flag) is three-point.
+    return _total(ch['maps'], ch['reads'], values, ch.get('out', SUM_OUTPUT))[0] * ch.get('post', 1.0)
 
 
 def rebuild_all():
@@ -264,7 +286,8 @@ def rebuild_all():
                                  [source_map(s, target_q) for s in sources],
                                  [source_read(s) for s in sources],
                                  post=target_post_factor(arm, bone, transform,
-                                                         {'X': 0, 'Y': 1, 'Z': 2}.get(axis, 3)))
+                                                         {'X': 0, 'Y': 1, 'Z': 2}.get(axis, 3)),
+                                 out=output_settings(members[-1].jcns_cns_props, target_q))
                 rebuilt += 1
     return rebuilt
 

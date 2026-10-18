@@ -65,7 +65,7 @@ def main(dst):
         i = 'XYZ'.index(axis)
         c = copy.deepcopy(tmpl)
         c.update(ObjectName='TestTgt' + bone, TransformElement=tt, AttrFlags=49, Axis_parent=i, target_axis=i,
-                 UnknownByte72=ex.get('byte72', 0), UnknownFloat2=(0.0, 0.0))
+                 OutputMode=ex.get('byte72', 0), Clamp=(0.0, 0.0))
         tail = bytearray(c['TailBytes'])
         tail[0], tail[1], tail[3] = ex.get('tail74', 0), ex.get('tail75', 2), 0
         c['TailBytes'] = bytes(tail)
@@ -91,11 +91,11 @@ def check(dst):
         assert (c['ObjectName'], c['TransformElement'], c['AttrFlags'], 'XYZ'[c['target_axis']]) == \
             ('TestTgt' + bone, tt, 49, axis), i
         assert c['TailBytes'][0] == ex.get('tail74', 0) and c['TailBytes'][1] == ex.get('tail75', 2), i
-        assert c['UnknownByte72'] == ex.get('byte72', 0), i
+        assert c['OutputMode'] == ex.get('byte72', 0), i
         assert s['Interpolation'] | (s['CurveType'] << 8) == ex.get('src28', 0), (i, s['Interpolation'], s['CurveType'])
         assert (s['SourceName'], s['InputType'], s['AttrFlags'], s['RotOrder']) == ('L_Thigh', 3, 0, 0)
         print(f"[{FIRST_OUT + i:02}] {c['ObjectName']:<11} TT={tt} .{axis} +74={c['TailBytes'][0]} +75={c['TailBytes'][1]}"
-              f" +72={c['UnknownByte72']} src+28/29={s['Interpolation']}/{s['CurveType']}")
+              f" +72={c['OutputMode']} src+28/29={s['Interpolation']}/{s['CurveType']}")
     return q
 
 

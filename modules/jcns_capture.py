@@ -3,8 +3,8 @@ Anchor capture: the value a Ranges anchor should hold so that a bone left in its
 current pose produces that pose.  Pure Python, no bpy.
 
 Source side (capture_source) is the read the drivers make, taken from a pose:
-jcns_source_read.rotation / position on the bone's whole parent-relative transform,
-rest included, the same calls as jcns_drivers._read.
+jcns_source_read.rotation / position relative to the bone's rest pose (BasePose) or
+on its whole parent-relative transform, the same calls as jcns_drivers._read.
 
 Target side (capture_target) is the inverse of the target composition,
 jcns_source_read.target_basis / translation_basis and the scale rule: the value one
@@ -47,12 +47,13 @@ def target_capturable(transform_element):
 
 
 def capture_source(input_type, axis, rest, offset, pose_euler, pose_loc, pose_scale,
-                   order=0, frame=None, rest_scale=(1.0, 1.0, 1.0)):
+                   order=0, frame=None, rest_scale=(1.0, 1.0, 1.0), base_pose=False):
     """What a source with this InputType reads off its bone in the given pose.
 
     `rest` and `offset` are the bone's rest rotation and offset from its parent (metres);
     `order` and `frame` are the source's +27 RotOrder and ref_frame, as for
-    jcns_source_read.rotation; `rest_scale` is the bone's rest scale.  Every rotation
+    jcns_source_read.rotation; `rest_scale` is the bone's rest scale; `base_pose` the
+    source's AttrFlags bit0, which reads relative to the rest pose.  Every rotation
     axis of the pose counts, including the ones an applied preview would leave unread.
     -> degrees, centimetres or a scale; None for an axis beyond Z or an unknown InputType.
     """
@@ -61,13 +62,14 @@ def capture_source(input_type, axis, rest, offset, pose_euler, pose_loc, pose_sc
     value = sr.input_type_value(input_type)
     quantity = sr.read_quantity(value)
     if quantity == 'Scale':
-        return pose_scale[axis] * rest_scale[axis]
+        return pose_scale[axis] * rest_scale[axis] - (1.0 if base_pose else 0.0)
     if quantity == 'Translation':
-        return sr.position(rest, offset, pose_loc, axis) * _file_per_driver(quantity)
+        off = (0.0, 0.0, 0.0) if base_pose else offset
+        return sr.position(rest, off, pose_loc, axis) * _file_per_driver(quantity)
     mode = sr.ROTATION_MODES.get(value)
     if mode is None:
         return None
-    q = sr.pose_rotation(rest, pose_euler)
+    q = sr.read_rotation(rest, pose_euler, base_pose)
     return sr.rotation(mode, q, axis, sr.rot_order_value(order), frame) * _file_per_driver(quantity)
 
 

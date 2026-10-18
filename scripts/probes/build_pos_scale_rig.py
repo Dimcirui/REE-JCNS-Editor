@@ -7,7 +7,7 @@ Out21 F.Y translation F17; Out22 G.Y translation F16.
 Out23 H.Y scale F17; Out24 I.Y scale F16. J/K remain undriven.
 Translation anchors: degrees * (0.03, 0.05, -0.04) cm.
 Scale anchors: 1 + degrees * (0.002, 0.003, -0.004).
-All test entries explicitly set RotOrder/U32_2/+72/UnknownFloat2=0,
+All test entries explicitly set RotOrder/U32_2/+72/Clamp=0,
 Tail[1]=2, Tail[3]=0 and identity ref_frame. Other fields inherit original [00].
 Writes a staging file; deployment must back up the active jcns first.
 """
@@ -48,7 +48,7 @@ def main():
             c = copy.deepcopy(template)
             c.update(ObjectName='TestTgt' + bone, TransformElement=tt, AttrFlags=flags,
                      Axis_parent=i, target_axis=i,
-                     UnknownByte72=0, UnknownFloat2=(0.0, 0.0))
+                     OutputMode=0, Clamp=(0.0, 0.0))
             tail = bytearray(c['TailBytes']); tail[1] = 2; tail[3] = 0
             c['TailBytes'] = bytes(tail)
             s = c['sources'][0]

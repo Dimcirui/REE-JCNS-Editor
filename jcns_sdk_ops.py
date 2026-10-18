@@ -505,6 +505,7 @@ def _fill_source(sp, c, driver):
     sp.input_type = sr.input_type_id(c.input_type)
     sp.rot_order = sr.ROT_ORDER_NAMES[c.rot_order]
     sp.mid_point = c.mid_point
+    sp.base_pose = True
     for field, v in zip(('from_start', 'from_kink', 'from_end'), c.from_anchors):
         setattr(sp, field, round(v, 5) + 0.0)
     for field, v in zip(('to_start', 'to_kink', 'to_end'), c.to_anchors):
@@ -546,7 +547,8 @@ def land(context, st, plan, append, touched=None):
         host = None
         if append and members:
             hp = members[-1].jcns_cns_props
-            ok, _why = core.can_append({'base_pose': hp.base_pose, 'cone_drivers': len(hp.cone_drivers),
+            ok, _why = core.can_append({'base_pose': hp.base_pose, 'output_mode': hp.output_mode,
+                                        'cone_drivers': len(hp.cone_drivers),
                                         'n_sources': len(hp.sources), 'target_property': hp.target_property,
                                         'property_hash': hp.property_hash}, c, complex_ok=st.cm_ok)
             host = members[-1] if ok else None

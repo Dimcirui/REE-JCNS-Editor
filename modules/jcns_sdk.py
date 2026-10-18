@@ -13,7 +13,7 @@ The key list always holds a start key, an end key and any number of keys between
 key's name comes from its position (key_name).  The list order is authoritative, the
 generated mapping follows the driver readings, and order_warnings() reports where they differ.
 
-Driver values are what jcns_capture.capture_source reads (rest pose included), channel
+Driver values are what jcns_capture.capture_source reads (relative to the rest pose), channel
 values what jcns_capture.capture_target would have to write, so the anchors can be
 stored as they are.  Units are the file's: degrees, centimetres, scale as is.
 """
@@ -166,8 +166,9 @@ def euler_of(pose):
 
 
 def read_driver(pose, rest, input_type, axis, order=0):
+    """What a generated source reads: generated sources read relative to the rest pose."""
     return cap.capture_source(input_type, axis, rest.rest, rest.offset, euler_of(pose), pose.loc,
-                              pose.scale, order=order, rest_scale=rest.rest_scale)
+                              pose.scale, order=order, rest_scale=rest.rest_scale, base_pose=True)
 
 
 def read_channel(pose, rest, transform_element, axis, base_pose=True):
@@ -577,10 +578,10 @@ def describe(plan, driver_bone):
 def can_append(existing, constraint, complex_ok=True):
     """(ok, reason): may `constraint`'s source join the existing entry on its channel?
 
-    `existing` is a dict with `base_pose`, `cone_drivers`, `n_sources`, `target_property`.  A source
-    only adds to the entry's sum, so the entry must mean the same thing: the same AttrFlags
-    bit0 (scale ignores it), no ConeDriver inputs, room for one more source.  A ComplexMapping
-    source also needs a file that can hold ComplexMapping.
+    `existing` is a dict with `base_pose`, `output_mode`, `cone_drivers`, `n_sources`,
+    `target_property`.  A source only adds to the entry's sum, so the entry must sum its
+    sources and mean the same thing: the same AttrFlags bit0, no ConeDriver inputs, room for
+    one more source.  A ComplexMapping source also needs a file that can hold ComplexMapping.
     """
     if existing.get('target_property') or existing.get('property_hash'):
         return False, T("sdk.append.property_target")
@@ -588,7 +589,9 @@ def can_append(existing, constraint, complex_ok=True):
         return False, T("sdk.append.cone_driver")
     if existing.get('n_sources', 0) >= MAX_SOURCES:
         return False, T("sdk.append.sources_full", MAX_SOURCES)
-    if constraint.transform_element != 2 and bool(existing.get('base_pose')) != bool(constraint.base_pose):
+    if existing.get('output_mode', 'SUM') != 'SUM':
+        return False, T("sdk.append.not_sum")
+    if bool(existing.get('base_pose')) != bool(constraint.base_pose):
         return False, T("sdk.append.base_pose_differs")
     if constraint.complex and not complex_ok:
         return False, T("sdk.append.no_complex")

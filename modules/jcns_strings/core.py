@@ -269,23 +269,29 @@ STRINGS = {
         "ZH": "形变 / 材质类目标：具体作用未知，没有预览",
         "EN": "Deform / material target: effect unknown; no preview"},
     "core.rule.read_0": {
-        "ZH": "读相对父骨的位置分量（厘米），静止偏移算在内",
-        "EN": "Reads the position component relative to the parent bone (centimetres), rest offset included"},
+        "ZH": "读相对父骨的位置分量（厘米）",
+        "EN": "Reads the position component relative to the parent bone (centimetres)"},
     "core.rule.read_1": {
-        "ZH": "读相对父骨完整旋转的欧拉分量（顺序 %s），静止姿态算在内",
-        "EN": "Reads the Euler component of the full rotation relative to the parent bone (order %s), rest pose included"},
+        "ZH": "读旋转的欧拉分量（顺序 %s）",
+        "EN": "Reads the Euler component of the rotation (order %s)"},
     "core.rule.read_2": {
-        "ZH": "读缩放分量，静止缩放算在内（静止时就是静止缩放）",
-        "EN": "Reads the scale component, rest scale included (at rest it equals the rest scale)"},
+        "ZH": "读缩放分量",
+        "EN": "Reads the scale component"},
     "core.rule.read_3": {
-        "ZH": "读相对父骨完整旋转绕 X 的摆动·扭转分解：X = 扭转角，Y/Z = 摆动",
-        "EN": "Reads the swing·twist decomposition about X of the full rotation relative to the parent bone: X = twist angle, Y/Z = swing"},
+        "ZH": "读旋转绕 X 的摆动·扭转分解：X = 扭转角，Y/Z = 摆动",
+        "EN": "Reads the swing·twist decomposition of the rotation about X: X = twist angle, Y/Z = swing"},
     "core.rule.read_4": {
         "ZH": "同摆动·扭转，但先摆动后扭转：X 相同，Y/Z 不同",
         "EN": "Same as swing·twist, but swing first, then twist: X is the same, Y/Z differ"},
     "core.rule.read_5": {
-        "ZH": "读相对父骨完整旋转的旋转向量（转轴 × 角度）分量",
-        "EN": "Reads the rotation vector (axis × angle) component of the full rotation relative to the parent bone"},
+        "ZH": "读旋转的旋转向量（转轴 × 角度）分量",
+        "EN": "Reads the rotation vector (axis × angle) component of the rotation"},
+    "core.rule.read_base": {
+        "ZH": "相对静止姿态读取：旋转取 静止⁻¹·当前，位置取 当前 − 静止，缩放取 当前 − 1，静止时读数为 0",
+        "EN": "Read relative to the rest pose: rotation rest⁻¹·current, position current − rest, scale current − 1; reads 0 at rest"},
+    "core.rule.read_whole": {
+        "ZH": "读相对父骨的完整变换，静止姿态和静止偏移算在内，静止时读数不为 0",
+        "EN": "Reads the whole transform relative to the parent bone, rest pose and offset included; does not read 0 at rest"},
     "core.rule.read_unknown": {"ZH": "未知的读取方式 %r", "EN": "Unknown read mode %r"},
     "core.rule.read_frame": {
         "ZH": "按参考系四元数 f 分解 f^-1·q·f：扭转轴变成 f·X",

@@ -563,7 +563,7 @@ def _draw_channels(layout, context, root, rp):
         for transform, axis, members in sorted(by_bone[bone], key=lambda x: (x[0], x[1])):
             # Only the last constraint on the channel actually drives it.
             sources = list(members[-1].jcns_cns_props.sources)
-            info = m.describe_channel(sources)
+            info = m.describe_channel(sources, m.output_settings(members[-1].jcns_cns_props))
 
             row = col.row(align=True)
             row.alert = info['offset_at_rest']

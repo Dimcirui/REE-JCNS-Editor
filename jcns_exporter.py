@@ -458,8 +458,8 @@ def _make_default_constraint_dict(empty_obj):
         'AttrFlags':                 0x30,
         'TransformElement':         _transform_int(p.transform_element),
         'ReservedVec4':            (0.0, 0.0, 0.0, 1.0),
-        'UnknownFloat2':          (0.0, 0.0),
-        'UnknownByte72':        0,
+        'Clamp':          (0.0, 0.0),
+        'OutputMode':        0,
         'Axis_parent':  tgt_ax,
         'TailBytes':       b'\x00' * 6,
         'ObjectName':        '',
@@ -486,7 +486,8 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
     index of a bone target from ObjectName; a direct target (see jcns_targets) is
     flagged here with ObjectHashIndex = 0xFFFFFFFF.
     """
-    from . import AXIS_TO_INT, INTERPOLATION_TO_INT, flags_byte
+    from . import AXIS_TO_INT, INTERPOLATION_TO_INT, OUTPUT_MODE_TO_INT, flags_byte
+    from .modules_shim import get_mapping
     _ensure_modules_path()
     try:
         from hashing.mmh3.pymmh3 import hashUTF16
@@ -528,7 +529,7 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
         base['ref_frame_y']     = sp.ref_frame_y
         base['ref_frame_z']     = sp.ref_frame_z
         base['ref_frame_w']     = sp.ref_frame_w
-        base['AttrFlags']    = (sp.attr_flags_other & ~2) | (2 if sp.mid_point else 0)
+        base['AttrFlags']    = get_mapping().attr_flags_value(sp)
         base['InputType']        = jcns_source_read.input_type_value(sp.input_type)
         base['RotOrder']      = jcns_source_read.rot_order_value(sp.rot_order)
         base['UnknownUInt16_22']   = sp.unknown_uint16_22
@@ -553,8 +554,8 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
                          if version in flags.DERIVED_BITS_VERSIONS else flags_byte(p))
     parsed_c['ReservedVec4']          = (p.reserved_vec4_x, p.reserved_vec4_y,
                                        p.reserved_vec4_z, p.reserved_vec4_w)
-    parsed_c['UnknownFloat2']        = (p.unknown_float2_x, p.unknown_float2_y)
-    parsed_c['UnknownByte72']      = p.unknown_byte_72
+    parsed_c['Clamp']               = (p.clamp_min, p.clamp_max)
+    parsed_c['OutputMode']          = OUTPUT_MODE_TO_INT[p.output_mode]
     prop = p.target_property.strip()
     parsed_c['PropertyName']        = prop
     parsed_c['PropertyHash']        = jcns_targets.property_hash(prop, p.property_hash)

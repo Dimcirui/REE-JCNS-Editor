@@ -4,7 +4,7 @@ Only B/C/D/G rest rotation and E/F/G rest scale are changed in the mesh.
 Six leaf bones' local/world/inverse matrices are patched; every other byte
 must remain identical. This does not export or alter the live Blender scene.
 Hidden fields: RotOrder=0, Interpolation=0, InputType=3, AttrFlags=0,
-identity ref_frame, UnknownByte72=0, UnknownFloat2=(0,0), Tail[1]=2,
+identity ref_frame, OutputMode=0, Clamp=(0,0), Tail[1]=2,
 Tail[3]=0; remaining fields inherit original constraint [00].
 """
 import argparse
@@ -114,7 +114,7 @@ def main():
             bias = 1 if tt == 2 else 0
             c = copy.deepcopy(template)
             c.update(ObjectName='TestTgt'+letter,TransformElement=tt,AttrFlags=flags,
-                Axis_parent=i,target_axis=i,UnknownByte72=0,UnknownFloat2=(0.,0.))
+                Axis_parent=i,target_axis=i,OutputMode=0,Clamp=(0.,0.))
             tail=bytearray(c['TailBytes']); tail[1]=2; tail[3]=0
             c['TailBytes']=bytes(tail)
             c['sources'][0].update(SourceName='L_Thigh',source_axis=0,InputType=3,AttrFlags=0,
@@ -141,7 +141,7 @@ def main():
         c=decoded[e['out']]; src=c['sources'][0]
         assert (c['ObjectName'],c['TransformElement'],c['AttrFlags'],c['target_axis']) == ('TestTgt'+e['bone'],e['type'],e['flags'],'XYZ'.index(e['axis']))
         assert src['RotOrder']==src['Interpolation']==src['AttrFlags']==0 and src['InputType']==3
-        assert c['UnknownByte72']==0 and tuple(c['UnknownFloat2'])==(0.,0.) and c['TailBytes'][1]==2
+        assert c['OutputMode']==0 and tuple(c['Clamp'])==(0.,0.) and c['TailBytes'][1]==2
     manifest=dict(round=11,base_mesh_sha256=sha(raw),mesh_sha256=sha(data),
         jcns_sha256=sha(jcns_output.read_bytes()),matrix_ranges=patched,rests=rests,entries=entries,
         rotation_tolerance_deg=.002,position_tolerance_cm=.0001,scale_tolerance=.00001)

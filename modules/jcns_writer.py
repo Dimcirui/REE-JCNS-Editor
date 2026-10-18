@@ -16,8 +16,8 @@ from jcns_parser import header_field_offset
 # edited dicts.  Everything else — pointers, hashes, hash indices, counts — is
 # re-packed from the original record, because in place the surrounding data
 # (strings, source arrays, hash table) does not move.
-INPLACE_CNS_FIELDS = ('AttrFlags', 'TransformElement', 'ReservedVec4', 'UnknownFloat2',
-                      'UnknownByte72', 'PropertyHash', 'TailBytes')
+INPLACE_CNS_FIELDS = ('AttrFlags', 'TransformElement', 'ReservedVec4', 'Clamp',
+                      'OutputMode', 'PropertyHash', 'TailBytes')
 INPLACE_SRC_FIELDS = ('AttrFlags', 'InputType', 'source_axis', 'RotOrder',
                       'UnknownUInt16_22', 'Interpolation', 'CurveType', 'ReservedWord30',
                       'from_start', 'from_kink', 'from_end',
@@ -781,8 +781,8 @@ class JCNSWriter:
 _CNS_DEFAULTS = {
     'ConeDriverOffset': 0, 'PropertyOffset': 0, 'PropertyHash': 0,
     'ConeDriverCount': 0, 'AttrFlags': 0x30, 'TransformElement': 1,
-    'ReservedVec4': (0.0, 0.0, 0.0, 1.0), 'UnknownFloat2': (0.0, 0.0),
-    'UnknownByte72': 0, 'TailBytes': bytes(6),
+    'ReservedVec4': (0.0, 0.0, 0.0, 1.0), 'Clamp': (0.0, 0.0),
+    'OutputMode': 0, 'TailBytes': bytes(6),
 }
 _SOURCE_DEFAULTS = {
     'ComplexMappingInfoOffset': 0, 'SourceHashIndex': 0, 'ComplexMappingInfoCount': 0,
