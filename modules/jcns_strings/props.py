@@ -39,7 +39,7 @@ STRINGS = {
     'props.transform.t9': {"ZH": '9：可能驱动材质三维参数', "EN": '9: may drive a material 3D parameter'},
     'props.transform.t10': {"ZH": '10：可能驱动材质二维参数', "EN": '10: may drive a material 2D parameter'},
     'props.transform.t11': {"ZH": '11：可能驱动标量参数', "EN": '11: may drive a scalar parameter'},
-    'props.transform.t12': {"ZH": '12：具体作用未知', "EN": '12: purpose unknown'},
+    'props.transform.t12': {"ZH": '12：命名输出，被驱动填输出名，供其他组件按名字读取，例如开关网格部件', "EN": '12: named output; the target is the output name, read by other components by name, e.g. to show or hide mesh parts'},
     'props.transform.t13': {"ZH": '13：单轴旋转，绕所写的轴；每根骨只有骨上最后一条 13/14 条目生效，常用于辅助骨、布料偏移骨', "EN": '13: single-axis rotation around the written axis; only the last 13/14 entry on a bone takes effect. Common on helper bones and cloth offset bones'},
     'props.transform.t14': {"ZH": '14：与 13 行为相同，两者的区别未知。常用于围裙、触手', "EN": '14: behaves the same as 13; the difference between them is unknown. Common on aprons and tentacles'},
     'props.transform.t15': {"ZH": '15：具体作用未知', "EN": '15: purpose unknown'},
