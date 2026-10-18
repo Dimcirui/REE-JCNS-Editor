@@ -760,6 +760,13 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
             final_constraints.append(parsed_c)
 
         parser.constraints = final_constraints
+        from jcns_writer import regrouped_entries
+        regrouped = regrouped_entries(final_constraints)
+        if regrouped:
+            msg = T("io.export.regrouped", T("io.sep.list").join(
+                "[%02d] %s" % (i, final_constraints[i].get('ObjectName', '')) for i in regrouped[:6]))
+            print("[JCNS EXPORT] " + msg)
+            self.report({'WARNING'}, msg)
 
         _sync_non_range_to_parser(root_obj, parser)
 

@@ -266,6 +266,10 @@ STRINGS = {
         "EN": "This file was imported by an older version of the add-on, and Blender does not hold the data needed to rebuild it; re-import the file and export again.",
     },
     "io.export.write_failed": {"ZH": "写入失败：%s", "EN": "Write failed: %s"},
+    "io.export.regrouped": {
+        "ZH": "关节组与组员的目标不符，已按目标重新分组：%s",
+        "EN": "Joint groups did not match their members' targets and were regrouped by target: %s",
+    },
     "io.export.converted_multi": {
         "ZH": "已导出「%s」（v%s → v%s）。%d 条 Multi 记录的尾字节写成 %s，这个值的作用未知。",
         "EN": "Exported “%s” (v%s → v%s). %d Multi records got tail bytes %s, whose effect is unknown.",

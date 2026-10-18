@@ -796,33 +796,40 @@ _SOURCE_DEFAULTS = {
 
 # ── Utilities ────────────────────────────────────────────────────────────
 
+# The engine folds at most this many entries after a group's first one into the group.
+MAX_GROUP_MEMBERS = 3
+
+
+def _given_group_count(c):
+    tb = c.get('TailBytes') or b''
+    return tb[3] if len(tb) >= 4 else 0
+
+
 def tail_group_counts(constraints):
     """TailBytes[3] for every constraint: how many of the entries right after it
     the engine folds into its joint group.
 
     The engine writes a whole group to the *first* entry's target, whatever the others
-    name, so a stale count makes neighbours land on the wrong bone.  Counts that
-    already form valid groups (members share target, property and TransformElement and
-    carry 0) are kept; otherwise all are re-derived as the length of each run of
-    consecutive entries sharing target, property, TransformElement and AttrFlags, minus one,
-    and 0 on the rest.
+    name, and takes min(count, 3) entries after it; the rest start groups of their own.
+    So a stale count makes neighbours land on the wrong bone.  Counts that already form
+    valid groups (members share target, property and TransformElement and carry 0) are
+    kept; otherwise all are re-derived from the runs of consecutive entries sharing
+    target, property, TransformElement and AttrFlags, cut every four entries: each
+    piece's first entry gets the piece length minus one, the rest 0.
     """
     def ident(c):
         return (c.get('ObjectName', ''), c.get('PropertyName', ''), c.get('TransformElement'))
 
-    def given(c):
-        tb = c.get('TailBytes') or b''
-        return tb[3] if len(tb) >= 4 else 0
-
     n = len(constraints)
-    counts = [given(c) for c in constraints]
+    counts = [_given_group_count(c) for c in constraints]
     valid = True
     i = 0
     while i < n and valid:
-        k = counts[i]
+        k = min(counts[i], MAX_GROUP_MEMBERS)
         members = constraints[i + 1:i + 1 + k]
         valid = (len(members) == k
-                 and all(ident(m) == ident(constraints[i]) and given(m) == 0 for m in members))
+                 and all(ident(m) == ident(constraints[i]) and _given_group_count(m) == 0
+                         for m in members))
         i += k + 1
     if valid:
         return counts
@@ -832,11 +839,18 @@ def tail_group_counts(constraints):
     while i < n:
         key = ident(constraints[i]) + (constraints[i].get('AttrFlags'),)
         j = i
-        while j + 1 < n and ident(constraints[j + 1]) + (constraints[j + 1].get('AttrFlags'),) == key:
+        while (j + 1 < n and j - i < MAX_GROUP_MEMBERS
+               and ident(constraints[j + 1]) + (constraints[j + 1].get('AttrFlags'),) == key):
             j += 1
         counts += [j - i] + [0] * (j - i)
         i = j + 1
     return counts
+
+
+def regrouped_entries(constraints):
+    """Indices of the entries whose joint-group count tail_group_counts changes."""
+    return [i for i, (c, k) in enumerate(zip(constraints, tail_group_counts(constraints)))
+            if _given_group_count(c) != k]
 
 
 def _align(value, boundary):

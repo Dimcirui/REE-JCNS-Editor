@@ -157,7 +157,7 @@ def group_spans(entries):
     """[(leader, [members])] covering every entry, or None when the stored counts
     are not valid groups (the writer then re-derives all of them itself).
 
-    A group is a leader with count N and the N entries after it, which share its
+    A group is a leader with count N and the min(N, 3) entries after it, which share its
     target, property and transform type and carry count 0.
     """
     def ident(e):
@@ -165,7 +165,7 @@ def group_spans(entries):
 
     spans, i, n = [], 0, len(entries)
     while i < n:
-        k = entries[i].get('group_count', 0)
+        k = min(entries[i].get('group_count', 0), 3)      # the engine takes at most three
         members = list(range(i + 1, i + 1 + k))
         if i + 1 + k > n or any(ident(entries[m]) != ident(entries[i])
                                 or entries[m].get('group_count', 0) for m in members):
