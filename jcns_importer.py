@@ -90,6 +90,29 @@ def _strip_ext(filename):
     return filename
 
 
+def _new_jcns_collection(context, name):
+    """A green collection under the scene root, tagged so other add-ons can filter on it."""
+    coll = bpy.data.collections.new(name)
+    coll.color_tag = 'COLOR_04'   # green
+    coll["~TYPE"] = "RE_JCNS_COLLECTION"
+    context.scene.collection.children.link(coll)
+    return coll
+
+
+def game_asset_path(filepath):
+    """'.../natives/STM/Art/x.jcns.102' → 'Art/x.jcns': the path inside the game, or '' outside natives."""
+    parts = filepath.replace('\\', '/').split('/')
+    lower = [p.lower() for p in parts]
+    if 'natives' not in lower:
+        return ''
+    i = len(lower) - 1 - lower[::-1].index('natives')
+    rest = parts[i + 2:]                  # past natives/<platform>/
+    if not rest:
+        return ''
+    rest[-1] = _strip_ext(rest[-1]) + '.jcns'
+    return '/'.join(rest)
+
+
 # ---------------------------------------------------------------------------
 # Core import logic (also callable from operators without a file dialog)
 # ---------------------------------------------------------------------------
@@ -146,9 +169,10 @@ def do_import(filepath, context, armature_obj=None):
 
     filename = _strip_ext(os.path.basename(filepath))
     coll_name = f"JCNS_{filename}"
-    coll = bpy.data.collections.new(coll_name)
-    coll.color_tag = 'COLOR_04'   # green
-    context.scene.collection.children.link(coll)
+    coll = _new_jcns_collection(context, coll_name)
+    asset_path = game_asset_path(filepath)
+    if asset_path:
+        coll["~ASSETPATH"] = asset_path
 
     root = bpy.data.objects.new(coll_name, None)
     root.empty_display_type = 'PLAIN_AXES'
@@ -546,9 +570,7 @@ def do_new(context, game, armature_obj=None):
     """An empty JCNS collection with its root Empty, in the newest version of `game`.
     Nothing is read from a file: the export builds the file header from the root."""
     version = {g: v for g, v, _ in NEW_FILE_GAMES}[game]
-    coll = bpy.data.collections.new(f"JCNS_new_{_NEW_NAME[game]}")
-    coll.color_tag = 'COLOR_04'   # green, like an import
-    context.scene.collection.children.link(coll)
+    coll = _new_jcns_collection(context, f"JCNS_new_{_NEW_NAME[game]}")
 
     root = bpy.data.objects.new(coll.name, None)
     root.empty_display_type = 'PLAIN_AXES'
