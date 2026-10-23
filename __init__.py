@@ -1438,6 +1438,7 @@ from . import jcns_cone_draw
 from . import jcns_cm
 from . import jcns_merge_ops
 from . import jcns_sdk_ops
+from . import wd_api  # noqa: F401  (found by other add-ons in sys.modules)
 
 def _poll_jcns_collection(self, collection):
     """Restrict the active-collection picker to collections that hold a JCNS root."""

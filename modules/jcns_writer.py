@@ -29,6 +29,7 @@ class JCNSWriter:
     def __init__(self, parser_obj, filepath):
         self.parser = parser_obj
         self.filepath = filepath
+        self.summary = ''
 
     # ------------------------------------------------------------------
     # Public API
@@ -45,6 +46,14 @@ class JCNSWriter:
         Every other version is written in place (see _build_in_place): values
         change, structure does not.  clean_hashes has no effect there.
         """
+        out = self.build_bytes(clean_hashes)
+        with open(self.filepath, 'wb') as f:
+            f.write(out)
+        print(f'[JCNS] Written {len(out)} bytes → {self.filepath}{self.summary}')
+        return True
+
+    def build_bytes(self, clean_hashes=False):
+        """The file build_lossless() writes, without writing it; self.filepath is only named in messages."""
         if getattr(self.parser, 'write_mode', 'rebuild') == 'inplace':
             return self._build_in_place()
         return self._build_full(clean_hashes)
@@ -681,10 +690,8 @@ class JCNSWriter:
         out = bytearray()
         out.extend(header)                             # Tags + DataInfo header
         if is_empty:
-            with open(self.filepath, 'wb') as f:
-                f.write(out)
-            print(f'[JCNS] Written {len(out)} bytes → {self.filepath} (empty)')
-            return True
+            self.summary = ' (empty)'
+            return bytes(out)
         out.extend(cone_blob)                          # ConeInput[] + names
         _pad_to(out, CNS_INFO_START)
         out.extend(cns_info_blob)                      # OutputData[]
@@ -719,18 +726,14 @@ class JCNSWriter:
             _pad_to(out, MULTI_START)
             out.extend(multi_blob)                      # MultiConstraint tables
 
-        with open(self.filepath, 'wb') as f:
-            f.write(out)
-
-        print(f'[JCNS] Written {len(out)} bytes → {self.filepath}')
         parts = [f'Cns={N}', f'Aim={N_AIM}', f'RotExpr={N_ROT}', f'Mat={N_MAT}',
                  f'Multi={N_MULTI}', f'ObjSet={N_OBJSET}',
                  f'JXG={1 if jxg else 0}', f'Dep={M}', f'Hash={len(new_hash_list)}']
-        print(f'  {", ".join(parts)}')
-        print(f'  SecTbl=0x{SEC_TABLE_START:X} DepTbl=0x{DEP_TABLE_START:X} HashTbl=0x{HASH_TABLE_START:X}')
+        self.summary = (f'\n  {", ".join(parts)}'
+                        f'\n  SecTbl=0x{SEC_TABLE_START:X} DepTbl=0x{DEP_TABLE_START:X} HashTbl=0x{HASH_TABLE_START:X}')
         if obj_setting_count == 0:
-            print(f'  ObjSettingEntry → 0x{SEC_TABLE_START:X} (count=0, synced)')
-        return True
+            self.summary += f'\n  ObjSettingEntry → 0x{SEC_TABLE_START:X} (count=0, synced)'
+        return bytes(out)
 
 
     def _build_in_place(self):
@@ -769,12 +772,9 @@ class JCNSWriter:
         for mc in p.material_cns:
             MATERIAL.pack_into(out, mc['_offset'], {'Body': bytes(mc['raw_body'])}, v)
 
-        with open(self.filepath, 'wb') as f:
-            f.write(out)
         n_src = sum(len(c['sources']) for c in p.constraints)
-        print(f'[JCNS] Written {len(out)} bytes → {self.filepath} '
-              f'(v{v} in place: Cns={len(p.constraints)}, Src={n_src}, Mat={len(p.material_cns)})')
-        return True
+        self.summary = f' (v{v} in place: Cns={len(p.constraints)}, Src={n_src}, Mat={len(p.material_cns)})'
+        return bytes(out)
 
 
 # Defaults for fields a newly created constraint / source has no value for.

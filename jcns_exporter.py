@@ -579,6 +579,117 @@ def _patch_constraint_from_empty(parsed_c, empty_obj, hash_list, sections_cached
     ])
 
 
+class ExportRefused(Exception):
+    """An export that cannot be built; the message is for the user, `level` the report it goes out as."""
+    def __init__(self, msg, level='ERROR'):
+        super().__init__(msg)
+        self.level = level
+
+
+def build_export(root_obj, version, use_source=True):
+    """
+    (parser, state, warnings) for exporting `root_obj` as `version`: the parser the writer
+    turns into the file, the facts the report is worded from, and the warnings to show.
+    Raises ExportRefused.  Blender data is only read.  With use_source=False a root that can
+    be rebuilt is built from its stored data alone, without reading the source file.
+    """
+    from . import get_constraint_empties, entries_of
+
+    root_props = root_obj.jcns_root_props
+    source_path = bpy.path.abspath(root_props.source_filepath)
+    is_new = not root_props.source_filepath      # made with New JCNS, never saved
+    # An upgraded file is exported from Blender's data: its source is an older version.
+    upgraded = bool(root_props.upgraded_from)
+    # A cross-version export is built from Blender's data too, in the other version.
+    converted_from = _root_version(root_props) if version != _root_version(root_props) else 0
+    if converted_from and not root_props.sections_cached:
+        raise ExportRefused(T("io.export.old_no_data"))
+    stub_ok = (root_props.source_version and root_props.sections_cached
+               and root_write_mode(root_props) == 'rebuild')
+    source_exists = (os.path.isfile(source_path) and not upgraded and not converted_from
+                     and (use_source or not stub_ok))
+    warnings = []
+
+    empties = get_constraint_empties(root_obj)
+    # Files made only of Multi / Aim / RotExpression / Material entries have no Ranges.
+    if not empties and not entries_of(root_obj):
+        raise ExportRefused(T("io.export.no_entries"), 'WARNING')
+
+    _ensure_modules_path()
+    if source_exists:
+        try:
+            from jcns_parser import JCNSParser
+            parser = JCNSParser(source_path)
+            parser.parse()
+        except Exception as exc:
+            raise ExportRefused(T("io.export.reparse_failed", exc))
+    else:
+        if not root_props.source_version:
+            raise ExportRefused(T("io.export.source_missing_old", source_path))
+        if use_source and not upgraded and not is_new and not converted_from:
+            warnings.append(T("io.export.source_missing_rebuild"))
+        parser = _build_stub_parser(root_props, version)
+        parser.converted_from = converted_from
+
+    if parser.write_mode == 'rebuild' and not root_props.sections_cached:
+        raise ExportRefused(T("io.export.old_no_data"))
+
+    problems = _sync_sections_to_parser(root_obj, root_props, parser)
+    if problems:
+        raise ExportRefused(format_problems_early(problems, os.path.basename(source_path)))
+
+    from jcns_validate import check_exportable, check_in_place_edits, format_problems
+    problems = check_exportable(parser)
+    if problems:
+        raise ExportRefused(format_problems(problems, os.path.basename(source_path)))
+
+    from . import jcns_merge_ops
+    shared = jcns_merge_ops.shared_channel_warning(empties, root_props)
+    if shared:
+        warnings.append(shared)
+
+    final_constraints = []
+    for i, empty in enumerate(empties):
+        if parser.write_mode == 'rebuild':
+            parsed_c = _make_default_constraint_dict(empty)
+        else:
+            # In place, each entry rides on the record at its position.
+            parsed_c = (parser.constraints[i] if i < len(parser.constraints)
+                        else _make_default_constraint_dict(empty))
+        _patch_constraint_from_empty(parsed_c, empty, parser.hash_list,
+                                     root_props.sections_cached, parser.version)
+        if converted_from:
+            notes = parser.conversion_notes
+            had_cones = bool(parsed_c['ConeDriver'])
+            notes['cone_driver'] = notes.get('cone_driver', 0) + convert_constraint(
+                parsed_c, parser.version, getattr(parser, 'cone_index_map', None))
+            if had_cones and not parsed_c['ConeDriver'] and not parsed_c['sources']:
+                notes['empty'] = notes.get('empty', 0) + 1       # nothing is left to drive it
+                continue
+            if parser.version < 35 and parsed_c['TransformElement'] > MAX_TRANSFORM_ELEMENT_PRE35:
+                notes['target'] = notes.get('target', 0) + 1
+        final_constraints.append(parsed_c)
+
+    parser.constraints = final_constraints
+    from jcns_writer import regrouped_entries
+    regrouped = regrouped_entries(final_constraints)
+    if regrouped:
+        warnings.append(T("io.export.regrouped", T("io.sep.list").join(
+            "[%02d] %s" % (i, final_constraints[i].get('ObjectName', '')) for i in regrouped[:6])))
+
+    _sync_non_range_to_parser(root_obj, parser)
+
+    # In-place versions change values only; report every structural edit at once.
+    if parser.write_mode == 'inplace':
+        problems = check_in_place_edits(parser)
+        if problems:
+            raise ExportRefused(format_problems(problems, os.path.basename(source_path)))
+
+    state = {'source_path': source_path, 'is_new': is_new, 'upgraded': upgraded,
+             'converted_from': converted_from, 'source_exists': source_exists}
+    return parser, state, warnings
+
+
 # ---------------------------------------------------------------------------
 # Export Operator
 # ---------------------------------------------------------------------------
@@ -669,115 +780,23 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
         return change_ext
 
     def execute(self, context):
-        from . import get_constraint_empties, entries_of
-
         root_obj, root_props = _get_active_root(context)
         if root_obj is None:
             self.report({'ERROR'}, T("io.export.no_root"))
             return {'CANCELLED'}
-
-        source_path = bpy.path.abspath(root_props.source_filepath)
-        is_new = not root_props.source_filepath      # made with New JCNS, never saved
-        # An upgraded file is exported from Blender's data: its source is an older version.
-        upgraded = bool(root_props.upgraded_from)
-        # A cross-version export is built from Blender's data too, in the other version.
-        version = self._version(root_props)
-        converted_from = _root_version(root_props) if version != _root_version(root_props) else 0
-        if converted_from and not root_props.sections_cached:
-            self.report({'ERROR'}, T("io.export.old_no_data"))
+        try:
+            parser, state, warnings = build_export(root_obj, self._version(root_props))
+        except ExportRefused as exc:
+            if exc.level == 'ERROR':
+                print("[JCNS EXPORT] " + str(exc))
+            self.report({exc.level}, str(exc).replace('\n', '  '))
             return {'CANCELLED'}
-        source_exists = os.path.isfile(source_path) and not upgraded and not converted_from
-
-        empties = get_constraint_empties(root_obj)
-        # Files made only of Multi / Aim / RotExpression / Material entries have no Ranges.
-        if not empties and not entries_of(root_obj):
-            self.report({'WARNING'}, T("io.export.no_entries"))
-            return {'CANCELLED'}
-
-        _ensure_modules_path()
-        if source_exists:
-            try:
-                from jcns_parser import JCNSParser
-                parser = JCNSParser(source_path)
-                parser.parse()
-            except Exception as exc:
-                self.report({'ERROR'}, T("io.export.reparse_failed", exc))
-                return {'CANCELLED'}
-        else:
-            if not root_props.source_version:
-                self.report({'ERROR'}, T("io.export.source_missing_old", source_path))
-                return {'CANCELLED'}
-            if not upgraded and not is_new and not converted_from:
-                self.report({'WARNING'}, T("io.export.source_missing_rebuild"))
-            parser = _build_stub_parser(root_props, version)
-            parser.converted_from = converted_from
-
-        if parser.write_mode == 'rebuild' and not root_props.sections_cached:
-            self.report({'ERROR'}, T("io.export.old_no_data"))
-            return {'CANCELLED'}
-
-        problems = _sync_sections_to_parser(root_obj, root_props, parser)
-        if problems:
-            msg = format_problems_early(problems, os.path.basename(source_path))
-            print("[JCNS EXPORT] " + msg)
-            self.report({'ERROR'}, msg.replace('\n', '  '))
-            return {'CANCELLED'}
-
-        from jcns_validate import check_exportable, check_in_place_edits, format_problems
-        problems = check_exportable(parser)
-        if problems:
-            msg = format_problems(problems, os.path.basename(source_path))
-            print("[JCNS EXPORT] " + msg)
-            self.report({'ERROR'}, msg.replace('\n', '  '))
-            return {'CANCELLED'}
-
-        from . import jcns_merge_ops
-        shared = jcns_merge_ops.shared_channel_warning(empties, root_props)
-        if shared:
-            print("[JCNS EXPORT] " + shared)
-            self.report({'WARNING'}, shared)
-
-        final_constraints = []
-        for i, empty in enumerate(empties):
-            if parser.write_mode == 'rebuild':
-                parsed_c = _make_default_constraint_dict(empty)
-            else:
-                # In place, each entry rides on the record at its position.
-                parsed_c = (parser.constraints[i] if i < len(parser.constraints)
-                            else _make_default_constraint_dict(empty))
-            _patch_constraint_from_empty(parsed_c, empty, parser.hash_list,
-                                         root_props.sections_cached, parser.version)
-            if converted_from:
-                notes = parser.conversion_notes
-                had_cones = bool(parsed_c['ConeDriver'])
-                notes['cone_driver'] = notes.get('cone_driver', 0) + convert_constraint(
-                    parsed_c, parser.version, getattr(parser, 'cone_index_map', None))
-                if had_cones and not parsed_c['ConeDriver'] and not parsed_c['sources']:
-                    notes['empty'] = notes.get('empty', 0) + 1       # nothing is left to drive it
-                    continue
-                if parser.version < 35 and parsed_c['TransformElement'] > MAX_TRANSFORM_ELEMENT_PRE35:
-                    notes['target'] = notes.get('target', 0) + 1
-            final_constraints.append(parsed_c)
-
-        parser.constraints = final_constraints
-        from jcns_writer import regrouped_entries
-        regrouped = regrouped_entries(final_constraints)
-        if regrouped:
-            msg = T("io.export.regrouped", T("io.sep.list").join(
-                "[%02d] %s" % (i, final_constraints[i].get('ObjectName', '')) for i in regrouped[:6]))
+        for msg in warnings:
             print("[JCNS EXPORT] " + msg)
             self.report({'WARNING'}, msg)
-
-        _sync_non_range_to_parser(root_obj, parser)
-
-        # In-place versions change values only; report every structural edit at once.
-        if parser.write_mode == 'inplace':
-            problems = check_in_place_edits(parser)
-            if problems:
-                msg = format_problems(problems, os.path.basename(source_path))
-                print("[JCNS EXPORT] " + msg)
-                self.report({'ERROR'}, msg.replace('\n', '  '))
-                return {'CANCELLED'}
+        source_path, is_new, upgraded, converted_from, source_exists = (
+            state['source_path'], state['is_new'], state['upgraded'], state['converted_from'],
+            state['source_exists'])
 
         md5_before = None
         if source_exists:
