@@ -53,7 +53,7 @@ with contextlib.redirect_stdout(quiet):
 arm = [o for o in bpy.data.objects if o.type == 'ARMATURE'][0]
 with contextlib.redirect_stdout(quiet):
     bpy.ops.jcns.import_file(filepath=jcns, target_armature_name=arm.name)
-col = [c for c in bpy.data.collections if c.name.startswith('JCNS_')][0]
+col = [c for c in bpy.data.collections if c.get('~TYPE') == 'RE_JCNS_COLLECTION'][0]
 root = [o for o in col.objects if getattr(o, 'jcns_root_props', None) and o.jcns_root_props.source_filepath][0]
 for o in bpy.context.view_layer.objects:
     o.select_set(False)

@@ -85,6 +85,19 @@ def _build_stub_parser(root_props, version=None):
     return parser
 
 
+def _apply_header_flags(parser, root_props):
+    """The two header flag bytes as edited on the root: both writers start from these bytes."""
+    from jcns_schema import HEADER
+    if not HEADER.has('HeaderUnknownByte1', parser.version):
+        return
+    flags = {'HeaderUnknownByte1': root_props.header_unknown_bytes[0],
+             'HeaderUnknownByte2': root_props.header_unknown_bytes[1]}
+    head = bytearray(parser.original_bytes)
+    HEADER.pack_into(head, parser.header['DataEntry'], flags, parser.version)
+    parser.original_bytes = bytes(head)
+    parser.header.update(flags)
+
+
 def skeleton_of(arm):
     """({joint hash: parent hash or None}, {joint hash: name}) of an armature, or (None, None)."""
     if arm is None or arm.type != 'ARMATURE':
@@ -685,6 +698,8 @@ def build_export(root_obj, version, use_source=True):
         if problems:
             raise ExportRefused(format_problems(problems, os.path.basename(source_path)))
 
+    _apply_header_flags(parser, root_props)
+
     state = {'source_path': source_path, 'is_new': is_new, 'upgraded': upgraded,
              'converted_from': converted_from, 'source_exists': source_exists}
     return parser, state, warnings
@@ -747,7 +762,7 @@ class JCNS_OT_ExportFile(Operator, ExportHelper):
         if rp:
             self.filename_ext = f".jcns.{self._version(rp)}"
             if not rp.source_filepath:
-                self.filepath = root.name
+                self.filepath = root.name.removeprefix('JCNS_HEADER ').removesuffix('.jcns')
 
             if rp.source_filepath:
                 path = bpy.path.abspath(rp.source_filepath)

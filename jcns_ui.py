@@ -639,6 +639,42 @@ class JCNS_PT_ConeInputs(_RootPanel, Panel):
 
 
 # ---------------------------------------------------------------------------
+# 文件头：选中根空物体时出现，对应 RE Chain Editor 选中 CHAIN_HEADER
+# ---------------------------------------------------------------------------
+
+class JCNS_PT_Header(Panel):
+    bl_description = T("ui.header.panel_desc")
+    bl_label    = T("ui.header.label")
+    bl_idname   = "JCNS_PT_header"
+    bl_space_type  = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category    = T("common.category")
+    bl_order    = 1
+
+    @classmethod
+    def poll(cls, context):
+        from . import get_jcns_root
+        return get_jcns_root(context)[0] is not None
+
+    def draw(self, context):
+        from . import get_jcns_root
+        from .jcns_exporter import _root_version, root_write_mode
+        _root, rp = get_jcns_root(context)
+        v = _root_version(rp)
+        col = self.layout.column()
+        shown = False
+        if v >= 29:
+            col.prop(rp, "header_unknown_bytes")
+            shown = True
+        # Written only when the file is rebuilt; in place its records keep the source byte.
+        if v >= 29 and root_write_mode(rp) == 'rebuild':
+            col.prop(rp, "file_constant")
+            shown = True
+        if not shown:
+            col.label(text=T("ui.header.none"), icon='INFO')
+
+
+# ---------------------------------------------------------------------------
 # 文件信息
 # ---------------------------------------------------------------------------
 
@@ -682,6 +718,7 @@ _classes = [
     JCNS_UL_Entries,
     JCNS_UL_MdfRefs,
     JCNS_PT_Status,
+    JCNS_PT_Header,
     JCNS_PT_Preview,
     JCNS_PT_Edit,
     JCNS_PT_ConeInputs,

@@ -1207,7 +1207,9 @@ class JCNSRootProperties(PropertyGroup):
         name=T("props.root.entry_index"), description=T("props.root.entry_index_desc"),
         get=_entry_index_get, set=_entry_index_set,
     )
-    file_constant: IntProperty(default=5)
+    file_constant: IntProperty(
+        name=T("props.root.file_constant"), default=5, min=0, max=255,
+        description=T("props.root.file_constant_desc"))
     # ReadJointTable: the joints Multi and Aim read, in file order (see jcns_sections).
     read_joint_table: CollectionProperty(type=JCNSHashItem)
     read_joint_index: IntProperty(default=0)

@@ -67,6 +67,12 @@ STRINGS = {
     "ui.fileinfo.read_table": {"ZH": "读取骨表：%d", "EN": "Read bone table: %d"},
     "ui.fileinfo.read_table_pending": {"ZH": "导出时按目标骨架计算", "EN": "Computed from the target armature on export"},
 
+    # --- jcns_ui.py: header panel (root Empty selected) ---
+    "ui.header.label": {"ZH": "文件头", "EN": "Header"},
+    "ui.header.panel_desc": {"ZH": "选中 JCNS_HEADER 时显示。只列不由条目推导、导出照写的量。",
+                             "EN": "Shown with JCNS_HEADER selected. Only values not derived from the entries, written as set."},
+    "ui.header.none": {"ZH": "这个版本的文件头没有可编辑的量", "EN": "This version's header has nothing to edit"},
+
     # --- jcns_preview.py ---
     "ui.preview.no_preview_kind": {"ZH": "这一类没有预览", "EN": "This section has no preview"},
     "ui.preview.bone_missing": {"ZH": "%s — 找不到骨骼「%s」", "EN": "%s — bone \"%s\" not found"},

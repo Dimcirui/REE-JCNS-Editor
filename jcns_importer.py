@@ -3,7 +3,7 @@ jcns_importer.py
 ----------------
 Import operator for RE Engine JCNS files (every version in jcns_schema).
 
-Builds a collection JCNS_<filename> holding one root Empty (JCNSRootProperties)
+Builds a collection <filename>.jcns holding one root Empty (JCNSRootProperties)
 and one child Empty per entry (JCNSConstraintProperties).
 """
 
@@ -90,13 +90,33 @@ def _strip_ext(filename):
     return filename
 
 
-def _new_jcns_collection(context, name):
-    """A green collection under the scene root, tagged so other add-ons can filter on it."""
+def _group_collection(armature_obj):
+    """The collection grouping the armature's .mesh collection with its .mdf2/.chain2, as
+    RE Mesh Editor builds it; None when the armature is not in one."""
+    if armature_obj is None:
+        return None
+    for mesh_coll in armature_obj.users_collection:
+        if mesh_coll.get("~TYPE") != "RE_MESH_COLLECTION":
+            continue
+        for coll in bpy.data.collections:
+            if mesh_coll.name in coll.children:
+                return coll
+    return None
+
+
+def _new_jcns_collection(context, name, armature_obj=None):
+    """A green collection beside the armature's mesh collection (RE Chain Editor's rule),
+    else under the scene root; tagged so other add-ons can filter on it."""
     coll = bpy.data.collections.new(name)
     coll.color_tag = 'COLOR_04'   # green
     coll["~TYPE"] = "RE_JCNS_COLLECTION"
-    context.scene.collection.children.link(coll)
+    (_group_collection(armature_obj) or context.scene.collection).children.link(coll)
     return coll
+
+
+def header_name(coll):
+    """The root Empty's name, after RE Chain Editor's 'CHAIN_HEADER <file>.chain2'."""
+    return f"JCNS_HEADER {coll.name}"
 
 
 def game_asset_path(filepath):
@@ -168,13 +188,12 @@ def do_import(filepath, context, armature_obj=None):
     hash_dict = _build_hash_dict(armature_obj) if armature_obj else {}
 
     filename = _strip_ext(os.path.basename(filepath))
-    coll_name = f"JCNS_{filename}"
-    coll = _new_jcns_collection(context, coll_name)
+    coll = _new_jcns_collection(context, f"{filename}.jcns", armature_obj)
     asset_path = game_asset_path(filepath)
     if asset_path:
         coll["~ASSETPATH"] = asset_path
 
-    root = bpy.data.objects.new(coll_name, None)
+    root = bpy.data.objects.new(header_name(coll), None)
     root.empty_display_type = 'PLAIN_AXES'
     root.empty_display_size = 0.2
     root.show_in_front = True
@@ -543,10 +562,12 @@ class JCNS_OT_ImportFile(Operator, ImportHelper):
         return {'FINISHED'}
 
     def invoke(self, context, event):
-        for obj in context.scene.objects:
-            if obj.type == 'ARMATURE':
-                self.target_armature_name = obj.name
-                break
+        # The active armature first: it decides which mesh group the collection joins.
+        obj = context.active_object
+        if obj is None or obj.type != 'ARMATURE':
+            obj = next((o for o in context.scene.objects if o.type == 'ARMATURE'), None)
+        if obj is not None:
+            self.target_armature_name = obj.name
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
@@ -570,9 +591,9 @@ def do_new(context, game, armature_obj=None):
     """An empty JCNS collection with its root Empty, in the newest version of `game`.
     Nothing is read from a file: the export builds the file header from the root."""
     version = {g: v for g, v, _ in NEW_FILE_GAMES}[game]
-    coll = _new_jcns_collection(context, f"JCNS_new_{_NEW_NAME[game]}")
+    coll = _new_jcns_collection(context, f"new_{_NEW_NAME[game]}.jcns", armature_obj)
 
-    root = bpy.data.objects.new(coll.name, None)
+    root = bpy.data.objects.new(header_name(coll), None)
     root.empty_display_type = 'PLAIN_AXES'
     root.empty_display_size = 0.2
     root.show_in_front = True
