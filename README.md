@@ -1,7 +1,7 @@
 # REE JCNS Editor
 
 A Blender add-on for importing, editing and exporting RE Engine `.jcns` (joint
-constraint) files.
+constraint) and `.jntexprgraph` (expression graph) files.
 
 A `.jcns` file makes bones, blendshapes and material parameters follow the pose
 of other bones. Each constraint reads a value from a source bone (rotation,
@@ -16,6 +16,8 @@ and applies the result to a target.
 - **Export**: the file is written back. Newer versions have full editing support:
   constraints can be added, deleted and re-pointed. Older versions only support
   changing values. See [Supported Games](#supported-games).
+
+Expression graphs are node graphs for the same job; see [Expression Graphs](#expression-graphs).
 
 ## Supported Games
 
@@ -52,12 +54,34 @@ upgraded to v102 on import.
 | Material | Bones drive material properties | ✅ Editable | ✏️ Hashes and transform ID | — |
 | JointExprGraph | Runs an expression graph at this point of the file's order | ✅ Path, opens the graph | 🔒 Locked | — |
 
-Expression graphs (`.jntexprgraph`) import into Blender's node editor as a "JCNS Expression Graph" tree and export back unchanged. Nodes that are game scripts keep their parameters as read; only their links can change.
-
 Fields whose in-game meaning is unknown are shown as raw numbers. Dependencies are
 regenerated on export and ObjectSettings are kept as they are.
 
 ¹ Changing Multi or Aim bones requires the target armature to be set first.
+
+## Expression Graphs
+
+A `.jntexprgraph` is a node graph: nodes read bones, do math or follow time, and
+write bones. It can make things a `.jcns` cannot, such as parts that spin, sway or
+switch on and off.
+
+- **Edit**: a file imports as a "JCNS Expression Graph" tree in Blender's node
+  editor. *Open Node Tree View* in the MHWs JCNS panel opens it in a new window.
+  Add nodes with Shift+A and connect them; bone inputs take bone names.
+- **Preview**: *Play Preview* drives the armature by the graph. It follows the
+  timeline and posing, and turning it off puts the bones back.
+- **Export**: the graph is checked, then written back. An unchanged import
+  exports byte for byte.
+
+| Version | Game | Editing |
+| --- | --- | --- |
+| 6 | Monster Hunter Wilds | ✅ Full |
+
+- Nodes that are game scripts (C#) keep their parameters as read; only their links
+  can change, and they are not previewed.
+- Node types the shipped files never use cannot be added yet.
+- Node behaviour in the preview follows the game's code for the common nodes;
+  docs/jntexprgraph.md lists which ones.
 
 ## Installation
 
