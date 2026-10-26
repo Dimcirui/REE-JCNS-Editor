@@ -10,21 +10,14 @@ at once, so a later read of that joint, or of a child in global space, sees it.
 Joint values are game space: positions in metres (a node's CoordUnit picks metres
 or centimetres for what it reads and writes), rotations as quaternions (w, x, y, z).
 
-Modelled, not measured in game — preview only:
-  * CoordSpace 0 Local: the joint's whole parent-relative transform; 1 Global: world;
-    2 LocalDiffBase: relative to the rest pose (rest * value, rest offset + value).
-  * A Set node replaces what it writes.  Unfed rotation components are 0; unfed
-    position components keep the joint's current value.
-  * RotComposeType 0 RotRPY composes R = Ry * Rx * Rz (Z first), 1 RotPYR R = Rz * Ry * Rx
-    (X first), 2 ExpMap is a rotation vector.  Single-axis rotations, almost all of the
-    shipped graphs, do not depend on this.
-  * CyclicalAngle: an angle that advances by speed * dt each step, wrapped to [0, 2 pi),
-    so a changing speed speeds the turn up or down smoothly.  Sin/Cos/SawToothWave
-    (speed, low, high): low + (high - low) * wave(phase), the phase advancing the same way.
-    Without a `state` (or for a node it has not seen) the phase is speed * t.
-  * FloatEaseCurve (low, high, t): low + (high - low) * ease(t), ease from the curve type.
-  * FloatSwitch (condition, if true, if false); FloatMap (in, in min, in max, out min,
-    out max, clamp); MaFloatRemap (in, (in min, in mid, in max), (out min, mid, max)).
+How each node computes was read off the game's own code (the node classes' vtables:
+setInt/setFloat/... store a slot into a field, getFloat/update compute from the fields;
+docs/jntexprgraph.md lists them).  What stays modelled here:
+  * the time step: the engine advances its timers by the frame time; the preview by the
+    timeline step (see `evaluate`), restarting at t mod period when there is no state;
+  * a Joint node's LOD threshold (slot 1) is ignored, the node always runs, and a layer
+    BlendRate below 1 (the engine slerps / lerps towards the result) is taken as 1;
+  * a float linked into a bool slot reads true when it is not ~0.
 
 Nodes outside the list below (C# nodes, Ziva, KeyFrameCurve, MaEulerConstraint,
 JointDriverFloat...) output zeros; `Result.unsupported` names them.
@@ -33,9 +26,12 @@ JointDriverFloat...) output zeros; `Result.unsupported` names them.
 import math
 import struct
 
+from jcns_source_read import _euler, from_euler_order
+
 ZERO3 = (0.0, 0.0, 0.0)
 IDQ = (1.0, 0.0, 0.0, 0.0)
 TAU = 2.0 * math.pi
+EPS = 1.1920929e-07                     # FLT_EPSILON, the engine's "~0" in these nodes
 
 
 # ------------------------------------------------------------------ quaternion math
@@ -81,48 +77,15 @@ def qslerp(a, b, t):
     return tuple(wa * x + wb * y for x, y in zip(a, b))
 
 
-# axis order applied first .. last, per RotComposeType
-_ORDERS = {0: (2, 0, 1), 1: (0, 1, 2)}
+def compose(order, v):
+    """A rotation from Euler angles (x, y, z, radians) in a RotOrder, as the engine's converter does
+    (the same one JCNS joint groups use): 0 XYZ R = Rz*Ry*Rx, 1 YZX, 2 ZXY, 3 ZYX, 4 YXZ, 5 XZY."""
+    return qnorm(from_euler_order(v, order))
 
 
-def compose(form, v):
-    """A rotation from three components in a RotComposeType form (radians)."""
-    if form == 2:
-        ang = math.sqrt(sum(c * c for c in v))
-        if ang < 1e-12:
-            return IDQ
-        s = math.sin(ang / 2.0) / ang
-        return (math.cos(ang / 2.0), v[0] * s, v[1] * s, v[2] * s)
-    q = IDQ
-    for axis in _ORDERS.get(form, _ORDERS[1]):
-        q = qmul(qaxis(axis, v[axis]), q)
-    return q
-
-
-def decompose(form, q):
-    """The three components of `q` in a RotComposeType form (radians)."""
-    q = qnorm(q)
-    if form == 2:
-        if q[0] < 0:
-            q = tuple(-c for c in q)
-        s = math.sqrt(q[1] ** 2 + q[2] ** 2 + q[3] ** 2)
-        if s < 1e-12:
-            return ZERO3
-        ang = 2.0 * math.atan2(s, q[0])
-        return tuple(c / s * ang for c in q[1:])
-    order = _ORDERS.get(form, _ORDERS[1])
-    m = _matrix(q)
-    i, j, k = order                      # R = R_k * R_j * R_i
-    sign = 1.0 if (j - i) % 3 == 1 else -1.0
-    out = [0.0, 0.0, 0.0]
-    sy = -sign * m[k][i]
-    out[j] = math.asin(max(-1.0, min(1.0, sy)))
-    if abs(sy) < 0.999999:
-        out[i] = math.atan2(sign * m[k][j], m[k][k])
-        out[k] = math.atan2(sign * m[j][i], m[i][i])
-    else:
-        out[i] = math.atan2(-sign * m[j][k], m[j][j])
-    return tuple(out)
+def decompose(order, q):
+    """Euler angles (x, y, z, radians) of `q` in a RotOrder."""
+    return tuple(_euler(qnorm(q), order))
 
 
 def _matrix(q):
@@ -207,24 +170,85 @@ def _angle_unit(n):
     return 180.0 / math.pi if n == 1 else 1.0   # RotUnit 0 radians, 1 degrees
 
 
-def _wave(kind, x):
-    if kind == 'sin':
-        return 0.5 + 0.5 * math.sin(x)
-    if kind == 'cos':
-        return 0.5 + 0.5 * math.cos(x)
-    return (x / TAU) % 1.0
+def _ease(kind, t):
+    """via.curve.EaseType (Robert Penner's set) at t in [0, 1]."""
+    if kind == 0:
+        return t
+    family, mode = divmod(kind - 1, 3)            # mode 0 In, 1 Out, 2 InOut
+    f = _EASE_IN[family] if family < len(_EASE_IN) else (lambda x: x)
+    if mode == 0:
+        return f(t)
+    if mode == 1:
+        return 1.0 - f(1.0 - t)
+    return f(2 * t) / 2 if t < 0.5 else 1.0 - f(2 - 2 * t) / 2
 
 
-_EASE = {0: lambda t: t, 1: lambda t: t ** 3, 2: lambda t: 1 - (1 - t) ** 3, 3: lambda t: 3 * t * t - 2 * t ** 3}
+def _back(x):
+    c = 1.70158
+    return (c + 1) * x ** 3 - c * x * x
 
 
-def _remap(x, a, b, c, d, clamp=True):
-    if b == a:
-        return d
-    t = (x - a) / (b - a)
+def _elastic(x):
+    if x <= 0.0 or x >= 1.0:
+        return x
+    return -(2 ** (10 * x - 10)) * math.sin((10 * x - 10.75) * TAU / 3)
+
+
+def _bounce_out(x):
+    n, d = 7.5625, 2.75
+    if x < 1 / d:
+        return n * x * x
+    if x < 2 / d:
+        x -= 1.5 / d
+        return n * x * x + 0.75
+    if x < 2.5 / d:
+        x -= 2.25 / d
+        return n * x * x + 0.9375
+    x -= 2.625 / d
+    return n * x * x + 0.984375
+
+
+# In-curves of Sine, Quad, Cubic, Quart, Quint, Expo, Circ, Back, Elastic, Bounce (EaseType 1..30)
+_EASE_IN = (lambda x: 1 - math.cos(x * math.pi / 2), lambda x: x * x, lambda x: x ** 3, lambda x: x ** 4,
+            lambda x: x ** 5, lambda x: 0.0 if x <= 0 else 2 ** (10 * x - 10),
+            lambda x: 1 - math.sqrt(max(0.0, 1 - x * x)), _back, _elastic, lambda x: 1 - _bounce_out(1 - x))
+
+
+def _float_map(x, a, b, c, d, clamp):
+    """FloatMap: c when the input range is empty; the input clamped to [a, b] when asked."""
+    if a == b:
+        return c
     if clamp:
-        t = min(1.0, max(0.0, t))
-    return c + (d - c) * t
+        x = a if x < a else min(x, b)
+    return (x - a) / (b - a) * (d - c) + c
+
+
+# MaFloatRemap interpolation (slot 3)
+_SEGMENT = {1: lambda t: t ** 3, 2: lambda t: 1 - (1 - t) ** 3, 3: lambda t: 3 * t * t - 2 * t ** 3}
+
+
+def _segment(x, a, b, c, d, kind):
+    if b - a <= EPS:
+        return 0.0
+    t = min(1.0, max(0.0, (x - a) / (b - a)))
+    return c + (d - c) * _SEGMENT.get(kind, lambda t: t)(t)
+
+
+def _remap3(x, i, o, kind, use_mid):
+    """MaFloatRemap: below the low point the low output, above the high point the high one,
+    between them one segment, or two split at the mid point when `use_mid`.  A descending
+    input range is turned round, outputs with it."""
+    lo, mid, hi = i
+    olo, omid, ohi = o
+    if (mid if use_mid else hi) <= lo and not (use_mid and mid > hi):
+        lo, hi, olo, ohi = hi, lo, ohi, olo
+    if x <= lo:
+        return olo
+    if x >= hi:
+        return ohi
+    if use_mid:
+        return _segment(x, lo, mid, olo, omid, kind) if x <= mid else _segment(x, mid, hi, omid, ohi, kind)
+    return _segment(x, lo, hi, olo, ohi, kind)
 
 
 # ------------------------------------------------------------------ evaluation
@@ -236,14 +260,19 @@ class _Eval:
         self.cache = {}
         self.res = Result()
 
-    def phase(self, i, speed):
-        """The node's phase: speed * t without state, else last step's phase + speed * dt."""
+    def timer(self, i, period):
+        """The node's time within its period, or None while the period is ~0 (then it holds).
+
+        The engine adds the frame time each update and subtracts the period while the sum
+        reaches it; without state the preview starts at t mod period."""
+        if period <= EPS:
+            return None
         if self.state is None:
-            return speed * self.t
+            return math.fmod(self.t, period)
         key = self.G['nodes'][i]['guid']
         prev = self.state.get(key)
-        value = speed * self.t if prev is None else prev + speed * self.dt
-        self.state[key] = value % TAU
+        value = math.fmod(self.t, period) if prev is None else math.fmod(prev + self.dt, period)
+        self.state[key] = value
         return value
 
     def inp(self, i, slot, vtype):
@@ -328,16 +357,22 @@ class _Eval:
         h = self.joint(i)
         if h is None:
             return {}
-        space, form = self.inp(i, 2, 'int'), self.inp(i, 3, 'int')
+        space, order = self.inp(i, 2, 'int'), self.inp(i, 3, 'int')
         if self.has(i, 11):
             q = self.inp(i, 11, 'quat')
         else:
+            # unfed components keep the joint's current angles in this space and order; for
+            # LocalDiffBase the engine decomposes the inverse rest rotation, not the pose
             k = _angle_unit(self.inp(i, 6, 'int'))
-            v = list(self.inp(i, 13, 'vec3')) if self.has(i, 13) else [0.0, 0.0, 0.0]
-            for axis in range(3):
-                if self.has(i, 20 + axis):
-                    v[axis] = self.inp(i, 20 + axis, 'float')
-            q = compose(form, [c / k for c in v])
+            if self.has(i, 13):
+                v = list(self.inp(i, 13, 'vec3'))
+            else:
+                cur = qconj(self.skel.rest[h][1]) if space == 2 else self._read(h, space)[1]
+                v = [c * k for c in decompose(order, cur)]
+                for axis in range(3):
+                    if self.has(i, 20 + axis):
+                        v[axis] = self.inp(i, 20 + axis, 'float')
+            q = compose(order, [c / k for c in v])
         if space == 1:
             q = qmul(qconj(self.skel.parent_world(h)[1]), q)
         elif space == 2:
@@ -356,6 +391,23 @@ class _Eval:
             return {10: ZERO3, 11: IDQ, 12: (1.0, 1.0, 1.0)}
         pos, q = self.skel.local[h]
         return {10: tuple(c * 100.0 for c in pos), 11: q, 12: (1.0, 1.0, 1.0)}
+
+    def cyclic(self, i, wave):
+        """CyclicalAngle (wave None): 2 pi * time / period.  Sin/Cos/SawToothWave (period, A, B):
+        A + (B - A) * (1 + sin|cos(2 pi * time / period)) / 2, or A + (B - A) * time / period."""
+        period = self.inp(i, 1, 'float')
+        tm = self.timer(i, period)
+        if tm is None:
+            return 0.0
+        frac = min(1.0, max(0.0, tm / period))
+        if wave is None:
+            return TAU * frac
+        a, b = self.inp(i, 2, 'float'), self.inp(i, 3, 'float')
+        if abs(b - a) <= EPS:
+            return b
+        if wave == 'saw':
+            return a + (b - a) * frac
+        return a + (b - a) * 0.5 * (1.0 + wave(TAU * frac))
 
     # -- everything else
 
@@ -387,12 +439,12 @@ class _Eval:
             'FloatClampNode': lambda: min(max(f(0), f(1)), f(2)),
             'CosNode': lambda: math.cos(f(1)),
             'Rad2DegNode': lambda: math.degrees(f(1)),
-            'FloatSwitchNode': lambda: f(1) if self.inp(i, 0, 'bool') else f(2),
-            'FloatMapNode': lambda: _remap(f(0), f(1), f(2), f(3), f(4), self.inp(i, 5, 'bool')),
-            'CyclicalAngleNode': lambda: self.phase(i, f(1)) % TAU,
-            'SinWaveNode': lambda: f(2) + (f(3) - f(2)) * _wave('sin', self.phase(i, f(1))),
-            'CosWaveNode': lambda: f(2) + (f(3) - f(2)) * _wave('cos', self.phase(i, f(1))),
-            'SawToothWaveNode': lambda: f(2) + (f(3) - f(2)) * _wave('saw', self.phase(i, f(1))),
+            'FloatSwitchNode': lambda: f(2) if self.inp(i, 0, 'bool') else f(1),
+            'FloatMapNode': lambda: _float_map(f(0), f(1), f(2), f(3), f(4), self.inp(i, 5, 'bool')),
+            'CyclicalAngleNode': lambda: self.cyclic(i, None),
+            'SinWaveNode': lambda: self.cyclic(i, math.sin),
+            'CosWaveNode': lambda: self.cyclic(i, math.cos),
+            'SawToothWaveNode': lambda: self.cyclic(i, 'saw'),
             'Vec3ValueNode': lambda: v3(0),
             'Vec3AddNode': lambda: tuple(a + b for a, b in zip(v3(0), v3(1))),
             'Vec3SubNode': lambda: tuple(a - b for a, b in zip(v3(0), v3(1))),
@@ -418,9 +470,9 @@ class _Eval:
         if short == 'FloatEaseCurveNode':
             kind = struct.unpack('<I', nd['extra'][:4])[0] if len(nd.get('extra', b'')) >= 4 else 0
             x = min(1.0, max(0.0, f(2)))
-            return {0: f(0) + (f(1) - f(0)) * _EASE.get(kind, _EASE[0])(x)}
+            return {0: f(0) + (f(1) - f(0)) * _ease(kind, x)}
         if short == 'MaFloatRemapNode':
-            return {0: _remap3(f(0), v3(1), v3(2))}
+            return {0: _remap3(f(0), v3(1), v3(2), self.inp(i, 3, 'int'), self.inp(i, 4, 'bool'))}
         if short == 'FloatMathCodeNode':
             return {0: _math_code(nd.get('extra', b''), lambda k: f(10 + k))}
         self.res.unsupported.add(short)
@@ -430,14 +482,6 @@ class _Eval:
 def _normalize(v):
     n = math.sqrt(sum(c * c for c in v))
     return tuple(c / n for c in v) if n > 1e-12 else ZERO3
-
-
-def _remap3(x, i, o):
-    lo, mid, hi = i
-    olo, omid, ohi = o
-    if lo < mid < hi or hi < mid < lo:
-        return _remap(x, lo, mid, olo, omid) if (x - mid) * (hi - lo) < 0 else _remap(x, mid, hi, omid, ohi)
-    return _remap(x, lo, hi, olo, ohi)
 
 
 def _math_code(code, var):
