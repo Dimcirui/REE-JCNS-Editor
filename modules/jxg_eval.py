@@ -19,8 +19,9 @@ docs/jntexprgraph.md lists them).  What stays modelled here:
     BlendRate below 1 (the engine slerps / lerps towards the result) is taken as 1;
   * a link into a bool slot: the engine tests != 0 exactly; the preview allows 1e-4 (see BOOL_EPS).
 
-Nodes outside the list below (C# nodes, Ziva, KeyFrameCurve, MaEulerConstraint,
-JointDriverFloat...) output zeros; `Result.unsupported` names them.
+Nodes outside the list below output zeros and `Result.unsupported` names them: C# nodes;
+MaEulerConstraint and JointDriverFloat (read, not ported: only monster and Ziva graphs use
+them); JointDecomposeRotate; Ziva, material and debug-draw nodes, which write nothing to bones.
 """
 
 import math
@@ -391,8 +392,9 @@ class _Eval:
         h = self.joint(i)
         if h is None:
             return {10: ZERO3, 11: IDQ, 12: (1.0, 1.0, 1.0)}
-        pos, q = self.skel.local[h]
-        return {10: tuple(c * 100.0 for c in pos), 11: q, 12: (1.0, 1.0, 1.0)}
+        # slot 4 set: the base (rest) pose; clear: the current local transform; metres
+        pos, q = self.skel.rest[h] if self.inp(i, 4, 'bool') else self.skel.local[h]
+        return {10: tuple(pos), 11: q, 12: (1.0, 1.0, 1.0)}
 
     def cyclic(self, i, wave):
         """CyclicalAngle (wave None): 2 pi * time / period.  Sin/Cos/SawToothWave (period, A, B):
@@ -439,7 +441,7 @@ class _Eval:
             'FloatMinNode': lambda: min(f(0), f(1)),
             'FloatAbsNode': lambda: abs(f(1)),
             'FloatClampNode': lambda: min(max(f(0), f(1)), f(2)),
-            'CosNode': lambda: math.cos(f(1)),
+            'CosNode': lambda: math.cos(math.radians(f(1)) if self.inp(i, 2, 'int') else f(1)),
             'Rad2DegNode': lambda: math.degrees(f(1)),
             'FloatSwitchNode': lambda: f(2) if self.inp(i, 0, 'bool') else f(1),
             'FloatMapNode': lambda: _float_map(f(0), f(1), f(2), f(3), f(4), self.inp(i, 5, 'bool')),
@@ -452,17 +454,29 @@ class _Eval:
             'Vec3SubNode': lambda: tuple(a - b for a, b in zip(v3(0), v3(1))),
             'Vec3MulNode': lambda: tuple(a * b for a, b in zip(v3(0), v3(1))),
             'Vec3NormalizeNode': lambda: _normalize(v3(0)),
+            'JointExprGraphLayerBlendRateNode': lambda: 1.0,
+            'KeyFrameCurveNode': lambda: _key_frame_curve(nd.get('extra', b''), f(0)),
             'Vec3TransformNode': lambda: qrot(qq(1), v3(0)),
             'Float3ToVec3Node': lambda: (f(1), f(2), f(3)),
             'QuatValueNode': lambda: qq(0),
-            'QuatMulNode': lambda: qnorm(qmul(qq(0), qq(1))),
-            'QuatInverseNode': lambda: qconj(qq(0)),
-            'QuatSlerpNode': lambda: qslerp(qq(0), qq(1), f(2)),
+            'QuatMulNode': lambda: qmul(qq(1), qq(0)),                 # the engine's mul(a, b) is b * a
+            'QuatInverseNode': lambda: _qinverse(qq(0)),
+            'QuatSlerpNode': lambda: qslerp(qq(0), qq(1), min(1.0, max(0.0, f(2)))),
         }
         if short in simple:
             return {0: simple[short]()}
+        if short == 'MaFloatMathNode':
+            a, b = f(2), f(3)
+            ops = {0: a + b, 1: a - b, 2: a * b, 3: a / b if b != 0.0 else 0.0, 4: min(a, b), 5: max(a, b)}
+            kind = self.inp(i, 0, 'int')
+            result = ops.get(kind, a) if kind != 6 else _safe(math.pow)(a, b)
+            return {1: result, 2: a, 3: b}
+        if short == 'MaGetConstraintScaleNode':
+            # the preview's skeleton carries no scale: unit, or 0 relative to the base (space 2)
+            v = 0.0 if self.inp(i, 2, 'int') == 2 else 1.0
+            return {12: (v, v, v), 20: v, 21: v, 22: v}
         if short == 'FloatSumNode':
-            return {0: sum(f(11 + k) for k in range(self.inp(i, 1, 'int')))}
+            return {0: sum(f(11 + k) for k in range(min(8, self.inp(i, 1, 'int'))))}       # at most 8
         if short == 'Vec3ToFloat3Node':
             v = v3(0)
             return {1: v[0], 2: v[1], 3: v[2]}
@@ -482,13 +496,50 @@ class _Eval:
 
 
 def _normalize(v):
+    """Unit vector; one shorter than FLT_EPSILON comes back unchanged, as in the engine."""
     n = math.sqrt(sum(c * c for c in v))
-    return tuple(c / n for c in v) if n > 1e-12 else ZERO3
+    return tuple(c / n for c in v) if n >= EPS else tuple(v)
+
+
+def _qinverse(q):
+    """The inverse (conjugate / |q|^2); a zero quaternion gives zero."""
+    n = sum(c * c for c in q)
+    return tuple(c / n for c in qconj(q)) if n > 0.0 else (0.0, 0.0, 0.0, 0.0)
+
+
+def _safe(f):
+    def g(*a):
+        try:
+            return float(f(*a))
+        except (ValueError, OverflowError, ZeroDivisionError):
+            return float('nan')
+    return g
+
+
+# FloatMathCode functions by argument count and id (the engine's tables)
+_MC_FUNCS = {
+    1: [lambda x: math.radians(x), lambda x: math.degrees(x), math.sin, math.cos, math.tan, math.acos,
+        math.asin, math.atan, math.floor, math.ceil, lambda x: math.floor(x + 0.5), abs,
+        lambda x: (x > 0) - (x < 0), math.log, math.log10, math.log2, math.exp, math.sqrt],
+    2: [math.atan2, math.pow, min, max],
+    3: [lambda x, lo, hi: lo if x < lo else min(x, hi), lambda a, b, t: a + (b - a) * t],
+}
+_MC_FUNCS = {n: [_safe(f) for f in fs] for n, fs in _MC_FUNCS.items()}
 
 
 def _math_code(code, var):
-    """FloatMathCodeNode's reverse-Polish program: 02 n 00 reads input n, 01 <f32> pushes
-    a constant, 04 op applies a binary operator (1 add, 2 sub, 3 mul, 4 div)."""
+    """FloatMathCodeNode's program, as the engine's interpreter runs it: a stack machine.
+
+      01 <f32>             push a constant
+      02 <u16 n>           push input n (0..7)
+      03 <u8 op>           unary, on the top: 2 negates
+      04 <u8 op>           binary: top OP below-top (the later push on the left): 1 + 2 - 3 * 4 /
+                           (0 when dividing by 0) 5 fmod; the result replaces both
+      05 <u16 id> <u8 n>   function of the n top values (top first): n=1 deg2rad rad2deg sin cos
+                           tan acos asin atan floor ceil round abs sign ln log10 log2 exp sqrt;
+                           n=2 atan2 pow min max; n=3 clamp(x, lo, hi) lerp(a, b, t)
+
+    The result is the one value left on the stack, else 0."""
     stack, k = [], 0
     try:
         while k < len(code):
@@ -497,17 +548,61 @@ def _math_code(code, var):
                 stack.append(struct.unpack_from('<f', code, k + 1)[0])
                 k += 5
             elif op == 2:
-                stack.append(var(code[k + 1] | code[k + 2] << 8))
+                n = code[k + 1] | code[k + 2] << 8
+                stack.append(var(n) if n <= 7 else 0.0)
                 k += 3
-            elif op == 4:
-                b, a = stack.pop(), stack.pop()
-                stack.append({1: a + b, 2: a - b, 3: a * b, 4: a / b if b else 0.0}.get(code[k + 1], 0.0))
+            elif op == 3:
+                if code[k + 1] == 2 and stack:
+                    stack[-1] = -stack[-1]
                 k += 2
+            elif op == 4:
+                top, below = stack.pop(), stack.pop()
+                kind = code[k + 1]
+                if kind == 1:
+                    r = top + below
+                elif kind == 2:
+                    r = top - below
+                elif kind == 3:
+                    r = top * below
+                elif kind == 4:
+                    r = top / below if below != 0.0 else 0.0
+                elif kind == 5:
+                    r = math.fmod(top, below) if below != 0.0 else float('nan')
+                else:
+                    r = below
+                stack.append(r)
+                k += 2
+            elif op == 5:
+                fid, argc = code[k + 1] | code[k + 2] << 8, code[k + 3]
+                args = [stack.pop() for _ in range(argc)]
+                table = _MC_FUNCS.get(argc, [])
+                stack.append(table[fid](*args) if fid < len(table) else 0.0)
+                k += 4
             else:
                 break
     except (IndexError, struct.error):
         pass
-    return stack[-1] if stack else 0.0
+    return stack[0] if len(stack) == 1 else 0.0
+
+
+def _key_frame_curve(extra, x):
+    """KeyFrameCurveNode: the extra data is u16 key count, u8 wrap before, u8 wrap after, 4 bytes,
+    then 28-byte keys laid out as JCNS ComplexMapping records; the engine evaluates both with the
+    same function, so jcns_complex does here."""
+    if len(extra) < 8:
+        return 0.0
+    import jcns_complex
+    n, pre, post = struct.unpack_from('<HBB', extra, 0)
+    recs = []
+    for k in range(n):
+        o = 8 + 28 * k
+        if o + 28 > len(extra):
+            break
+        fx, tx, fy, ty, fz, tz, _u = struct.unpack_from('<6fI', extra, o)
+        recs.append({'FromX': fx, 'ToX': tx, 'FromY': fy, 'ToY': ty, 'FromZ': fz, 'ToZ': tz})
+    if not recs:
+        return 0.0
+    return jcns_complex.evaluate(jcns_complex.keys_from_records(recs), x, pre, post)
 
 
 def evaluate(G, skel, t, state=None, dt=0.0):
