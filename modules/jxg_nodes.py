@@ -70,6 +70,40 @@ _SKIRT_SUB = {0: 'sel_parent_jnt', 1: 'L_MOT_jnt', 2: 'R_MOT_jnt', 3: 'L_MOT_jnt
               12: 'R_leg_vector_offset_angle', 13: 'compare_vector_limit_angle'}
 
 
+# Input slots whose meaning the preview models (modules/jxg_eval.py); (name, certain)
+_INPUTS = {
+    'FloatValueNode': {0: ('value', True)},
+    'Vec3ValueNode': {0: ('value', True)},
+    'QuatValueNode': {0: ('value', True)},
+    'CyclicalAngleNode': {1: ('speed', False)},
+    'SinWaveNode': {1: ('speed', False), 2: ('low', False), 3: ('high', False)},
+    'CosWaveNode': {1: ('speed', False), 2: ('low', False), 3: ('high', False)},
+    'SawToothWaveNode': {1: ('speed', False), 2: ('low', False), 3: ('high', False)},
+    'FloatMapNode': {0: ('input', False), 1: ('in_min', False), 2: ('in_max', False), 3: ('out_min', False),
+                     4: ('out_max', False), 5: ('clamp', False)},
+    'FloatSwitchNode': {0: ('condition', False), 1: ('if_true', False), 2: ('if_false', False)},
+    'FloatEaseCurveNode': {0: ('low', False), 1: ('high', False), 2: ('t', False)},
+    'FloatClampNode': {0: ('value', False), 1: ('minimum', False), 2: ('maximum', False)},
+    'MaFloatRemapNode': {0: ('input', False), 1: ('in_points', False), 2: ('out_points', False)},
+    'QuatSlerpNode': {0: ('a', True), 1: ('b', True), 2: ('t', False)},
+    'FloatSumNode': {1: ('count', False)},
+    'FloatMathCodeNode': {1: ('count', False)},
+    'FloatAbsNode': {1: ('value', False)},
+    'CosNode': {1: ('value', False)},
+    'Rad2DegNode': {1: ('value', False)},
+    'Vec3NormalizeNode': {0: ('value', True)},
+    'QuatInverseNode': {0: ('value', True)},
+    'Vec3TransformNode': {0: ('vector', True), 1: ('rotation', True)},
+    'Vec3ToFloat3Node': {0: ('value', True)},
+    'Float3ToVec3Node': {1: ('x', True), 2: ('y', True), 3: ('z', True)},
+    'QuatToEulerFloat3Node': {3: ('rotation', True), 4: ('rot_order', False)},
+}
+_OUTPUTS = {
+    'Vec3ToFloat3Node': {1: ('x', True), 2: ('y', True), 3: ('z', True)},
+    'QuatToEulerFloat3Node': {0: ('x', True), 1: ('y', True), 2: ('z', True)},
+}
+
+
 def slot_name(type_name, side, slot):
     """(name, certain) for an input ('in') or output ('out') slot, or (None, False)."""
     short = short_name(type_name)
@@ -88,6 +122,11 @@ def slot_name(type_name, side, slot):
             return (_SKIRT_SUB[slot], short == 'SkirtSubJointNode')
         if side == 'out' and slot == 10:
             return ('angle', False)
+    table = (_INPUTS if side == 'in' else _OUTPUTS).get(short, {})
+    if slot in table:
+        return table[slot]
+    if side == 'in' and slot >= 10 and short in ('FloatSumNode', 'FloatMathCodeNode'):
+        return ('item', False)
     if side == 'out' and slot == 0 and len(output_slots(type_name)) == 1:
         return ('result', True)
     return (None, False)

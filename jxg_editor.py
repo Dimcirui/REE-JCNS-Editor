@@ -71,6 +71,9 @@ class _JXGSocket:
         return _COLORS[cls.vtype]
 
     def draw(self, context, layout, node, text):
+        # from the catalog at draw time, so trees imported before a name was known show it too
+        if getattr(node, 'type_name', ''):
+            text = _slot_label(node.type_name, 'out' if self.is_output else 'in', self.slot)
         if self.is_output or self.is_linked or not hasattr(self, 'value'):
             layout.label(text=text)
             return
@@ -313,6 +316,9 @@ def _slot_label(type_name, side, slot):
     name, certain = jxg_nodes.slot_name(type_name, side, slot)
     if name is None:
         return "#%d" % slot
+    if name == 'item':
+        first = 11 if type_name.endswith('FloatSumNode') else 10
+        return "%s %d?" % (T("editors.jxg.slot.item"), slot - first + 1)
     text = T("editors.jxg.slot." + name) if ("editors.jxg.slot." + name) in _known_slot_keys() else name
     return text if certain else text + "?"
 
