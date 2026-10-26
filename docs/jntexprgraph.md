@@ -22,6 +22,30 @@ Wilds 里有 112 个，用途：
   和 `update()`，就是调用那个组件的挂钩。
 - 怪物专用逻辑：图里只有一个 `app.expr_node.Em*` 节点。
 
+### 从 jcns 里运行
+
+图还有第二条加载路径：jcns 的 JXG 分区（section 5）存一条图的路径，它和其它分区一起排在 section table 里，
+按表里的位置执行，相当于在 jcns 的求值顺序里插入一步。Wilds 有 12 个 jcns 带这个分区（鬼武者、PRAGMATA 没有），
+全是怪物的 RS/RE/CS 层：
+
+| jcns | 分区顺序 | 图里的节点 |
+|---|---|---|
+| ch90_070_0000_CS | RotExpr → JXG | Em0070_FangConstraint |
+| ch90_078_0000_RS00 | Outputs → JXG | Em0078_RSExpr |
+| ch90_155_0000_RS | JXG → Outputs | Em0155_TailConstraint |
+| ch90_157_0000_RS / _02_RS | JXG | Em0157_DistanceConstraint / GillConstraint |
+| ch90_160_0000_RS / 5000_RS | Outputs → JXG → RotExpr | Em0160_ThornConstraint |
+| ch90_161_0000_RE | Outputs → JXG | Em0161_AimExpr |
+| ch90_161_0000_RS（v102、v29） | Outputs → JXG | 138 个原生节点（MaEulerConstraint、KeyFrameCurve…） |
+| ch90_163_0000_RE00 | JXG | Em0163_LegConstraint |
+| ch91_164_5000_RS | Outputs → JXG | Em1164_TailConstraint |
+
+这些图里除了 ch90_161_0000_RS（另有 2 个 pfb 直接挂），都没有任何 pfb 引用，只能经 jcns 加载。
+jcns 的 4 个文件只有 JXG 一个分区、没有任何约束条目，纯粹是为了把一个 C# 约束排进这一层。
+所以两条路的区别是时机：组件版按组件自己的 UpdateTiming 跑；jcns 版跟随这一层 jcns，
+排在指定的分区之间（例如 ch90_160 先算 Outputs，再跑脚本，最后 RotExpr 读脚本的结果）。
+引擎的分区调度对 id 5 有一个处理函数（见 engine-names.md 第 4 节），但这条路径没在游戏里实测过。
+
 同一件腰甲上 JointExprGraph 的 UpdateTiming 是 1，JointConstraints 是 3（`via.motion.ConstraintsUpdate`，
 成员 PrevLateUpdate / AfterLateUpdate / ByBehavior / Last，数值对应还没取）。
 
