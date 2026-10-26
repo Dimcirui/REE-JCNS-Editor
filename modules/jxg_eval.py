@@ -18,8 +18,10 @@ Modelled, not measured in game — preview only:
   * RotComposeType 0 RotRPY composes R = Ry * Rx * Rz (Z first), 1 RotPYR R = Rz * Ry * Rx
     (X first), 2 ExpMap is a rotation vector.  Single-axis rotations, almost all of the
     shipped graphs, do not depend on this.
-  * CyclicalAngle: angle = speed * t, wrapped to [0, 2 pi).  Sin/Cos/SawToothWave
-    (speed, low, high): low + (high - low) * wave(speed * t), the wave in [0, 1].
+  * CyclicalAngle: an angle that advances by speed * dt each step, wrapped to [0, 2 pi),
+    so a changing speed speeds the turn up or down smoothly.  Sin/Cos/SawToothWave
+    (speed, low, high): low + (high - low) * wave(phase), the phase advancing the same way.
+    Without a `state` (or for a node it has not seen) the phase is speed * t.
   * FloatEaseCurve (low, high, t): low + (high - low) * ease(t), ease from the curve type.
   * FloatSwitch (condition, if true, if false); FloatMap (in, in min, in max, out min,
     out max, clamp); MaFloatRemap (in, (in min, in mid, in max), (out min, mid, max)).
@@ -228,10 +230,21 @@ def _remap(x, a, b, c, d, clamp=True):
 # ------------------------------------------------------------------ evaluation
 
 class _Eval:
-    def __init__(self, G, skel, t):
+    def __init__(self, G, skel, t, state=None, dt=0.0):
         self.G, self.skel, self.t = G, skel, t
+        self.state, self.dt = state, dt
         self.cache = {}
         self.res = Result()
+
+    def phase(self, i, speed):
+        """The node's phase: speed * t without state, else last step's phase + speed * dt."""
+        if self.state is None:
+            return speed * self.t
+        key = self.G['nodes'][i]['guid']
+        prev = self.state.get(key)
+        value = speed * self.t if prev is None else prev + speed * self.dt
+        self.state[key] = value % TAU
+        return value
 
     def inp(self, i, slot, vtype):
         nd = self.G['nodes'][i]
@@ -376,10 +389,10 @@ class _Eval:
             'Rad2DegNode': lambda: math.degrees(f(1)),
             'FloatSwitchNode': lambda: f(1) if self.inp(i, 0, 'bool') else f(2),
             'FloatMapNode': lambda: _remap(f(0), f(1), f(2), f(3), f(4), self.inp(i, 5, 'bool')),
-            'CyclicalAngleNode': lambda: (f(1) * t) % TAU,
-            'SinWaveNode': lambda: f(2) + (f(3) - f(2)) * _wave('sin', f(1) * t),
-            'CosWaveNode': lambda: f(2) + (f(3) - f(2)) * _wave('cos', f(1) * t),
-            'SawToothWaveNode': lambda: f(2) + (f(3) - f(2)) * _wave('saw', f(1) * t),
+            'CyclicalAngleNode': lambda: self.phase(i, f(1)) % TAU,
+            'SinWaveNode': lambda: f(2) + (f(3) - f(2)) * _wave('sin', self.phase(i, f(1))),
+            'CosWaveNode': lambda: f(2) + (f(3) - f(2)) * _wave('cos', self.phase(i, f(1))),
+            'SawToothWaveNode': lambda: f(2) + (f(3) - f(2)) * _wave('saw', self.phase(i, f(1))),
             'Vec3ValueNode': lambda: v3(0),
             'Vec3AddNode': lambda: tuple(a + b for a, b in zip(v3(0), v3(1))),
             'Vec3SubNode': lambda: tuple(a - b for a, b in zip(v3(0), v3(1))),
@@ -451,9 +464,13 @@ def _math_code(code, var):
     return stack[-1] if stack else 0.0
 
 
-def evaluate(G, skel, t):
-    """Run the graph's roots in order at time `t` (seconds); the skeleton is updated in place."""
-    ev = _Eval(G, skel, t)
+def evaluate(G, skel, t, state=None, dt=0.0):
+    """Run the graph's roots in order at time `t` (seconds); the skeleton is updated in place.
+
+    `state` (a dict, node guid -> phase) makes the time nodes advance by `dt` seconds from
+    where the last call left them; the caller keeps it between frames.
+    """
+    ev = _Eval(G, skel, t, state, dt)
     for r, _flags in G['roots']:
         if 0 <= r < len(G['nodes']):
             ev.node(r)

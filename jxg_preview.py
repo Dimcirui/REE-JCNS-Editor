@@ -10,8 +10,10 @@ Space: RE Mesh Editor bakes the game's Y-up into the bones by +90 degrees about 
 parent_pose^-1 @ pose (RX^-1 @ pose for a root bone) and the roots hang from the
 owner RX^-1 @ object @ RX — the same mapping Wilds-Dynamics uses.
 
-Time is (frame - frame_start) / fps seconds.  The graph keeps no state, so scrubbing
-backwards shows the same pose as playing forwards.
+Time is (frame - frame_start) / fps seconds.  The time nodes accumulate: each frame
+change forward by at most MAX_STEP advances their phase by speed * dt, so a speed that
+changes speeds the turn up smoothly.  Going backwards or jumping further restarts them
+at speed * t; an edit or a pose change without a frame change leaves them where they are.
 """
 
 import json
@@ -33,6 +35,8 @@ _RESTORE = "jxg_preview_restore"          # tree idprop: {bone: matrix_basis as 
 # tree name -> last run's notes for the panel: (unsupported types, missing joint count, problem key)
 notes = {}
 _busy = False
+MAX_STEP = 1.0                            # seconds; a longer frame step restarts the time nodes
+_clock = {}                               # tree name -> {'t': last frame-change time, 'phases': {guid: phase}}
 _hash_cache = {}
 
 
@@ -88,8 +92,22 @@ def _same(a, b, eps=1e-6):
     return all(abs(a[i][j] - b[i][j]) < eps for i in range(4) for j in range(4))
 
 
-def run(tree, depsgraph=None, scene=None):
-    """Evaluate `tree` once and write its bones; returns the jxg_eval.Result or None."""
+def _step(tree, t, advance):
+    """(phases, dt) for this run: playback advances by the frame step, anything else by 0."""
+    clock = _clock.setdefault(tree.name, {'t': None, 'phases': {}})
+    if not advance:
+        return clock['phases'], 0.0
+    last, clock['t'] = clock['t'], t
+    if last is None or not 0.0 < t - last <= MAX_STEP:
+        clock['phases'].clear()
+        return clock['phases'], 0.0
+    return clock['phases'], t - last
+
+
+def run(tree, depsgraph=None, scene=None, advance=False):
+    """Evaluate `tree` once and write its bones; returns the jxg_eval.Result or None.
+
+    `advance`: this run is for a frame change, so the time nodes move on by the frame step."""
     arm = tree.armature
     if arm is None or arm.type != 'ARMATURE':
         notes[tree.name] = ((), 0, "ui.jxg.preview_no_armature")
@@ -104,7 +122,9 @@ def run(tree, depsgraph=None, scene=None):
     names = _hashes(arm)
     ev = arm.evaluated_get(depsgraph)
     skel = skeleton_of(ev, names)
-    res = jxg_eval.evaluate(G, skel, scene_time(scene))
+    t = scene_time(scene)
+    phases, dt = _step(tree, t, advance)
+    res = jxg_eval.evaluate(G, skel, t, phases, dt)
     restore = json.loads(tree.get(_RESTORE, "{}"))
     added = False
     for h, (pos, q) in res.writes.items():
@@ -124,8 +144,8 @@ def run(tree, depsgraph=None, scene=None):
     return res
 
 
-def restore(tree):
-    """Put back the pose bases the preview overwrote."""
+def restore(tree, keep_clock=False):
+    """Put back the pose bases the preview overwrote; `keep_clock` keeps the time nodes' phases."""
     saved = json.loads(tree.get(_RESTORE, "{}"))
     arm = tree.armature
     if arm is not None and arm.type == 'ARMATURE':
@@ -136,6 +156,8 @@ def restore(tree):
     if _RESTORE in tree:
         del tree[_RESTORE]
     notes.pop(tree.name, None)
+    if not keep_clock:
+        _clock.pop(tree.name, None)
 
 
 def _live_trees():
@@ -143,21 +165,21 @@ def _live_trees():
     return [t for t in bpy.data.node_groups if t.bl_idname == TREE_ID and t.preview_on]
 
 
-def run_all(scene=None, depsgraph=None):
+def run_all(scene=None, depsgraph=None, advance=False):
     global _busy
     if _busy:
         return
     _busy = True
     try:
         for tree in _live_trees():
-            run(tree, depsgraph, scene)
+            run(tree, depsgraph, scene, advance)
     finally:
         _busy = False
 
 
 @bpy.app.handlers.persistent
 def _on_frame(scene, depsgraph=None):
-    run_all(scene, depsgraph)
+    run_all(scene, depsgraph, advance=True)
 
 
 @bpy.app.handlers.persistent
@@ -171,7 +193,7 @@ def _on_depsgraph(scene, depsgraph):
 @bpy.app.handlers.persistent
 def _on_save_pre(*_args):
     for tree in _live_trees():
-        restore(tree)
+        restore(tree, keep_clock=True)
 
 
 @bpy.app.handlers.persistent
@@ -181,7 +203,8 @@ def _on_save_post(*_args):
 
 def preview_changed(tree, context):
     if tree.preview_on:
-        run(tree)
+        _clock.pop(tree.name, None)
+        run(tree, advance=True)
     else:
         restore(tree)
 
