@@ -6,8 +6,8 @@ a graph dict from jxg_format writable.
 
 The slot catalog (data/jxg_nodes.json, built by tools/build_jxg_nodes.py) lists
 the slots shipped files use for each type.  Slot names below are only the ones
-with a known meaning; `certain=False` marks names read off value ranges, not
-confirmed in game.
+with a known meaning; `certain` is True where the node's code in the game was read
+(docs/jntexprgraph.md), False where the name is inferred from use.
 
 Managed nodes (`app.*`) are game C# classes.  Their parameters are opaque to the
 add-on: edits keep their props, extra data and outputs exactly as read; only
@@ -57,8 +57,8 @@ def creatable_types():
 
 # ------------------------------------------------------------------ slot names
 
-_JOINT_IN = {0: ('joint', True), 1: ('level', False), 2: ('space', False), 3: ('rot_order', False),
-             5: ('unit', False), 6: ('rot_unit', False)}
+_JOINT_IN = {0: ('joint', True), 1: ('lod', True), 2: ('space', True), 3: ('rot_order', True),
+             5: ('unit', True), 6: ('rot_unit', True)}
 _JOINT_VALUE = {10: ('position', True), 11: ('rotation', True), 12: ('scale', True), 13: ('euler', True),
                 20: ('x', True), 21: ('y', True), 22: ('z', True)}
 _BINARY = ('FloatAddNode', 'FloatSubNode', 'FloatMulNode', 'FloatDivNode', 'FloatMinNode',
@@ -75,16 +75,17 @@ _INPUTS = {
     'FloatValueNode': {0: ('value', True)},
     'Vec3ValueNode': {0: ('value', True)},
     'QuatValueNode': {0: ('value', True)},
-    'CyclicalAngleNode': {1: ('speed', False)},
-    'SinWaveNode': {1: ('speed', False), 2: ('low', False), 3: ('high', False)},
-    'CosWaveNode': {1: ('speed', False), 2: ('low', False), 3: ('high', False)},
-    'SawToothWaveNode': {1: ('speed', False), 2: ('low', False), 3: ('high', False)},
-    'FloatMapNode': {0: ('input', False), 1: ('in_min', False), 2: ('in_max', False), 3: ('out_min', False),
-                     4: ('out_max', False), 5: ('clamp', False)},
-    'FloatSwitchNode': {0: ('condition', False), 1: ('if_true', False), 2: ('if_false', False)},
-    'FloatEaseCurveNode': {0: ('low', False), 1: ('high', False), 2: ('t', False)},
-    'FloatClampNode': {0: ('value', False), 1: ('minimum', False), 2: ('maximum', False)},
-    'MaFloatRemapNode': {0: ('input', False), 1: ('in_points', False), 2: ('out_points', False)},
+    'CyclicalAngleNode': {1: ('period', True)},
+    'SinWaveNode': {1: ('period', True), 2: ('low', True), 3: ('high', True)},
+    'CosWaveNode': {1: ('period', True), 2: ('low', True), 3: ('high', True)},
+    'SawToothWaveNode': {1: ('period', True), 2: ('start', True), 3: ('end', True)},
+    'FloatMapNode': {0: ('input', True), 1: ('in_min', True), 2: ('in_max', True), 3: ('out_min', True),
+                     4: ('out_max', True), 5: ('clamp', True)},
+    'FloatSwitchNode': {0: ('condition', True), 1: ('if_false', True), 2: ('if_true', True)},
+    'FloatEaseCurveNode': {0: ('start', True), 1: ('end', True), 2: ('t', True)},
+    'FloatClampNode': {0: ('value', True), 1: ('minimum', True), 2: ('maximum', True)},
+    'MaFloatRemapNode': {0: ('input', True), 1: ('in_points', True), 2: ('out_points', True),
+                         3: ('interpolation', True), 4: ('use_mid', True)},
     'QuatSlerpNode': {0: ('a', True), 1: ('b', True), 2: ('t', False)},
     'FloatSumNode': {1: ('count', False)},
     'FloatMathCodeNode': {1: ('count', False)},
