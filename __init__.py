@@ -1441,6 +1441,7 @@ from . import jcns_cm
 from . import jcns_merge_ops
 from . import jcns_sdk_ops
 from . import jxg_editor
+from . import jxg_preview
 from . import wd_api  # noqa: F401  (found by other add-ons in sys.modules)
 
 def _poll_jcns_collection(self, collection):
@@ -1496,9 +1497,11 @@ def register():
     jcns_sdk_ops.register()
     jcns_cone_draw.register()
     jxg_editor.register()
+    jxg_preview.register()
 
 
 def unregister():
+    jxg_preview.unregister()
     jxg_editor.unregister()
     jcns_cone_draw.unregister()
     jcns_sdk_ops.unregister()

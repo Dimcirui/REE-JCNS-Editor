@@ -216,6 +216,11 @@ def jxg_hash(name):
 # Tree and node
 # ---------------------------------------------------------------------------
 
+def _preview():
+    from . import jxg_preview
+    return jxg_preview
+
+
 def _armature_poll(self, obj):
     return obj.type == 'ARMATURE'
 
@@ -236,6 +241,8 @@ class JCNS_JXG_Tree(NodeTree):
     roots_json: StringProperty(default="[]")
     roots_default: BoolProperty(default=True)
     next_index: IntProperty()
+    preview_on: BoolProperty(name=T("ui.jxg.preview"), description=T("ui.jxg.preview_tip"),
+                             update=lambda self, ctx: _preview().preview_changed(self, ctx))
 
 
 _CATEGORY_COLORS = {
@@ -1015,6 +1022,7 @@ class JCNS_PT_jxg_file(_JXGPanel, Panel):
         row = layout.row(align=True)
         row.operator(JCNS_OT_ExportJXG.bl_idname, icon='EXPORT')
         row.operator(JCNS_OT_LayoutJXG.bl_idname, text="", icon='GRID')
+        _preview().draw_preview(layout, tree)
         nodes = [n for n in tree.nodes if n.bl_idname == NODE_ID]
         managed = sum(1 for n in nodes if n.managed)
         layout.label(text=T("ui.jxg.counts", len(nodes), managed) if managed

@@ -65,6 +65,7 @@ INCLUDE_FILES = [
     "jcns_sdk_ops.py",
     "jcns_ui.py",
     "jxg_editor.py",
+    "jxg_preview.py",
     "modules_shim.py",
     "wd_api.py",
     "README.md",

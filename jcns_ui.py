@@ -277,6 +277,8 @@ class JCNS_PT_Status(Panel):
             _field_row(layout, T("ui.status.armature"), tree, "armature", icon='ARMATURE_DATA')
             layout.label(text=tree.asset_path or tree.name, icon='NODETREE')
             layout.operator("jcns.jxg_window", icon='WINDOW').tree_name = tree.name
+            from .jxg_preview import draw_preview
+            draw_preview(layout, tree)
             layout.operator("jcns.export_jxg", icon='EXPORT')
             return
 

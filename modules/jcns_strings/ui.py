@@ -123,4 +123,15 @@ STRINGS = {
         "EN": "Its parameters export as read; only its links can change",
     },
     "ui.jxg.advanced": {"ZH": "高级", "EN": "Advanced"},
+    "ui.jxg.preview": {"ZH": "播放预览", "EN": "Play Preview"},
+    "ui.jxg.preview_tip": {
+        "ZH": "按这张图驱动骨架上的骨骼，随时间轴和姿态更新；关掉后骨骼恢复原样",
+        "EN": "Drive the armature's bones by this graph, following the timeline and the pose; off puts the bones back",
+    },
+    "ui.jxg.preview_hint": {"ZH": "按空格播放时间轴；效果可能和游戏不完全一致",
+                            "EN": "Press Space to play the timeline; it may not match the game exactly"},
+    "ui.jxg.preview_unsupported": {"ZH": "这些节点不参与预览，输出按 0 计：%s", "EN": "Not previewed, these output 0: %s"},
+    "ui.jxg.preview_missing": {"ZH": "%d 根骨骼不在骨架上，相关节点跳过", "EN": "%d bones are not on the armature; their nodes are skipped"},
+    "ui.jxg.preview_no_armature": {"ZH": "先设置骨架", "EN": "Set the armature first"},
+    "ui.jxg.preview_invalid": {"ZH": "图里有问题，修正后才能预览", "EN": "The graph has problems; fix them to preview"},
 }
