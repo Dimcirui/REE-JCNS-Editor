@@ -17,7 +17,7 @@ docs/jntexprgraph.md lists them).  What stays modelled here:
     timeline step (see `evaluate`), restarting at t mod period when there is no state;
   * a Joint node's LOD threshold (slot 1) is ignored, the node always runs, and a layer
     BlendRate below 1 (the engine slerps / lerps towards the result) is taken as 1;
-  * a float linked into a bool slot reads true when it is not ~0.
+  * a link into a bool slot: the engine tests != 0 exactly; the preview allows 1e-4 (see BOOL_EPS).
 
 Nodes outside the list below (C# nodes, Ziva, KeyFrameCurve, MaEulerConstraint,
 JointDriverFloat...) output zeros; `Result.unsupported` names them.
@@ -144,8 +144,9 @@ class Result:
 _DEFAULT = {'float': 0.0, 'int': 0, 'bool': False, 'vec3': ZERO3, 'quat': IDQ, 'any': 0.0}
 
 
-# A number reads as true when it is not ~0.  Reading a bone's pose off Blender's matrices
-# leaves noise of ~1e-7 where the game has an exact 0, so an exact test would never be false.
+# The engine's link to a bool tests != 0 exactly (a vec3: any component; a quat: not identity).
+# Reading a bone's pose off Blender's matrices leaves ~1e-7 where the game has an exact 0, so the
+# preview allows a small tolerance or a resting switch bone would never read false.
 BOOL_EPS = 1e-4
 
 
@@ -159,7 +160,8 @@ def convert(v, to):
     if len(v) == 3:
         return {'float': v[0], 'int': int(v[0]), 'bool': any(abs(c) > BOOL_EPS for c in v), 'vec3': tuple(v),
                 'quat': compose(2, v)}.get(to, v)
-    return {'quat': tuple(v), 'vec3': decompose(2, v), 'float': v[0], 'bool': True}.get(to, v)
+    not_identity = any(abs(c) > BOOL_EPS for c in v[1:]) or abs(v[0] - 1.0) > BOOL_EPS
+    return {'quat': tuple(v), 'vec3': decompose(2, v), 'float': v[0], 'bool': not_identity}.get(to, v)
 
 
 def _unit(n):
