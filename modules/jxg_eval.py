@@ -179,15 +179,21 @@ class Result:
 _DEFAULT = {'float': 0.0, 'int': 0, 'bool': False, 'vec3': ZERO3, 'quat': IDQ, 'any': 0.0}
 
 
+# A number reads as true when it is not ~0.  Reading a bone's pose off Blender's matrices
+# leaves noise of ~1e-7 where the game has an exact 0, so an exact test would never be false.
+BOOL_EPS = 1e-4
+
+
 def convert(v, to):
     """A value as another slot type, as the engine's links between types do (modelled)."""
     if to in ('any', None):
         return v
     if isinstance(v, bool) or isinstance(v, (int, float)):
         f = float(v)
-        return {'float': f, 'int': int(f), 'bool': f != 0.0, 'vec3': (f, f, f), 'quat': IDQ}.get(to, f)
+        return {'float': f, 'int': int(f), 'bool': abs(f) > BOOL_EPS, 'vec3': (f, f, f), 'quat': IDQ}.get(to, f)
     if len(v) == 3:
-        return {'float': v[0], 'int': int(v[0]), 'bool': any(v), 'vec3': tuple(v), 'quat': compose(2, v)}.get(to, v)
+        return {'float': v[0], 'int': int(v[0]), 'bool': any(abs(c) > BOOL_EPS for c in v), 'vec3': tuple(v),
+                'quat': compose(2, v)}.get(to, v)
     return {'quat': tuple(v), 'vec3': decompose(2, v), 'float': v[0], 'bool': True}.get(to, v)
 
 
