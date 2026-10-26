@@ -50,7 +50,9 @@ upgraded to v102 on import.
 | Aim | Points one bone's axis at another bone | ✅ Editable ¹ | 🔒 Locked | ✅ |
 | RotExpr | Copies a bone's rotation to another bone, scaled per axis | ✅ Editable | 🔒 Locked | ✅ |
 | Material | Bones drive material properties | ✅ Editable | ✏️ Hashes and transform ID | — |
-| JointExprGraph | A resource path | ✅ Path only | 🔒 Locked | — |
+| JointExprGraph | Runs an expression graph at this point of the file's order | ✅ Path, opens the graph | 🔒 Locked | — |
+
+Expression graphs (`.jntexprgraph`) import into Blender's node editor as a "JCNS Expression Graph" tree and export back unchanged. Nodes that are game scripts keep their parameters as read; only their links can change.
 
 Fields whose in-game meaning is unknown are shown as raw numbers. Dependencies are
 regenerated on export and ObjectSettings are kept as they are.
