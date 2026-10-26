@@ -100,7 +100,7 @@ _INPUTS = {
     'Vec3TransformNode': {0: ('vector', True), 1: ('rotation', True)},
     'Vec3ToFloat3Node': {0: ('value', True)},
     'Float3ToVec3Node': {1: ('x', True), 2: ('y', True), 3: ('z', True)},
-    'QuatToEulerFloat3Node': {3: ('rotation', True), 4: ('rot_order', False)},
+    'QuatToEulerFloat3Node': {3: ('rotation', True), 4: ('rot_order', True)},
 }
 _OUTPUTS = {
     'MaFloatMathNode': {1: ('result', True), 2: ('a', True), 3: ('b', True)},
