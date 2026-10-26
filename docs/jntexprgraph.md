@@ -130,7 +130,7 @@ jcns 的 4 个文件只有 JXG 一个分区、没有任何约束条目，纯粹�
 **输入连线**（每条 6 字节）：`u16 源节点, u8 目标槽, u8 源输出槽, u8 目标类型, u8 源类型`。
 源节点的 bit15 同样表示 app 节点。两个类型不同时引擎做转换（语料里有 float→vec3、float→bool）。
 
-**额外数据**：FloatEaseCurveNode 4 字节（u32，缓动类型?）、KeyFrameCurveNode 120 字节（曲线关键帧）、
+**额外数据**：FloatEaseCurveNode 4 字节（u32 `via.curve.EaseType`）、KeyFrameCurveNode 120 字节（曲线关键帧）、
 FloatMathCodeNode 是一段逆波兰字节码：`02 n 00` 读第 n 个输入，`01 <f32>` 压常数，`04 op` 二元运算
 （01 加、03 乘；02/04 推测为减/除）。例：`02 01 00 02 00 00 04 01` = in0 + in1。
 
@@ -157,23 +157,23 @@ FloatMathCodeNode 是一段逆波兰字节码：`02 n 00` 读第 n 个输入，`
 
 骨名用 murmur3（UTF-16LE）哈希存，插件的名字词典能翻。
 
-**Joint 节点的公共槽**
+**Joint 节点的公共槽**（从节点代码读出，见第 8 节）
 
 | 槽 | 类型 | 含义 |
 |---|---|---|
 | 0 | int | 骨名哈希 |
-| 1 | int | Set 节点才有，取值 −1/1/2/5/6/8，基本按文件恒定（旧裙子图 −1、物品 6、怪物 5、其余 2）；像 LOD 门槛? |
-| 2 | int | CoordSpace?：0 Local / 1 Global / 2 LocalDiffBase |
-| 3 | int | RotComposeType?：0 RotRPY / 1 RotPYR / 2 ExpMap |
-| 5 | int | CoordUnit?：0 厘米 / 1 米 |
-| 6 | int | RotUnit?：0 弧度 / 1 度 |
+| 1 | int | LOD 门槛（Set 节点）：对象的 LOD 级别（某组件 +0x4E4，和 jcns TailBytes[1] 比较的是同一个字段）≤ 此值时才执行，−1 总是执行 |
+| 2 | int | 坐标空间：0 局部（相对父骨）/ 1 世界 / 2 相对基础姿态 |
+| 3 | int | 欧拉顺序（旋转节点）：0 XYZ（R = Rz·Ry·Rx）/ 1 YZX / 2 ZXY / 3 ZYX / 4 YXZ / 5 XZY，和 jcns 的 RotOrder 是同一个转换函数 |
+| 5 | int | 长度单位（位置节点）：0 厘米 / 非 0 米 |
+| 6 | int | 角度单位（旋转节点）：1 度 / 其余弧度 |
 
 | 槽（输入或输出） | 类型 | 含义 |
 |---|---|---|
 | 10 | vec3 | 位置 |
 | 11 | quat | 旋转 |
 | 12 | vec3 | 缩放 |
-| 13 | vec3 | 欧拉角 |
+| 13 | vec3 | 欧拉角（按槽 3 的顺序、槽 6 的单位） |
 | 20 / 21 / 22 | float | 上面那个量的 X / Y / Z 分量 |
 
 - JointGetPositionNode：属性 0/2/5，输出 10、20–22。
@@ -187,33 +187,58 @@ FloatMathCodeNode 是一段逆波兰字节码：`02 n 00` 读第 n 个输入，`
 FloatSum（属性 1 = 个数，输入 11 起）、FloatMathCode（属性 1 = 个数，输入 10 起）、
 ExprZivaMeshExtraParam（属性 0 = 个数，从 10 起"名字哈希 / 值"成对）。
 
-**时间节点**：CyclicalAngleNode 属性 1（周期?）；SinWave/CosWave/SawToothWave 属性 1/2/3（周期? / 振幅? / 偏移?）。
+## 8. 节点怎么算（从游戏代码读出）
 
-## 8. 预览
+原生节点没有名字可查（类型反射只注册按编号存取的 getFloat(int idx)/setFloat(int idx, …)，exe 里也没有插槽名），
+但每个节点类型的计算代码都在 exe 里，读出来就是确切含义。
 
-`modules/jxg_eval.py` 在 Python 里求值一张图，`jxg_preview.py` 在每次换帧和编辑后读骨架、写回骨骼（关掉时还原）。
+**定位**：每个类型的注册函数里有 `mov edx, <类型哈希>`，随后调用一个 `mov [rip+G], rcx; ret` 小函数存类型对象；
+虚函数表槽 3 是 `mov rax, [rip+G]; ret`，表的槽 0 对所有节点相同。按这个关系能静态找到 147 个类型的虚函数表
+（和游戏内存里实际读到的节点对象一致）。表的槽位约定：7/8 get/setBool、9/10 get/setInt、11/12 get/setFloat、
+13/14 get/setVec3、17/18 get/setQuat，24 起是派生方法（时间节点和 Joint 节点的每帧更新在 24）。
+setX 把某个槽号的值存进对象字段，getX / 更新函数用这些字段计算——两者对照就是每个槽的含义。
+
+已读的节点（地址只对当前 exe 有效）：
+
+| 节点 | 槽 | 计算 |
+|---|---|---|
+| CyclicalAngle | 1 周期（秒） | 计时每帧加帧时间、满周期减周期；输出 2π × 计时 / 周期；周期 ≤ ε 时输出 0、计时不动 |
+| SinWave / CosWave | 1 周期，2 A，3 B | A + (B − A)(1 + sin/cos(2π × 计时 / 周期)) / 2；周期 ≤ ε 输出 0，\|B − A\| ≤ ε 输出 B |
+| SawToothWave | 1 周期，2 A，3 B | A + (B − A) × 计时 / 周期 |
+| FloatSwitch | 0 条件，1 为假时，2 为真时 | 按条件只取一个输入 |
+| FloatClamp | 0 值，1 最小，2 最大 | 值 < 最小取最小，否则 min(值, 最大) |
+| FloatMap | 0 输入，1/2 输入下/上限，3/4 输出下/上限，5 钳制 | 下限 = 上限时取输出下限；钳制时把输入夹在 [下限, 上限]；然后线性映射 |
+| FloatEaseCurve | 0 起点，1 终点，2 t（写入时夹到 0–1） | 起点 + (终点 − 起点) × ease(t)，ease 是额外数据里的 `via.curve.EaseType`（31 种 Penner 缓动：0 Linear、1 InSine、2 OutSine、3 InOutSine、4–6 Quad、7–9 Cubic … 28–30 Bounce），原版都是 3 |
+| MaFloatRemap | 0 输入，1 输入三点，2 输出三点，3 插值，4 用中点 | ≤ 下点取输出下点，≥ 上点取输出上点；用中点时以中点分两段，否则一段；段内 t 夹到 0–1，插值 0 线性 / 1 t³ / 2 1−(1−t)³ / 3 3t²−2t³（同 jcns）；输入范围降序时两端连同输出一起对调；段宽 ≤ ε 时输出 0 |
+| JointGetPosition | 见上表 | 空间 0 局部位置，1 世界位置，2 局部 − 基础姿态位置；单位 0 时 × 100 |
+| JointSetPosition | 见上表 | 只写给了的分量，没给的保留当前值（按所选空间）；空间 2 写 基础姿态 + 值；单位 0 时输入 × 0.01 |
+| JointGetRotation | 见上表 | 空间 2 为 基础姿态⁻¹ · 局部；欧拉角按槽 3 的顺序分解 |
+| JointSetRotation | 见上表 | 给四元数直接用；给欧拉向量按槽 3 合成；只给分量时其余分量取当前旋转按同一顺序分解的值（空间 2 取的是基础姿态⁻¹ 的分解）；空间 0 替换局部旋转，1 设世界旋转，2 写 基础姿态 · 结果 |
+
+Set 节点都会乘图层的 BlendRate：小于 1 时位置线性插值、旋转球面插值到结果。
+
+## 9. 预览
+
+`modules/jxg_eval.py` 按上表求值，`jxg_preview.py` 在每次换帧和编辑后读骨架、写回骨骼（关掉时还原）。
 空间换算和 Wilds-Dynamics 相同：RE Mesh Editor 把游戏的 Y 向上绕 X 转 +90° 烘进骨骼（RX），骨的游戏局部变换是
 父骨姿态⁻¹ · 姿态（根骨 RX⁻¹ · 姿态），根骨挂在 RX⁻¹ · 物体 · RX 上。时间 = (当前帧 − 起始帧) / 帧率。
 
-以下按建模实现，没在游戏里核对，效果可能不同：
+和引擎不同的地方：
 
-- CoordSpace 0 局部 = 相对父骨的完整变换，1 全局，2 相对静止姿态（静止 · 值、静止偏移 + 值）。
-- Set 节点替换它写的量；没给的旋转分量按 0，没给的位置分量保留当前值。
-- RotComposeType 0 RPY 合成 Ry·Rx·Rz（Z 先），1 PYR 合成 Rz·Ry·Rx（X 先），2 旋转向量。原版几乎都是单轴，不受顺序影响。
-- CyclicalAngle：角度每帧按 速度 × 帧间隔 累加，取模 2π；速度变化时平滑加减速（皮带那张图把速度映射到 0 来停住，只有累加才说得通）。波形节点的相位同样累加。往回拖或一次跳超过 1 秒时从 速度 × 时间 重新起步；不换帧的改动（摆姿态、改参数）不推进时间。
-- Sin/Cos/SawToothWave（速度, 下限, 上限）；FloatEaseCurve（下限, 上限, t）；FloatSwitch（条件, 真, 假）；
-  FloatMap（输入, 输入下限, 输入上限, 输出下限, 输出上限, 钳制）；MaFloatRemap（输入, 输入三点, 输出三点）；
-  FloatMathCode 按逆波兰字节码求值（运算 1 加 2 减 3 乘 4 除，2/4 未见于原版）。
+- 计时：播放时按时间轴步长累加；往回拖或一次跳超过 1 秒时从 时间 mod 周期 重新起步；不换帧的改动不推进时间。
+  引擎是按帧时间累加的。注意周期一变，角度会按新的比例跳一下——引擎也是这样（它累加的是时间不是角度）。
+- LOD 门槛不模拟（节点总是执行），BlendRate 按 1。
+- 浮点连到布尔槽：绝对值 > 1e-4 为真（引擎的转换没读）。
+- FloatMathCode 按逆波兰字节码求值（运算 1 加 2 减 3 乘 4 除，2/4 未见于原版，代码未读）。
 - 不预览、输出按 0：C# 节点、KeyFrameCurve、MaEulerConstraint、JointDriverFloat、JointDecomposeRotate、Ziva、材质节点、DebugDraw。
 
 测试 `tests/test_jxg_eval.py`（纯 Python）和 `tests/test_jxg_bpy.py`（后台 Blender）。
 
-## 9. 还没解决的
+## 10. 还没解决的
 
-- Set 节点的 1 号属性；节点 +0x34 的哈希；文件头 +0x20、图头 +0x28/+0x34、尾段 +0x18 的哈希。
-- 槽 2/3/5/6 的枚举对应只靠取值范围，没在游戏里验证。
-- KeyFrameCurve 的 120 字节、EaseCurve 的类型码、FloatMathCode 的完整运算码表。
-- 图的求值时机和 jcns 的先后。
+- 节点 +0x34 的哈希；文件头 +0x20、图头 +0x28/+0x34、尾段 +0x18 的哈希。
+- 帧时间的来源（更新里 `函数() / 全局[+0x368]`），浮点 → 布尔的转换规则，FloatMathCode 的运算码表。
+- 其余节点的代码（读法同第 8 节）：KeyFrameCurve、MaEulerConstraint、JointDriverFloat、速度、锥形、RBF 等。
 
 ## 附录：语料里出现的全部节点类型
 
