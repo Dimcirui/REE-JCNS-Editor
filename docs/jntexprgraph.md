@@ -189,7 +189,26 @@ ExprZivaMeshExtraParam（属性 0 = 个数，从 10 起"名字哈希 / 值"成�
 
 **时间节点**：CyclicalAngleNode 属性 1（周期?）；SinWave/CosWave/SawToothWave 属性 1/2/3（周期? / 振幅? / 偏移?）。
 
-## 8. 还没解决的
+## 8. 预览
+
+`modules/jxg_eval.py` 在 Python 里求值一张图，`jxg_preview.py` 在每次换帧和编辑后读骨架、写回骨骼（关掉时还原）。
+空间换算和 Wilds-Dynamics 相同：RE Mesh Editor 把游戏的 Y 向上绕 X 转 +90° 烘进骨骼（RX），骨的游戏局部变换是
+父骨姿态⁻¹ · 姿态（根骨 RX⁻¹ · 姿态），根骨挂在 RX⁻¹ · 物体 · RX 上。时间 = (当前帧 − 起始帧) / 帧率。
+
+以下按建模实现，没在游戏里核对，效果可能不同：
+
+- CoordSpace 0 局部 = 相对父骨的完整变换，1 全局，2 相对静止姿态（静止 · 值、静止偏移 + 值）。
+- Set 节点替换它写的量；没给的旋转分量按 0，没给的位置分量保留当前值。
+- RotComposeType 0 RPY 合成 Ry·Rx·Rz（Z 先），1 PYR 合成 Rz·Ry·Rx（X 先），2 旋转向量。原版几乎都是单轴，不受顺序影响。
+- CyclicalAngle：角度 = 速度 × 时间，取模 2π（皮带那张图里速度会被映射到 0 来停住，所以是速度不是周期）。
+- Sin/Cos/SawToothWave（速度, 下限, 上限）；FloatEaseCurve（下限, 上限, t）；FloatSwitch（条件, 真, 假）；
+  FloatMap（输入, 输入下限, 输入上限, 输出下限, 输出上限, 钳制）；MaFloatRemap（输入, 输入三点, 输出三点）；
+  FloatMathCode 按逆波兰字节码求值（运算 1 加 2 减 3 乘 4 除，2/4 未见于原版）。
+- 不预览、输出按 0：C# 节点、KeyFrameCurve、MaEulerConstraint、JointDriverFloat、JointDecomposeRotate、Ziva、材质节点、DebugDraw。
+
+测试 `tests/test_jxg_eval.py`（纯 Python）和 `tests/test_jxg_bpy.py`（后台 Blender）。
+
+## 9. 还没解决的
 
 - Set 节点的 1 号属性；节点 +0x34 的哈希；文件头 +0x20、图头 +0x28/+0x34、尾段 +0x18 的哈希。
 - 槽 2/3/5/6 的枚举对应只靠取值范围，没在游戏里验证。
