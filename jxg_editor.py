@@ -564,7 +564,7 @@ def collection_of_tree(tree):
 def _new_collection(context, name, armature_obj):
     from .jcns_importer import _group_collection
     coll = bpy.data.collections.new(name)
-    coll.color_tag = 'COLOR_05'
+    coll.color_tag = 'COLOR_04'   # green, as JCNS collections
     coll["~TYPE"] = COLLECTION_TYPE
     (_group_collection(armature_obj) or context.scene.collection).children.link(coll)
     return coll
@@ -650,8 +650,48 @@ def _active_tree(context):
     space = getattr(context, 'space_data', None)
     if space is not None and getattr(space, 'tree_type', None) == TREE_ID and space.edit_tree is not None:
         return space.edit_tree
+    tree = tree_of_collection(getattr(context.scene, 'jcns_active_collection', None))[1]
+    if tree is not None:
+        return tree
     obj = context.active_object
     return getattr(obj, 'jcns_jxg_tree', None) if obj is not None else None
+
+
+def _make_working(context, tree):
+    """Make the tree's collection the scene's working collection, as a JCNS import does."""
+    _head, coll = collection_of_tree(tree)
+    if coll is not None:
+        context.scene.jcns_active_collection = coll
+
+
+def open_tree_window(context, tree):
+    """A new window holding one node editor on `tree`; False when Blender gives no window.
+
+    screen.area_dupli opens the duplicated area alone in a new window, which is then
+    turned into a node editor; the area it copies is left as it was.
+    """
+    wm = context.window_manager
+    window = context.window or (wm.windows[0] if wm.windows else None)
+    if window is None:
+        return False
+    area = context.area if context.area is not None else max(window.screen.areas, key=lambda a: a.width * a.height)
+    region = next((r for r in area.regions if r.type == 'WINDOW'), None)
+    before = {w.as_pointer() for w in wm.windows}
+    with context.temp_override(window=window, area=area, region=region):
+        bpy.ops.screen.area_dupli('INVOKE_DEFAULT')
+    new = [w for w in wm.windows if w.as_pointer() not in before]
+    if not new:
+        return False
+    target = new[0].screen.areas[0]
+    target.ui_type = TREE_ID
+    target.spaces.active.node_tree = tree
+    region = next((r for r in target.regions if r.type == 'WINDOW'), None)
+    try:
+        with context.temp_override(window=new[0], area=target, region=region):
+            bpy.ops.node.view_all()
+    except RuntimeError:
+        pass                                 # framing is a nicety; the window is already right
+    return True
 
 
 def _armature_items(self, context):
@@ -689,6 +729,7 @@ class JCNS_OT_ImportJXG(Operator, ImportHelper):
         except (ValueError, KeyError, IndexError) as ex:
             self.report({'ERROR'}, T("io.jxg.read_failed", str(ex)))
             return {'CANCELLED'}
+        _make_working(context, tree)
         n = sum(1 for nd in tree.nodes if nd.bl_idname == NODE_ID)
         managed = sum(1 for nd in tree.nodes if nd.bl_idname == NODE_ID and nd.managed)
         msg = T("io.jxg.imported", tree.name, n)
@@ -709,6 +750,7 @@ class JCNS_OT_NewJXG(Operator):
     def execute(self, context):
         from .jcns_importer import _armature_for_new
         tree = do_new(context, _armature_for_new(context))
+        _make_working(context, tree)
         msg = T("io.jxg.new_done", tree.name)
         if not show_tree(context, tree):
             msg += T("io.jxg.open_hint")
@@ -762,6 +804,23 @@ class JCNS_OT_ShowJXG(Operator):
             return {'CANCELLED'}
         if not show_tree(context, tree):
             self.report({'WARNING'}, T("io.jxg.no_node_editor"))
+        return {'FINISHED'}
+
+
+class JCNS_OT_JXGWindow(Operator):
+    bl_idname = "jcns.jxg_window"
+    bl_label = T("io.jxg.window_label")
+    bl_description = T("io.jxg.window_tip")
+
+    tree_name: StringProperty(options={'HIDDEN'})
+
+    def execute(self, context):
+        tree = bpy.data.node_groups.get(self.tree_name) or _active_tree(context)
+        if tree is None:
+            return {'CANCELLED'}
+        if not open_tree_window(context, tree):
+            self.report({'WARNING'}, T("io.jxg.window_failed"))
+            return {'CANCELLED'}
         return {'FINISHED'}
 
 
@@ -824,8 +883,8 @@ class JCNS_OT_OpenJXGPath(Operator):
                 self.report({'WARNING'}, T("io.jxg.path_not_found", path))
                 return {'CANCELLED'}
             tree = do_import(src, context, rp.target_armature)
-        if not show_tree(context, tree):
-            self.report({'INFO'}, T("io.jxg.open_hint").lstrip("。. "))
+        if not show_tree(context, tree) and not open_tree_window(context, tree):
+            self.report({'WARNING'}, T("io.jxg.window_failed"))
         return {'FINISHED'}
 
 
@@ -1049,7 +1108,7 @@ def _tree_poll(self, tree):
 
 _classes = list(SOCKET_CLASSES) + [
     JCNS_JXG_Tree, JCNS_JXG_Node,
-    JCNS_OT_ImportJXG, JCNS_OT_NewJXG, JCNS_OT_ExportJXG, JCNS_OT_ShowJXG, JCNS_OT_OpenJXGPath,
+    JCNS_OT_ImportJXG, JCNS_OT_NewJXG, JCNS_OT_ExportJXG, JCNS_OT_ShowJXG, JCNS_OT_JXGWindow, JCNS_OT_OpenJXGPath,
     JCNS_OT_AddJXGNode, JCNS_OT_SelectJXGNode, JCNS_OT_LayoutJXG,
 ] + _ADD_MENUS + [JCNS_PT_jxg_file, JCNS_PT_jxg_node, JCNS_PT_jxg_node_advanced]
 

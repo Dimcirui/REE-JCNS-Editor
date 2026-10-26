@@ -271,6 +271,15 @@ class JCNS_PT_Status(Panel):
         _field_row(layout, T("ui.status.work_collection"), context.scene, "jcns_active_collection",
                    icon='OUTLINER_COLLECTION')
 
+        from .jxg_editor import tree_of_collection
+        _head, tree = tree_of_collection(context.scene.jcns_active_collection)
+        if tree is not None:
+            _field_row(layout, T("ui.status.armature"), tree, "armature", icon='ARMATURE_DATA')
+            layout.label(text=tree.asset_path or tree.name, icon='NODETREE')
+            layout.operator("jcns.jxg_window", icon='WINDOW').tree_name = tree.name
+            layout.operator("jcns.export_jxg", icon='EXPORT')
+            return
+
         root, rp = _resolve_root(context)
         if root is None:
             layout.label(text=T("ui.status.import_first"), icon='INFO')

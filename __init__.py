@@ -1444,9 +1444,12 @@ from . import jxg_editor
 from . import wd_api  # noqa: F401  (found by other add-ons in sys.modules)
 
 def _poll_jcns_collection(self, collection):
-    """Restrict the active-collection picker to collections that hold a JCNS root."""
+    """Restrict the active-collection picker to JCNS and expression graph collections."""
     root, _ = get_jcns_root_from_collection(collection)
-    return root is not None
+    if root is not None:
+        return True
+    from .jxg_editor import tree_of_collection
+    return tree_of_collection(collection)[1] is not None
 
 
 _classes = [
