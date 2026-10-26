@@ -130,9 +130,8 @@ jcns 的 4 个文件只有 JXG 一个分区、没有任何约束条目，纯粹�
 **输入连线**（每条 6 字节）：`u16 源节点, u8 目标槽, u8 源输出槽, u8 目标类型, u8 源类型`。
 源节点的 bit15 同样表示 app 节点。两个类型不同时引擎做转换（语料里有 float→vec3、float→bool）。
 
-**额外数据**：FloatEaseCurveNode 4 字节（u32 `via.curve.EaseType`）、KeyFrameCurveNode 120 字节（曲线关键帧）、
-FloatMathCodeNode 是一段逆波兰字节码：`02 n 00` 读第 n 个输入，`01 <f32>` 压常数，`04 op` 二元运算
-（01 加、03 乘；02/04 推测为减/除）。例：`02 01 00 02 00 00 04 01` = in0 + in1。
+**额外数据**：FloatEaseCurveNode 4 字节（u32 `via.curve.EaseType`）；KeyFrameCurveNode 是曲线关键帧；
+FloatMathCodeNode 是一段栈式字节码。两者的格式见第 8 节。
 
 ## 5. 尾段
 
@@ -181,6 +180,7 @@ FloatMathCodeNode 是一段逆波兰字节码：`02 n 00` 读第 n 个输入，`
 - JointSetPositionNode：属性 0/1/2/5，输入 10 或 20–22。
 - JointSetRotationNode：属性 0/1/2/3/6，输入 11、13 或 20–22。
 - JointGetLocalCoordNode：属性 0、4（bool），输出 10/11/12。
+- MaGetConstraintScaleNode：属性 0、2，输出 12、20–22。
 
 **数学节点**：两元运算（FloatAdd/Sub/Mul/Div、Vec3Add/Sub/Mul、QuatMul）输入 0、1，输出 0；
 没接线的输入用属性给常数（例：FloatDiv 的 1 号槽 = 180）。可变输入的节点用一个计数属性加连续槽号：
@@ -213,9 +213,38 @@ setX 把某个槽号的值存进对象字段，getX / 更新函数用这些字�
 | JointGetPosition | 见上表 | 空间 0 局部位置，1 世界位置，2 局部 − 基础姿态位置；单位 0 时 × 100 |
 | JointSetPosition | 见上表 | 只写给了的分量，没给的保留当前值（按所选空间）；空间 2 写 基础姿态 + 值；单位 0 时输入 × 0.01 |
 | JointGetRotation | 见上表 | 空间 2 为 基础姿态⁻¹ · 局部；欧拉角按槽 3 的顺序分解 |
+| JointGetLocalCoord | 4 读基础姿态 | 输出局部位置 / 旋转 / 缩放；4 为真时取基础姿态，否则取当前；位置是米（不 × 100） |
+| MaGetConstraintScale | 2 空间 | 输出缩放：0 局部，1 世界，2 局部 − 1 |
+| LayerBlendRate | — | 输出所在图层的 BlendRate |
+| FloatDiv | 0 A，1 B | B = 0 时输出 0 |
+| FloatAbs / Rad2Deg | 1 值 | \|值\| / 值 × 57.2958 |
+| Cos | 1 值，2 输入为度 | 2 非 0 时先把值从度换成弧度 |
+| FloatSum | 1 个数，11 起各项 | 最多加 8 项 |
+| MaFloatMath | 0 运算，2 A，3 B | 运算 0 加 1 减 2 乘 3 除（B = 0 得 0）4 取小 5 取大 6 乘方；输出 1 结果、2 A、3 B |
+| Vec3Normalize | 0 向量 | 长度 < FLT_EPSILON 时原样输出 |
+| Vec3Transform | 0 向量，1 旋转 | 用四元数旋转向量 |
+| QuatMul | 0 A，1 B | B · A（引擎的 mul(a, b) 是 b · a） |
+| QuatInverse | 0 四元数 | 真逆（不假定单位长度） |
+| QuatSlerp | 0 A，1 B，2 t | t 夹到 0–1 后球面插值 |
+| QuatToEulerFloat3 | 3 四元数，4 顺序 | 按顺序分解成三个分量；顺序编号是否和 Joint 槽 3 同表未核对 |
+| KeyFrameCurve | 0 输入 | 额外数据：u16 关键帧数、u8 前段外推、u8 后段外推、4 字节，随后每帧 28 字节，布局和 jcns Outputs 的 ComplexMapping 记录相同（FromX、ToX、FromY、ToY、FromZ、ToZ、u32），引擎用同一个求值函数 |
+| FloatMathCode | 1 个数，10 起各输入（最多 8 个） | 额外数据是栈式字节码，见下 |
 | JointSetRotation | 见上表 | 给四元数直接用；给欧拉向量按槽 3 合成；只给分量时其余分量取当前旋转按同一顺序分解的值（空间 2 取的是基础姿态⁻¹ 的分解）；空间 0 替换局部旋转，1 设世界旋转，2 写 基础姿态 · 结果 |
 
 Set 节点都会乘图层的 BlendRate：小于 1 时位置线性插值、旋转球面插值到结果。
+
+**FloatMathCode 字节码**：
+
+| 码 | 参数 | 作用 |
+|---|---|---|
+| 01 | f32 | 压常数 |
+| 02 | u16 n | 压第 n 个输入（n ≤ 7） |
+| 03 | u8 | 一元运算作用于栈顶：2 取负 |
+| 04 | u8 | 二元运算 栈顶 ○ 次顶（后压的在左）：1 加 2 减 3 乘 4 除（除数 0 得 0）5 取余 |
+| 05 | u16 函数号, u8 参数数 | 1 个参数：deg2rad rad2deg sin cos tan acos asin atan floor ceil round abs sign ln log10 log2 exp sqrt；2 个：atan2 pow min max；3 个：clamp(x, 下, 上) lerp(a, b, t)（参数从栈顶起依次取） |
+
+结果是栈里剩下的唯一一个值，否则为 0。例：`02 01 00 02 00 00 04 01` 先压 in1 再压 in0，得 in0 + in1。
+ch90_161 里一对镜像程序的符号正好相反，印证了"后压的在左"。
 
 **帧时间**：时间节点每帧加的是真实秒数。更新函数取一个全局计时对象的 +0x34C（本帧相当于 60 fps 下的帧数，
 实测 1.0998）除以 +0x368（基准帧率 60），即本帧秒数（同一对象 +0x358 = 0.01833 秒），再乘所属对象的
@@ -237,16 +266,17 @@ bool 或 float 到 vec3 是 (x, x, x)。
   引擎是按帧时间累加的。注意周期一变，角度会按新的比例跳一下——引擎也是这样（它累加的是时间不是角度）。
 - LOD 门槛不模拟（节点总是执行），BlendRate 按 1。
 - 连到布尔槽：引擎是精确的 != 0；预览允许 1e-4 的误差，因为从 Blender 矩阵读出的姿态在本该是 0 的地方有 1e-7 量级的残差。
-- FloatMathCode 按逆波兰字节码求值（运算 1 加 2 减 3 乘 4 除，2/4 未见于原版，代码未读）。
-- 不预览、输出按 0：C# 节点、KeyFrameCurve、MaEulerConstraint、JointDriverFloat、JointDecomposeRotate、Ziva、材质节点、DebugDraw。
+- LayerBlendRate 输出 1；MaGetConstraintScale 输出 1（空间 2 输出 0），因为预览的骨架不带缩放。
+- 不预览、输出按 0：C# 节点、MaEulerConstraint、JointDriverFloat、JointDecomposeRotate、Ziva、材质节点、DebugDraw。
+  MaEulerConstraint（只在怪物上）和 JointDriverFloat（每个驱动 9 个槽，只在 Ziva 上）的代码读过，没有移植。
 
 测试 `tests/test_jxg_eval.py`（纯 Python）和 `tests/test_jxg_bpy.py`（后台 Blender）。
 
 ## 10. 还没解决的
 
 - 节点 +0x34 的哈希；文件头 +0x20、图头 +0x28/+0x34、尾段 +0x18 的哈希。
-- FloatMathCode 的运算码表；"隔帧更新"标志由什么决定。
-- 其余节点的代码（读法同第 8 节）：KeyFrameCurve、MaEulerConstraint、JointDriverFloat、速度、锥形、RBF 等。
+- "隔帧更新"标志由什么决定；QuatToEulerFloat3 的顺序编号。
+- 其余节点的代码（读法同第 8 节）：JointDecomposeRotate，以及语料里没出现的速度、锥形、RBF、属性读写等节点。
 
 ## 附录：语料里出现的全部节点类型
 
