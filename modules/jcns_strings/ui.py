@@ -107,4 +107,20 @@ STRINGS = {
     "ui.preview.op_clear_entry": {"ZH": "只清除选中的条目", "EN": "Clear only the selected entry"},
     "ui.preview.op_clear_kind": {"ZH": "清除当前分区的全部条目", "EN": "Clear all entries in the current section"},
     "ui.preview.op_clear_file": {"ZH": "清除文件里的全部预览", "EN": "Clear all previews in the file"},
+
+    # ---- 表达式图 ----
+    "ui.status.import_jxg": {"ZH": "导入表达式图", "EN": "Import Expression Graph"},
+    "ui.edit.jxg_order": {"ZH": "执行顺序：%s", "EN": "Run order: %s"},
+    "ui.jxg.file": {"ZH": "表达式图", "EN": "Expression Graph"},
+    "ui.jxg.count": {"ZH": "%d 个节点", "EN": "%d nodes"},
+    "ui.jxg.counts": {"ZH": "%d 个节点，其中 %d 个游戏脚本节点", "EN": "%d nodes, %d of them game script nodes"},
+    "ui.jxg.valid": {"ZH": "可以导出", "EN": "Ready to export"},
+    "ui.jxg.problems": {"ZH": "%d 处问题，导出前需要修正", "EN": "%d problems to fix before export"},
+    "ui.jxg.node": {"ZH": "节点", "EN": "Node"},
+    "ui.jxg.managed": {"ZH": "游戏脚本节点", "EN": "Game script node"},
+    "ui.jxg.managed_keep": {
+        "ZH": "参数按原样导出，只能改连线",
+        "EN": "Its parameters export as read; only its links can change",
+    },
+    "ui.jxg.advanced": {"ZH": "高级", "EN": "Advanced"},
 }

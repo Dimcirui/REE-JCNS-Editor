@@ -264,6 +264,9 @@ class JCNS_PT_Status(Panel):
         row = layout.row(align=True)
         row.operator("jcns.import_file", text=T("ui.status.import"), icon='IMPORT')
         row.operator("jcns.export_file", text=T("ui.status.export"), icon='EXPORT')
+        row = layout.row(align=True)
+        row.operator("jcns.import_jxg", text=T("ui.status.import_jxg"), icon='NODETREE')
+        row.operator("jcns.new_jxg", text="", icon='ADD')
 
         _field_row(layout, T("ui.status.work_collection"), context.scene, "jcns_active_collection",
                    icon='OUTLINER_COLLECTION')
@@ -468,6 +471,16 @@ def _draw_tabs(layout, rp):
     row.prop(rp, "browser_kind", expand=True, icon_only=True)
 
 
+# section table ids, as the engine numbers them
+_SECTION_KINDS = ('Outputs', 'RotExpression', 'Multi', 'Aim', 'Material', 'JointExprGraph')
+
+
+def _section_short(section_id):
+    if 0 <= section_id < len(_SECTION_KINDS):
+        return _short_label(_kinds().kind_of(_SECTION_KINDS[section_id]))
+    return str(section_id)
+
+
 class JCNS_PT_Edit(_RootPanel, Panel):
     bl_label    = T("ui.edit.label")
     bl_idname   = "JCNS_PT_edit"
@@ -496,6 +509,12 @@ class JCNS_PT_Edit(_RootPanel, Panel):
             row = layout.row()
             row.enabled = caps.can_edit
             row.prop(rp, "jxg_path", text="", icon='FILE_FOLDER')
+            if rp.jxg_path.strip():
+                layout.operator("jcns.open_jxg_path", icon='NODETREE')
+                order = [it.value for it in rp.section_order]
+                if order:
+                    layout.label(text=T("ui.edit.jxg_order", " → ".join(_section_short(i) for i in order)),
+                                 icon='SORTSIZE')
             return
 
         # 选中的条目不在当前分区时，详情仍会显示它；这里给一个跳过去的按钮。
