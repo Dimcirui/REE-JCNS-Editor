@@ -4,7 +4,7 @@
 改名或改语义时 `wd_api.API_VERSION` 加一，并记在文末的变更记录里。字段的含义见
 [engine-names.md](engine-names.md) 和 README；这里只说它们在 Blender 里的位置和对应的文件字段。
 
-接口版本：`API_VERSION = 1`。
+接口版本：`API_VERSION = 2`。
 
 ## 集合
 
@@ -15,18 +15,22 @@
 | `~TYPE` | `"RE_JCNS_COLLECTION"`，导入和新建都写，之后不改不删 |
 | `~ASSETPATH` | 游戏内相对路径，去掉 `natives/<平台>/`，不带版本后缀，例 `Art/Model/Character/ch03/039/001/2/ch03_039_0012.jcns`。只在导入时写，文件路径里没有 `natives` 时不写；新建的集合没有 |
 
+表达式图（`.jntexprgraph`）另有自己的集合（蓝色），`~TYPE` 是 `"RE_JXG_COLLECTION"`，`~ASSETPATH` 规则相同。
+集合里只有一个 `JXG_HEADER <集合名>` Empty，它的 `jcns_jxg_tree` 指向节点树（`bl_idname` 为 `JCNS_JXG_Tree`）。
+节点树的内容没有列进本接口，需要时用 `export_bytes` 拿文件字节。
+
 ## 内存导出：`wd_api`
 
 子模块 `<包名>.wd_api`（扩展形式 `bl_ext.<repo>.<包名>.wd_api`），插件启用后就在 `sys.modules` 里：
 
 ```python
-API_VERSION = 1
-COLLECTION_TYPES = ("RE_JCNS_COLLECTION",)
+API_VERSION = 2
+COLLECTION_TYPES = ("RE_JCNS_COLLECTION", "RE_JXG_COLLECTION")
 
 class ExportError(Exception): ...      # 消息是给用户看的问题列表
 
 def export_bytes(collection, version=None) -> bytes:
-    """version 为 None 时导出 v102（MH Wilds）。"""
+    """JCNS 集合：version 为 None 时导出 v102（MH Wilds）。表达式图集合：导出 .jntexprgraph，忽略 version。"""
 ```
 
 - 结果和"导出"操作写出的文件逐字节相同（`tests/test_wd_api.py` 有验证）。
@@ -130,3 +134,4 @@ murmur3 UTF-16 哈希，或者这个哈希值本身。
 ## 变更记录
 
 - v1（2026-10-23）：首版。
+- v2（2026-10-26）：`COLLECTION_TYPES` 加入 `RE_JXG_COLLECTION`，`export_bytes` 对它返回表达式图文件；图有问题时抛 `ExportError`。
