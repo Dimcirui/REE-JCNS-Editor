@@ -50,13 +50,16 @@ _COLORS = {
     'joint': (0.20, 0.70, 0.75, 1.0), 'enum': (0.35, 0.55, 0.36, 1.0),
 }
 
-# enum-like int slots of the Joint nodes: value -> string key
+# enum-like int slots: value -> string key
 _ENUMS = {
     'space': ((0, "editors.jxg.enum.local"), (1, "editors.jxg.enum.global"), (2, "editors.jxg.enum.local_diff")),
     'rot_order': ((0, "editors.jxg.enum.xyz"), (1, "editors.jxg.enum.yzx"), (2, "editors.jxg.enum.zxy"),
                   (3, "editors.jxg.enum.zyx"), (4, "editors.jxg.enum.yxz"), (5, "editors.jxg.enum.xzy")),
     'unit': ((0, "editors.jxg.enum.cm"), (1, "editors.jxg.enum.m")),
     'rot_unit': ((0, "editors.jxg.enum.rad"), (1, "editors.jxg.enum.deg")),
+    'operation': ((0, "editors.jxg.enum.add"), (1, "editors.jxg.enum.sub"), (2, "editors.jxg.enum.mul"),
+                  (3, "editors.jxg.enum.div"), (4, "editors.jxg.enum.min"), (5, "editors.jxg.enum.max"),
+                  (6, "editors.jxg.enum.pow")),
 }
 
 
