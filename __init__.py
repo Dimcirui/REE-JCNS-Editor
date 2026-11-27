@@ -17,7 +17,7 @@ from .modules_shim import T
 bl_info = {
     "name": "REE JCNS Editor",
     "author": "Dimcirui",
-    "version": (0, 21, 0),
+    "version": (0, 22, 0),
     "blender": (3, 6, 0),
     "location": "View3D > Sidebar > RE JCNS | File > Import/Export",
     "description": (
