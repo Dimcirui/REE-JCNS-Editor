@@ -128,9 +128,50 @@ class ConstraintBackend(PreviewBackend):
     @staticmethod
     def _remove(arm, bone_name, con_name):
         pb = arm.pose.bones.get(bone_name) if bone_name else None
-        con = pb.constraints.get(con_name) if pb is not None else None
-        if con is not None:
-            pb.constraints.remove(con)
+        for name in (con_name,) + (get_plan().WRAP_NAMES if con_name == get_plan().CON_NAME['Aim'] else ()):
+            con = pb.constraints.get(name) if pb is not None else None
+            if con is not None:
+                pb.constraints.remove(con)
+
+    @staticmethod
+    def _set_wrap(arm, pb, con, quat):
+        """Put a fixed local rotation `quat` just before `con` and its inverse just after
+        (Transformation constraints whose output range is a single value), or remove them."""
+        import math
+        from mathutils import Quaternion
+        names = get_plan().WRAP_NAMES
+        if not quat:
+            for name in names:
+                c = pb.constraints.get(name)
+                if c is not None:
+                    pb.constraints.remove(c)
+            return
+        q = Quaternion(quat)
+        for name, rot in zip(names, (q, q.inverted())):
+            c = pb.constraints.get(name)
+            if c is None or c.type != 'TRANSFORM':
+                if c is not None:
+                    pb.constraints.remove(c)
+                c = pb.constraints.new('TRANSFORM')
+                c.name = name
+            c.target, c.subtarget = arm, con.subtarget
+            c.map_from = c.map_to = 'ROTATION'
+            c.owner_space = c.target_space = 'LOCAL'
+            c.mix_mode_rot = 'AFTER'
+            c.use_motion_extrapolate = False
+            c.to_euler_order = 'XYZ'
+            for axis, value in zip('xyz', rot.to_euler('XYZ')):
+                setattr(c, 'from_min_%s_rot' % axis, -math.pi)
+                setattr(c, 'from_max_%s_rot' % axis, math.pi)
+                setattr(c, 'to_min_%s_rot' % axis, value)
+                setattr(c, 'to_max_%s_rot' % axis, value)
+        cons = pb.constraints
+        i = cons.find(con.name)
+        j = cons.find(names[0])
+        cons.move(j, i if j > i else i - 1)
+        i = cons.find(con.name)
+        j = cons.find(names[1])
+        cons.move(j, i + 1 if j > i else i)
 
     # -- interface ----------------------------------------------------------
 
@@ -179,6 +220,8 @@ class ConstraintBackend(PreviewBackend):
         else:
             con.target = arm
             con.subtarget = plan.target
+        if plan.con_type == 'DAMPED_TRACK':
+            self._set_wrap(arm, pb, con, plan.wrap)
 
         p.preview_on = True
         p.preview_bone = plan.bone

@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from jcns_i18n import T
 
 CON_NAME = {'Multi': "JCNS Multi", 'Aim': "JCNS Aim", 'RotExpression': "JCNS RotExpr"}
+WRAP_NAMES = ("JCNS Aim In", "JCNS Aim Out")     # the fixed rotations around an oblique Aim
 
 
 @dataclass
@@ -30,6 +31,8 @@ class ConstraintPlan:
     props: dict = field(default_factory=dict)      # plain values to set on it
     target: str = ''                 # subtarget of a single-target constraint
     targets: tuple = ()              # ((bone, weight), ...) for an ARMATURE constraint
+    wrap: tuple = ()                 # (w, x, y, z) turning local Y onto the aim axis: the constraint
+                                     # runs between this fixed rotation and its inverse
 
 
 def _no(reason):
@@ -86,12 +89,20 @@ def aim_track_axis(vec):
     return ''
 
 
+def _unit(q):
+    n = math.sqrt(sum(c * c for c in q))
+    return tuple(c / n for c in q)
+
+
 def plan_aim(bone, target, vec1, influence, up_bone='', world_up_type=4, offset=(0.0, 0.0, 0.0), target2=''):
     """Aim `bone` at `target`: a Damped Track along the record's aim axis (Vec1).
 
     Damped Track is the shortest-arc turn from the rest pose, which is what
     WorldUpType 4 does.  Types 0-3 also fix the roll around the aim axis, and
     type 5 drops the rest pose, so the preview differs; the up bone is not previewed.
+    Damped Track only tracks a coordinate axis, so an oblique Vec1 is tracked as Y
+    with the bone turned by `wrap` (Y onto Vec1) before and back after: the
+    shortest arc of Vec1 is the same turn.
     """
     if not bone:
         return _no(T("core.plan.aim_no_bone"))
@@ -99,9 +110,13 @@ def plan_aim(bone, target, vec1, influence, up_bone='', world_up_type=4, offset=
         return _no(T("core.plan.aim_no_target"))
     if bone == target:
         return _no(T("core.plan.aim_same"))
-    axis = aim_track_axis(vec1)
+    n = math.sqrt(sum(c * c for c in vec1))
+    if n < 1e-6:
+        return _no(T("core.plan.aim_axis_zero"))
+    axis, wrap = aim_track_axis(vec1), ()
     if not axis:
-        return _no(T("core.plan.aim_axis", *tuple(vec1)))
+        x, y, z = (c / n for c in vec1)
+        axis, wrap = 'TRACK_Y', _unit((1.0 + y, z, 0.0, -x))     # shortest arc from Y: (1 + Y.v, Y x v)
     warnings = []
     if world_up_type == 5:
         warnings.append(T("core.plan.world_up_type5"))
@@ -121,7 +136,7 @@ def plan_aim(bone, target, vec1, influence, up_bone='', world_up_type=4, offset=
     return ConstraintPlan(
         True, warnings=warnings, bone=bone, name=CON_NAME['Aim'],
         con_type='DAMPED_TRACK', target=target,
-        props={'track_axis': axis, 'influence': infl})
+        props={'track_axis': axis, 'influence': infl}, wrap=wrap)
 
 
 # ── RotExpression ───────────────────────────────────────────────────────────

@@ -86,9 +86,7 @@ STRINGS = {
     "core.plan.aim_same": {
         "ZH": "被瞄准的骨骼和瞄准目标是同一根",
         "EN": "The aimed bone and the aim target are the same bone"},
-    "core.plan.aim_axis": {
-        "ZH": "瞄准轴 (%.2f, %.2f, %.2f) 不是坐标轴，Blender 的阻尼追踪表示不了",
-        "EN": "Aim axis (%.2f, %.2f, %.2f) is not a coordinate axis; Blender's Damped Track cannot represent it"},
+    "core.plan.aim_axis_zero": {"ZH": "瞄准轴是零向量", "EN": "The aim axis is a zero vector"},
     "core.plan.world_up_type5": {
         "ZH": "类型 5 从父骨朝向起最短弧（丢掉静止姿态），预览从静止姿态起，会差静止姿态",
         "EN": "Type 5 takes the shortest arc from the parent's orientation (rest pose dropped); the preview starts from the rest pose, so it differs by the rest pose"},
