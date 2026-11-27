@@ -232,6 +232,18 @@ def _armature_poll(self, obj):
     return obj.type == 'ARMATURE'
 
 
+def fill_bone_names(tree):
+    """Name the joint sockets the dictionary left as bare hashes from the tree's armature."""
+    arm = tree.armature
+    if arm is None or arm.type != 'ARMATURE':
+        return
+    names = {jxg_hash(b.name): b.name for b in arm.data.bones}
+    for node in tree.nodes:
+        for sock in node.inputs:
+            if isinstance(sock, JCNS_JXG_SocketJoint) and not sock.bone and sock.value in names:
+                sock.bone = names[sock.value]
+
+
 class JCNS_JXG_Tree(NodeTree):
     bl_idname = TREE_ID
     bl_label = T("editors.jxg.tree")
@@ -239,7 +251,8 @@ class JCNS_JXG_Tree(NodeTree):
     bl_icon = 'NODETREE'
 
     armature: PointerProperty(name=T("editors.jxg.armature"), description=T("editors.jxg.armature_tip"),
-                              type=bpy.types.Object, poll=_armature_poll)
+                              type=bpy.types.Object, poll=_armature_poll,
+                              update=lambda self, ctx: fill_bone_names(self))
     source_filepath: StringProperty(name=T("editors.jxg.source"), subtype='FILE_PATH')
     asset_path: StringProperty(name=T("editors.jxg.asset_path"))
     # the file header as read; new trees take jxg_nodes.new_graph()'s values
