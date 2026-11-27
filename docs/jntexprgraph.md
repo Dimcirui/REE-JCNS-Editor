@@ -84,14 +84,16 @@ jcns 的 4 个文件只有 JXG 一个分区、没有任何约束条目，纯粹�
 | +0x18 | u64 | 根列表头偏移 |
 | +0x20 | u64 | 节点数组偏移 |
 | +0x28 | u32 | 常量哈希，绝大多数为 0x47BEF355 |
-| +0x2C | u16 | 空图为 0，其余为 1 |
+| +0x2C | u16 | 入口表项数（空图 0，语料其余都是 1） |
 | +0x2E | u16 | 原生节点数 |
-| +0x30 | u32 | app（C#）节点数，排在原生节点之后 |
+| +0x30 | u16 | app（C#）节点数，排在原生节点之后 |
+| +0x32 | u16 | 标志：bit0 = 执行流模式（第 11 节）；语料全为 0 |
 | +0x34 | u32 | 哈希（含义未知） |
 
 **根列表**：u16 数组，列出图的出口节点（Set 类、带副作用的节点），求值从这里往回拉。
-项的 bit15 表示 app 节点（低位是 app 块内的序号），0x6000 只出现在 DebugDraw2DTextNode 上，像是"仅调试"。
-**根列表头**：6 字节 0，接 u16 根数。
+项的 bit15 表示 app 节点（低位是 app 块内的序号）；带 0x6000 的项执行器直接跳过（语料里只在 DebugDraw2DTextNode 上）。
+**根列表头**实际是入口表（每项 8 字节：u32 键、u16 根列表起点、u16 个数）。执行器每帧用键 0 查表，
+只跑这一段根；语料只有一项（0, 0, 根数）。
 
 ## 4. 节点（每条 0x38 字节）
 
@@ -103,10 +105,10 @@ jcns 的 4 个文件只有 JXG 一个分区、没有任何约束条目，纯粹�
 | +0x10 | u32 | 属性数据偏移，无属性时为 0 |
 | +0x14, +0x18 | u32 | 0 |
 | +0x1C | u32 | 额外数据偏移，没有时为 0 |
-| +0x20 | u32 | 输入连线终点 = 起点 + 6 × 连线数 |
+| +0x20 | u32 | 执行出口表偏移（基址同 +0x08）；语料没有出口，所以正好落在输入连线终点 |
 | +0x24 | u32 | 节点序号 |
-| +0x28 | u8 ×4 | 0, 连线数, 属性数, 0 |
-| +0x2C | u16 | kind：纯数学节点 5，DebugDraw 3，其余 1 |
+| +0x28 | u8 ×4 | 0, 连线数, 属性数, 执行出口数 |
+| +0x2C | u16 | kind：纯数学节点 5，DebugDraw 3，其余 1。bit1 = 不实例化（所以 DebugDraw 整个被丢弃），bit2 = 执行流模式下每次被拉取都重算，bit0 执行器不读 |
 | +0x2E | u16 | 额外数据字节数 |
 | +0x30 | u32 | 节点类型 = RSZ 类型哈希（`modules/data/jxg_node_types.json`） |
 | +0x34 | u32 | 通常为 0；20 个节点上是一个哈希，Joint 节点上等于它读的骨的哈希 |
@@ -129,6 +131,9 @@ jcns 的 4 个文件只有 JXG 一个分区、没有任何约束条目，纯粹�
 
 **输入连线**（每条 6 字节）：`u16 源节点, u8 目标槽, u8 源输出槽, u8 目标类型, u8 源类型`。
 源节点的 bit15 同样表示 app 节点。两个类型不同时引擎做转换（语料里有 float→vec3、float→bool）。
+
+**执行出口**（每条 4 字节）：`u16 目标节点（bit15 app）, u8 目标的执行入口槽, u8 本节点的出口槽`。
+同一出口槽有多条时只取第一条。读写器还不支持（目前固定写 0 条）。
 
 **额外数据**：FloatEaseCurveNode 4 字节（u32 `via.curve.EaseType`）；KeyFrameCurveNode 是曲线关键帧；
 FloatMathCodeNode 是一段栈式字节码。两者的格式见第 8 节。
@@ -276,7 +281,98 @@ bool 或 float 到 vec3 是 (x, x, x)。
 
 - 节点 +0x34 的哈希；文件头 +0x20、图头 +0x28/+0x34、尾段 +0x18 的哈希。
 - "隔帧更新"标志由什么决定。
-- 其余节点的代码（读法同第 8 节）：JointDecomposeRotate，以及语料里没出现的速度、锥形、RBF、属性读写等节点。
+- 第 11 节的节点和执行流模式都只读了代码，没在游戏里跑过；PropertyAccess 的属性哈希算法没验证。
+- 没读的：Vec/Int 系列的简单运算、DebugDraw、Bool And/Or/Not、MaAxisOrthogonalCoordinate、MaSetConstraintScale、
+  MaEulerConstraint 的移植。
+
+## 11. 语料没用到的节点（从游戏代码读出）
+
+Wilds 的 180 个节点类型里语料只用了 66 个。下面是其余里有用的部分，读法同第 8 节；标"原生"的在本进程直接调 exe 函数核对过。
+每条结论的字段偏移、函数地址和依据在 [jxg-node-code.md](jxg-node-code.md)。
+补充两个族槽：虚表 19/20 是 get/setObject，21 是 setExtraData；对象 +0x20 是首帧标志，第一次更新后清零。
+
+### 执行模型
+
+虚表槽 22 是执行类别：0 纯函数（取值时现算），1 有每帧更新（槽 24），2 惰性（Joint Set、FloatSwitch、MaFloatChoice、
+MaSetConstraintScale：先拉槽 25 掩码里的输入，再只拉槽 26 掩码里真正要用的），3 流程控制。
+
+- **拉取模式**（图头 +0x32 bit0 = 0，原版全部图）：按入口表跑根列表，往回拉数据，每个节点每帧最多执行一次。
+  流程控制节点在这个模式下什么都不做，"开关"只能做成选值（FloatSwitch、MaFloatChoice 只拉选中的分支）；
+  在根列表里的 Set 节点一定执行。
+- **执行流模式**（bit0 = 1）：根执行后沿执行出口往下走，普通节点走自己的全部出口，流程节点调自己的 execute 决定走哪个。
+  每个节点每次图运行最多执行 1001 次。拉数据时只有 kind 带 bit2 的源会重算，其余读它上次执行留下的值。
+  所以要让条件真正决定"写不写骨"：Set 不放进根列表、只由 If 的出口指向；给它供数的节点设 kind 5 或放进根列表；
+  时间节点不要设 bit2（否则每被拉一次就多推进一帧）。
+
+### 流程控制与逻辑
+
+| 节点 | 槽 | 规则 |
+|---|---|---|
+| ExeFlowCtrlIf | bool（任意槽）条件 | 真时走出口 0；没有 else |
+| ExeFlowCtrlSequential | — | 按文件顺序走全部出口 |
+| ExeFlowCtrlCaseSwitch | int 1 个数 N，int 2 选择 s，bool 未接线时落到 default | 出口 10+s；s 越界走出口 9（default） |
+| ExeFlowCtrlForLoop | int 1 起点，int 2 终点 | 含两端，起点 > 终点时递减，起点 = 终点执行一次；出口 0 循环体、11 结束后；执行入口槽 12 = Break；当前序号从 int 输出读（读它的节点要带 bit2） |
+| ExeFlowCtrlBitFlagsSequential | int 掩码 | bit i 置位时走出口 10+i |
+| IntSwitchCase | 0 选择，1 个数，2 默认，10–17 各 case 值 | 越界或负数取默认 |
+| MaFloatCondition | bool 条件，2 真值（默认 1），3 假值 | 输出 1；两边都会算（不惰性）。注意和 FloatSwitch 的槽序相反 |
+| MaFloatChoice | 0 序号 k，1–8 候选 | 只拉第 k+1 个；越界输出 0 |
+| MaFloatLogic | int 运算，2 A，3 B | 0 ==，1 !=，2 <，3 >，4 ≤，5 ≥；精确比较 |
+| FloatGreater / FloatLess | 0 A，1 B | bool 输出 |
+| BoolOperatorNode | — | 只是基类，输出恒为 false，用 BoolAnd/Or/Not |
+| SquareWave / TriangleWave | 同 SinWave：1 周期，2 A，3 B | 方波前半 B、后半 A；三角波 A→B→A |
+| JointGetRotationEulerDegree | 0 / 2 / 3 | 恒为度；没有四元数输出（getQuat 返回全 0） |
+| JointGetPositionCm | 0 / 2 | 等于单位固定为厘米的 JointGetPosition |
+
+### 读写游戏状态
+
+- **ExprPropertyAccessNode**：读写某个 GameObject 上指定类型组件的原生反射属性。
+  - 额外数据：+0 i64 类型表偏移，+8 i32 类型数；类型表每项 16 字节（i64 属性表偏移、u32 组件类型哈希、u32 属性数）；
+    属性表每项 8 字节（u8 绑定到的槽号、3 字节空、u32 属性哈希）。槽号自选，类型由属性决定（bool、int、float、16 字节结构、对象）。
+  - 槽 255 输入 GameObject；不接时用图所在的 GameObject。没有每帧更新：下游取值时读，上游写入时立即写进组件。
+  - 每次读写都重新查组件；查不到时读出 0（四元数为单位）。只读属性不能写。
+  - 组件类型哈希应该就是 RSZ 类型哈希；属性哈希推测是属性名的 murmur3，没验证。
+- **FindGameObjectNode**：输出一个 GameObject。额外数据 +0 u8 模式：1 = 后接 16 字节 GUID；2 = 后接 0 结尾的 UTF-16
+  层级路径（'/' 分段）。在主场景里查，结果缓存，对象销毁后重查。
+- **JointGetVelocityNode**：本对象一根骨的帧差分速度。槽 0 骨名、2 空间（1 世界，其余局部）、5 单位（0 = cm/s）；
+  输出 vec3 和 20–22。首帧为 0；时间缩放为 0 时会除以 0。
+- **DebugGamePadNode**：发布版是空实现，输出恒为 0 / false。
+
+### 网格
+
+- **ExprMeshSetBlendShapeNode**：槽 0 条目数（≤ 40），10+2i 形态键哈希，11+2i 权重。只写给过值的条目，
+  没给值的条目读回网格当前权重；不乘 BlendRate、不钳制。名字表和 jcns Deform 是同一个数组，
+  所以哈希应当同 Deform（mesh 全名"节点.目标"的 murmur3 UTF-16，见 jcns 文档）。
+- **ExprMeshSetBlendShapeNormalizeNode**：多一个槽 1 = 保留数 K。只保留最大的 K 个权重、其余清零；保留的和超过 1 时归一到 1。
+- **ExprMeshSetMaterialNode**：槽 0 组数，1 = 按图层 BlendRate 从材质原值插值；组 i 的槽 10i+10 材质名哈希、
+  +11 参数名哈希、+12 vec4、+13…16 分量。哈希是 mdf2 名字的 murmur3 UTF-16（和 jcns Material 相同）。
+  只支持 float 和 float4 参数；没给的分量保留当前值。
+
+### 骨与旋转
+
+- **JointSetLocalCoordNode**：0 骨名、1 LOD 门槛、10 局部位置（米）、quat 局部旋转、12 缩放；只写给过的量，按 BlendRate 混合。
+- **JointComposeRotate / JointDecomposeRotate**（原生）：槽 100 方式，6 单位（1 = 度）。方式 0 = ref·S·T·ref*，
+  1 = ref·T·S·ref*，T 是绕 X 的扭转 a，S 是 normalize(0, tan(b/2), tan(c/2), 1) 的摆动；2 = 指数映射。
+  Decompose 输入 11 = q、14 = ref，输出 vec3 / 20–22。坑：Compose 用度时，取值会把存着的角度原地换成弧度，取第二次就错。
+- **ExpMapToQuat / QuatToExpMap**：只认 float 20/21/22（vec3 的读写是空实现）。
+- **JointDriverFloatNode**（原生）：不碰骨骼，是多条分段曲线映射后再合并。1 个数，2 合并方式（0 加、1 平均、2 乘、3 取小、
+  4 取大），3/4 输出上下限；第 i 条从槽 10+9i 起依次是：输入、输入下/上点、输出下/上点、插值（同 MaFloatRemap）、
+  用中点、中点输入/输出。JointDriverVec3Node 同理，每条 12 个槽、逐分量。
+
+### 锥形与 RBF
+
+- 三个锥形节点和 jcns 用同一个求值函数（原生）：当前方向与参考方向的夹角 θ < 半角时取 1 − θ/半角，否则 0；
+  两个方向完全重合或完全相反时都给 1。有椭圆比时在椭圆轴方向放宽。设了目标骨时，当前方向改为"目标骨位置 − 本骨位置"。
+  jcns 记录里决定走这条路的是 schema 叫 SymmetryJointHashIndex 的字段，这个名字可能取错了。
+- **ConeInputNode**：11 当前旋转，15 参考旋转，14 偏移旋转，101 主轴（0–5 = ±X/Y/Z，6 = 向量），108 椭圆轴，
+  102 半角（度），107 椭圆比，105/106/109 向量模式下的参考 / 当前 / 椭圆轴向量。
+- **JointConeInputNode**：0 骨名，7 参考骨（默认父骨），110 目标骨，4 用静止姿态，13 偏移欧拉角（度，按槽 3 的顺序），
+  其余同上；一律用世界量。
+- **JointConeDriverNode**：同 jcns ConeDriver。1 条目数，2 合并方式，3/4 输出上下限；第 k 条 10+4k 输入（夹到 0–1）、
+  +1 输出下限、+2 输出上限、+3 插值。**MaConeRemapNode** 是单条版本：0 输入，1/2 输出下/上限。
+- **MaRadialBasisFunctionNode**：样本全在额外数据里。头部 +4 σ，+8 姿势数 P，+9 输入数 I，+A 输出数 O，+B 核，+C 距离，
+  +E 仿射项，+F 归一化；随后依次是 P×I 样本、P×O 权重、P×O 目标、P 吸附半径、P 内圈比例、输入上/下限、输出上/下限和四组开关。
+  核：0 线性，1 exp(σd)，2 exp(σd²)（没有负号，σ 要存负数），3 薄板样条，4/5 多二次 / 逆多二次。距离：1 = 角度（仅 3 输入），其余欧氏。
+  输入落进某个姿势的吸附半径时向它的目标靠拢，内圈里直接取目标。槽 100+i 输入，200+i 输出。只读了代码。
 
 ## 附录：语料里出现的全部节点类型
 
