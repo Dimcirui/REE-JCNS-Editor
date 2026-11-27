@@ -8,7 +8,7 @@ At the cone joint's head it draws:
   * the joint's current direction (joint * Matrix * Y), coloured from red (cone value 0)
     to green (1).
 Lengths follow the joint's bone length.  The geometry is the one
-jcns_source_read.cone_value measures; Blender bone axes are the engine's.
+jcns_source_read.cone_value measures, in the file's bone frames (jcns_bone_axes).
 """
 
 import math
@@ -36,6 +36,7 @@ def _rot(matrix):
 def _cone_geometry(arm, ci):
     """(apex, reference dir, current dir, length, value) in world space, or None."""
     from .jcns_operators import _armature_bone, _rest_transform
+    from .jcns_bone_axes import file_matrix
     joint = _armature_bone(arm, ci.joint.strip())
     parent = _armature_bone(arm, ci.parent_joint.strip())
     if joint is None or parent is None:
@@ -43,8 +44,8 @@ def _cone_geometry(arm, ci):
     pj = arm.pose.bones[joint]
     pp = arm.pose.bones[parent]
     world = arm.matrix_world
-    jq = _rot(world @ pj.matrix)
-    pq = _rot(world @ pp.matrix)
+    jq = _rot(file_matrix(pj.bone, world @ pj.matrix))
+    pq = _rot(file_matrix(pp.bone, world @ pp.matrix))
     rest = Quaternion(_rest_transform(arm, joint)[0])       # as the preview reads it
     x, y, z, w = ci.direction
     ref_local = Quaternion((w, x, y, z)) @ Vector((1.0, 0.0, 0.0))

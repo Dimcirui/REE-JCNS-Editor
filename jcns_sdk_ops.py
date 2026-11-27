@@ -56,13 +56,18 @@ def search_bones(self, context, edit_text):
 # ---------------------------------------------------------------------------
 
 def snapshot(pose_bone):
-    """(location, quaternion, scale) of a pose bone's basis, whatever its rotation mode."""
+    """(location, quaternion, scale) of a pose bone's basis, whatever its rotation mode,
+    in the file's bone frame (jcns_bone_axes): keys hold file-frame poses."""
+    from . import jcns_bone_axes
     loc, rot, scale = pose_bone.matrix_basis.decompose()
-    return tuple(loc), tuple(rot), tuple(scale)
+    return jcns_bone_axes.to_file_basis(pose_bone.bone, loc, tuple(rot), scale)
 
 
 def apply_pose(pose_bone, loc, rot, scale):
+    """Pose a bone from a file-frame basis (see snapshot)."""
     from mathutils import Matrix, Quaternion, Vector
+    from . import jcns_bone_axes
+    loc, rot, scale = jcns_bone_axes.to_blender_basis(pose_bone.bone, loc, rot, scale)
     pose_bone.matrix_basis = Matrix.LocRotScale(Vector(loc), Quaternion(rot), Vector(scale))
 
 

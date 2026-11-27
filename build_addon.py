@@ -51,6 +51,7 @@ MANIFEST = "blender_manifest.toml"
 # development scratch files never leak into a release by accident.
 INCLUDE_FILES = [
     "__init__.py",
+    "jcns_bone_axes.py",
     "jcns_capture.py",
     "jcns_cm.py",
     "jcns_cone_draw.py",

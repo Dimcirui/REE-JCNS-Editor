@@ -28,6 +28,8 @@ ensure_path()
 import jxg_eval  # noqa: E402
 import jxg_nodes  # noqa: E402
 
+from .jcns_bone_axes import correction, file_matrix  # noqa: E402
+
 RX = Matrix.Rotation(math.pi / 2, 4, 'X')
 RX_INV = RX.inverted()
 _RESTORE = "jxg_preview_restore"          # tree idprop: {bone: matrix_basis as 16 floats}
@@ -49,12 +51,21 @@ def _hashes(arm):
     return _hash_cache[key]
 
 
+# Bone frames are the file's (jcns_bone_axes): Blender frame @ C for a bone shown
+# with RE Mesh Editor's RE9 axis correction.
+
 def _local_of(pb):
-    return (pb.parent.matrix.inverted() @ pb.matrix) if pb.parent else RX_INV @ pb.matrix
+    m = file_matrix(pb.bone, pb.matrix)
+    if pb.parent is None:
+        return RX_INV @ m
+    return file_matrix(pb.parent.bone, pb.parent.matrix).inverted() @ m
 
 
 def _rest_local(bone):
-    return (bone.parent.matrix_local.inverted() @ bone.matrix_local) if bone.parent else RX_INV @ bone.matrix_local
+    m = file_matrix(bone, bone.matrix_local)
+    if bone.parent is None:
+        return RX_INV @ m
+    return file_matrix(bone.parent, bone.parent.matrix_local).inverted() @ m
 
 
 def _pq(m):
@@ -85,7 +96,9 @@ def scene_time(scene):
 
 def _basis_for(pb_orig, bone, pos, q, scale):
     L = Matrix.LocRotScale(Vector(pos), Quaternion(q), scale)
-    return _rest_local(bone).inverted() @ L
+    basis = _rest_local(bone).inverted() @ L          # in the file's bone frame
+    c = correction(bone)
+    return c.to_4x4() @ basis @ c.inverted().to_4x4() if c is not None else basis
 
 
 def _same(a, b, eps=1e-6):

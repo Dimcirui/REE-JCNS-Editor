@@ -35,12 +35,21 @@ FIELDS = tuple(ident for ident, _n, _d in _FIELD_ITEMS)
 
 
 def _pose_of(pose_bone):
-    """(XYZ Euler in radians, location, scale) of a pose bone, whatever its rotation mode."""
-    if pose_bone.rotation_mode == 'XYZ':
-        euler = tuple(pose_bone.rotation_euler)
-    else:
-        euler = tuple(pose_bone.matrix_basis.to_3x3().normalized().to_euler('XYZ'))
-    return euler, tuple(pose_bone.location), tuple(pose_bone.scale)
+    """(XYZ Euler in radians, location, scale) of a pose bone's basis in the file's bone
+    frame (jcns_bone_axes), whatever its rotation mode."""
+    from mathutils import Quaternion
+    from . import jcns_bone_axes
+    if jcns_bone_axes.correction(pose_bone.bone) is None:
+        # The channels as they stand, angles past 180 degrees included.
+        if pose_bone.rotation_mode == 'XYZ':
+            euler = tuple(pose_bone.rotation_euler)
+        else:
+            euler = tuple(pose_bone.matrix_basis.to_3x3().normalized().to_euler('XYZ'))
+        return euler, tuple(pose_bone.location), tuple(pose_bone.scale)
+    rot = pose_bone.matrix_basis.to_3x3().normalized().to_quaternion()
+    loc, q, scale = jcns_bone_axes.to_file_basis(
+        pose_bone.bone, pose_bone.location, (rot.w, rot.x, rot.y, rot.z), pose_bone.scale)
+    return tuple(Quaternion(q).to_euler('XYZ')), loc, scale
 
 
 def read_source(arm, sp):

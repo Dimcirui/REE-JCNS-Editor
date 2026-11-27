@@ -47,19 +47,22 @@ import jcns_source_read  # noqa: E402
 #   ('c', value)                  none; the source is not live yet, use value
 #   ('sc', rest_scale, base)      one variable (pose scale), times the bone's rest scale,
 #                                 less 1 when `base` (the source's BasePose bit)
-#   ('rot', mode, axis, rest, order, frame, base, live)
+#   ('rot', mode, axis, rest, order, frame, base, axes, live)
 #                                 the XYZ Euler channels (radians) `live` gives, the
 #                                 others read 0; rest and frame are (w, x, y, z);
 #                                 mode is a jcns_source_read.ROTATION_MODES value, order
 #                                 the source's +27 RotOrder; `base` reads relative to rest
-#   ('loc', axis, rest, offset, live)
+#   ('loc', axis, rest, offset, axes, live)
 #                                 the location channels (metres) `live` gives;
 #                                 offset is the rest offset from the parent, metres
 #                                 (zero for a BasePose source)
-#   ('cone', rest, direction, matrix, angle, base_pose, self_parent, live)
+#   ('cone', rest, direction, matrix, angle, base_pose, self_parent, axes, live)
 #                                 a ConeDriver: the cone joint's XYZ Euler channels in
 #                                 `live` (none when its ParentJoint is the joint itself);
 #                                 its map is ('CONE', out_min, out_max, interpolation)
+# rest and offset are in the file's bone frames; `axes` is the bone's RE9 axis
+# correction C as a quaternion, or None (jcns_bone_axes), and turns the Blender
+# channels into the file's frame.
 # An element of `live` is an axis, read from one variable, or a channel an earlier entry
 # wrote: ('n', axis, key, specs) for one channel, ('g', keys, specs) for all three of a
 # bone previewed as a group.  `specs` are the (bone, transform type, rotation mode) of
@@ -113,15 +116,16 @@ def _read(read, vals):
     """The source value for one 'rot' / 'loc' / 'cone' read from its variables."""
     chans = _live_channels(read[-1], vals)
     if read[0] == 'rot':
-        _, mode, axis, rest, order, frame, base, _live = read
+        _, mode, axis, rest, order, frame, base, axes, _live = read
         return jcns_source_read.rotation(
-            mode, jcns_source_read.read_rotation(rest, chans, base), axis, order, frame)
+            mode, jcns_source_read.read_rotation(rest, chans, base, axes), axis, order, frame)
     if read[0] == 'cone':
-        _, rest, direction, matrix, angle, base_pose, self_parent, _live = read
-        q = (1.0, 0.0, 0.0, 0.0) if self_parent else jcns_source_read.pose_rotation(rest, chans)
+        _, rest, direction, matrix, angle, base_pose, self_parent, axes, _live = read
+        q = ((1.0, 0.0, 0.0, 0.0) if self_parent
+             else jcns_source_read.pose_rotation(rest, chans, axes))
         return jcns_source_read.cone_value(q, rest, direction, matrix, angle, base_pose)
-    _, axis, rest, offset, _live = read
-    return jcns_source_read.position(rest, offset, chans, axis)
+    _, axis, rest, offset, axes, _live = read
+    return jcns_source_read.position(rest, offset, chans, axis, axes)
 
 
 def source_map(s, target_q):
@@ -203,18 +207,21 @@ def clear_channels():
 
 # gid -> {'rest': (w, x, y, z), 'parts': [(axis, mode, replaces, maps, reads, out[, rot2_group]), ...]}
 # for a bone whose rotation or location drivers are built together; parts are in
-# file order of their live entries.  Location groups also carry 'offset', the
-# parent-relative rest offset in metres.  The bone's channels are in _CHANNELS as
-# {'group': gid, 'axis': a}.
+# file order of their live entries, their axes the file's.  Location groups also carry
+# 'offset', the parent-relative rest offset in metres.  'axes' is the bone's RE9 axis
+# correction (see _CHANNELS): the group works in the file's frame and hands each
+# driver its Blender channel.  The bone's channels are in _CHANNELS as
+# {'group': gid, 'axis': a}, a being the Blender channel.
 _GROUPS = {}
 
 
-def register_group(gid, rest, parts, keys, offset=None, parent_scale=None):
+def register_group(gid, rest, parts, keys, offset=None, parent_scale=None, axes=None):
     """One bone's group; optional offset selects parent-axis translation.
 
     `keys` are the three driver channel keys; parts carry winning entries.
     """
-    _GROUPS[gid] = {'rest': tuple(rest), 'parts': list(parts)}
+    _GROUPS[gid] = {'rest': tuple(rest), 'parts': list(parts),
+                    'axes': tuple(axes) if axes else None}
     if offset is not None:
         _GROUPS[gid]['offset'] = tuple(offset)
         _GROUPS[gid]['parent_scale'] = tuple(parent_scale or (1.0, 1.0, 1.0))
@@ -275,11 +282,14 @@ def _group_value(ch, values):
         total, used = _total(maps, reads, values[at:], out)
         at += used
         parts.append((axis, mode, replaces, total) + tuple(part[6:]))
+    axes = g.get('axes')
     if 'offset' in g:
-        return jcns_source_read.translation_basis(
+        loc = jcns_source_read.translation_basis(
             g['rest'], g['offset'], [(p[0], p[2], p[3]) for p in parts],
-            g.get('parent_scale', (1.0, 1.0, 1.0)))[ch['axis']]
-    return jcns_source_read.target_basis(g['rest'], parts)[ch['axis']]
+            g.get('parent_scale', (1.0, 1.0, 1.0)))
+        return jcns_source_read.blender_vector(loc, axes)[ch['axis']]
+    euler = jcns_source_read.target_basis(g['rest'], parts)
+    return jcns_source_read.blender_euler(euler, axes)[ch['axis']]
 
 
 def jcns_ch(key, *values):

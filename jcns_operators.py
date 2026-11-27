@@ -364,17 +364,34 @@ def _earlier_writes(armature_obj, root_obj, bone, path, here, budget):
 
 
 def _rest_transform(armature_obj, bone_name):
-    """A bone's rest rotation (w, x, y, z) and offset (metres) relative to its parent.
+    """A bone's rest rotation (w, x, y, z) and offset (metres) relative to its parent,
+    in the file's bone frames (jcns_bone_axes).
 
     A bone without a parent counts as identity: its matrix is in armature space,
     which carries the importer's axis conversion rather than an engine transform.
     """
-    b = armature_obj.data.bones.get(bone_name)
-    if b is None or b.parent is None:
+    from . import jcns_bone_axes
+    m = jcns_bone_axes.rest_local(armature_obj.data.bones.get(bone_name))
+    if m is None:
         return (1.0, 0.0, 0.0, 0.0), (0.0, 0.0, 0.0)
-    m = b.parent.matrix_local.inverted() @ b.matrix_local
     q = m.to_quaternion()
     return (q.w, q.x, q.y, q.z), tuple(m.translation)
+
+
+def _axes(armature_obj, bone_name):
+    """The bone's RE9 axis correction as a quaternion, or None (jcns_bone_axes)."""
+    from . import jcns_bone_axes
+    return jcns_bone_axes.quat(armature_obj.data.bones.get(bone_name))
+
+
+def _channel_index(armature_obj, bone_name, data_path, axis):
+    """The Blender channel of file axis `axis` for a per-axis driver.  Only scale is
+    driven per axis on a corrected bone (its rotation and location are groups), and a
+    scale axis just moves to the Blender axis it runs along."""
+    if data_path != 'scale' or not 0 <= axis <= 2:
+        return axis
+    from . import jcns_bone_axes
+    return jcns_bone_axes.axis_map(armature_obj.data.bones.get(bone_name))[axis]
 
 
 def source_rest_input_of(sp):
@@ -443,7 +460,19 @@ def channel_sources(armature_obj, root_obj, owner, budget=_NEST_BUDGET):
         return snaps[bone, path]
 
     def live(bone, path):
-        """The `live` of a three-channel read of `bone`'s `path`."""
+        """The `live` of a three-channel read of `bone`'s `path`.
+
+        A corrected bone's channels are Blender's, not the file's, and its rotation
+        and location are driven as groups, so they are read all together: from the
+        earlier write, else from the variables when no entry here or later drives
+        the bone, else at rest."""
+        if _axes(armature_obj, bone):
+            if any((bone, path, a) in before for a in range(3)):
+                snap = earlier(bone, path)
+                return (snap,) if isinstance(snap, tuple) and take(snap) else ()
+            if any((bone, path, a) in later for a in range(3)):
+                return ()
+            return (0, 1, 2)
         if not any((bone, path, a) in before for a in range(3)):
             return tuple(a for a in range(3) if (bone, path, a) not in later)
         snap = earlier(bone, path)
@@ -479,12 +508,13 @@ def channel_sources(armature_obj, root_obj, owner, budget=_NEST_BUDGET):
         if q == 'Rotation' and mode:
             rest, _off = _rest_transform(armature_obj, s['bone'])
             s['read'] = ('rot', mode, axis, rest, s['rot_order'], s['frame'], base,
-                         live(s['bone'], path))
+                         _axes(armature_obj, s['bone']), live(s['bone'], path))
         elif q == 'Translation' and sid == 0:
             rest, off = _rest_transform(armature_obj, s['bone'])
             s['read'] = ('loc', axis, rest, (0.0, 0.0, 0.0) if base else off,
-                         live(s['bone'], path))
+                         _axes(armature_obj, s['bone']), live(s['bone'], path))
         elif q == 'Scale':
+            s['var_axis'] = _channel_index(armature_obj, s['bone'], 'scale', axis)
             k = _rest_scale_axis(armature_obj, s['bone'], axis)
             if (s['bone'], path, axis) in later:
                 s['read'] = (single(s['bone'], path, axis, k, 1.0 if base else 0.0)
@@ -505,7 +535,8 @@ def channel_sources(armature_obj, root_obj, owner, budget=_NEST_BUDGET):
                 'bone': joint, 'axis_idx': 0, 'axis_name': 'X',
                 'cone': {'out_min': k.out_min, 'out_max': k.out_max, 'interp': k.interpolation},
                 'read': ('cone', rest, tuple(ci.direction), (m[0:3], m[4:7], m[8:11]),
-                         ci.angle, ci.base_pose, self_parent, live_axes)})
+                         ci.angle, ci.base_pose, self_parent, _axes(armature_obj, joint),
+                         live_axes)})
     return sources
 
 
@@ -529,7 +560,7 @@ def _var_specs(sources, reads):
                     specs.append((s['bone'], _ROT_TYPE[e], 'XYZ'))
         else:
             specs.append((s['bone'], _SOURCE_VARS[get_mapping().source_quantity(
-                s.get('input_type'))][min(s.get('axis_idx', 0), 2)], 'AUTO'))
+                s.get('input_type'))][s.get('var_axis', min(s.get('axis_idx', 0), 2))], 'AUTO'))
     return tuple(specs)
 
 
@@ -574,7 +605,9 @@ def _apply_driver(armature_obj, target_bone_name, target_axis_idx,
         out=(jcns_drivers.output_settings(owner.jcns_cns_props, target_q)
              if owner is not None else jcns_drivers.SUM_OUTPUT))
 
-    expr = _install_driver(armature_obj, target_bone_name, data_path, target_axis_idx,
+    expr = _install_driver(armature_obj, target_bone_name, data_path,
+                           _channel_index(armature_obj, target_bone_name, data_path,
+                                          target_axis_idx),
                            key, usable, reads)
     if len(expr) > 255:
         return False, ("channel key too long (%d chars) — rename the bone or "
@@ -671,7 +704,8 @@ def register_translation_group(armature_obj, root_obj, bone, chans, tag='', budg
                                     _AXIS_NAME[a]) for a in range(3)]
     parent = armature_obj.data.bones[bone].parent
     parent_scale = mesh_rest_scale(parent) if parent is not None else (1.0, 1.0, 1.0)
-    jcns_drivers.register_group(gid, rest, parts, keys, offset=offset, parent_scale=parent_scale)
+    jcns_drivers.register_group(gid, rest, parts, keys, offset=offset, parent_scale=parent_scale,
+                                axes=_axes(armature_obj, bone))
     return keys, all_sources, all_reads
 
 
@@ -740,7 +774,10 @@ def _euler_order_of(members):
 def _needs_group(armature_obj, bone, chans):
     """A bone whose rotation cannot be one independent driver per Euler channel:
     a non-Euler rotation type (swing-twist, rotation vector, single axis), an Euler
-    order other than XYZ, or an Euler channel replacing a rest rotation."""
+    order other than XYZ, an Euler channel replacing a rest rotation, or an RE9 axis
+    correction (a file channel is no single Blender channel there)."""
+    if _axes(armature_obj, bone):
+        return True
     if any(_target_mode(m) != 'euler' for m in chans.values()):
         return True
     if any(_euler_order_of(m) for m in chans.values()):
@@ -808,7 +845,7 @@ def register_bone_group(armature_obj, root_obj, bone, chans, tag='', budget=_NES
     gid = jcns_drivers.channel_id(armature_obj.name, bone, tag + _GROUP_TAG, '')
     keys = [jcns_drivers.channel_id(armature_obj.name, bone, tag + _GROUP_TAG, _AXIS_NAME[a])
             for a in range(3)]
-    jcns_drivers.register_group(gid, rest, parts, keys)
+    jcns_drivers.register_group(gid, rest, parts, keys, axes=_axes(armature_obj, bone))
     return keys, all_sources, all_reads
 
 
@@ -1186,7 +1223,7 @@ def _clear_channel(armature_obj, members):
                 for e in other:
                     e.jcns_cns_props.preview_on = False
     if entry is not None and pose_bone is not None:
-        a = AXIS_TO_INT.get(axis, 0)
+        a = _channel_index(armature_obj, bone, entry[0], AXIS_TO_INT.get(axis, 0))
         try:
             pose_bone.driver_remove(entry[0], a)
         except Exception:
@@ -1625,7 +1662,10 @@ class JCNS_OT_MirrorConstraints(Operator):
             if b is not None and mate:
                 r = arm.data.bones.get(mate)
                 if r is not None:
-                    L, R = b.matrix_local.to_3x3(), r.matrix_local.to_3x3()
+                    # The file's frames: the mirror holds in the game's axes.
+                    from . import jcns_bone_axes as ax
+                    L = ax.file_matrix(b, b.matrix_local).to_3x3()
+                    R = ax.file_matrix(r, r.matrix_local).to_3x3()
                     v = mirror.sigma_from_frames(
                         [tuple(L.col[i]) for i in range(3)],
                         [tuple(R.col[i]) for i in range(3)])

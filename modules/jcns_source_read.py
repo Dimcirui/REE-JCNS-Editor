@@ -102,15 +102,42 @@ def from_euler_order(euler, order):
     return q
 
 
-def pose_rotation(rest, euler):
+# A bone shown with RE Mesh Editor's RE9 axis correction has Blender frame = file
+# frame @ C^-1; `axes` below is C as a quaternion (None: no correction).  Pose
+# channels are read and written in Blender's frame, the rules run in the file's.
+
+def file_basis(euler, axes=None):
+    """The file-frame basis rotation of a Blender XYZ Euler pose: C^-1 * R * C."""
+    q = from_euler_xyz(euler)
+    return qmul(qmul(_conj(axes), q), axes) if axes else q
+
+
+def blender_euler(euler, axes=None):
+    """A file-frame basis given as XYZ Euler, as the Blender channels hold it."""
+    if not axes:
+        return tuple(euler)
+    return tuple(_euler(_pos_w(qmul(qmul(axes, from_euler_xyz(euler)), _conj(axes))), 0))
+
+
+def file_vector(v, axes=None):
+    """A Blender bone-frame vector (a location basis) in the file's frame: C^-1 * v."""
+    return _rot_vec(_conj(axes), v) if axes else tuple(v)
+
+
+def blender_vector(v, axes=None):
+    """The inverse of file_vector."""
+    return _rot_vec(axes, v) if axes else tuple(v)
+
+
+def pose_rotation(rest, euler, axes=None):
     """The bone's whole parent-relative rotation for a Blender XYZ Euler pose."""
-    return _pos_w(qmul(rest, from_euler_xyz(euler)))
+    return _pos_w(qmul(rest, file_basis(euler, axes)))
 
 
-def read_rotation(rest, euler, base_pose):
+def read_rotation(rest, euler, base_pose, axes=None):
     """The rotation a source decomposes for a Blender XYZ Euler pose: relative to the
     rest pose with BasePose set (rest^-1 * rest * R = R), the whole rotation otherwise."""
-    return _pos_w(from_euler_xyz(euler)) if base_pose else pose_rotation(rest, euler)
+    return _pos_w(file_basis(euler, axes)) if base_pose else pose_rotation(rest, euler, axes)
 
 
 # RotOrder -> (i, j, k) with R = R_i * R_j * R_k (k applied first).  4 YXZ and 5 XZY come
@@ -364,9 +391,10 @@ def rest_input(mode, axis, rest, offset_cm, order=0, frame=None, scale=None, bas
                                  order, frame))
 
 
-def position(rest, offset, loc, axis):
+def position(rest, offset, loc, axis, axes=None):
     """Component `axis` of the whole parent-relative position: offset + rest * loc.
     A BasePose read passes a zero offset."""
+    loc = file_vector(loc, axes)
     p = qmul(qmul(rest, (0.0, loc[0], loc[1], loc[2])), _conj(rest))
     return offset[axis] + p[axis + 1]
 
