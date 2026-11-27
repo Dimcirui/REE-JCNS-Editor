@@ -1,7 +1,7 @@
 """
 jcns_ui.py
 ----------
-侧边栏（View3D > 侧栏 > JCNS 编辑器）的框架：状态、预览、条目浏览器、文件信息。
+侧边栏（View3D > 侧栏 > RE JCNS）的框架：状态、预览、条目浏览器、文件信息。
 
 每个 section 自己的编辑界面在 jcns_editors.py；哪些分区存在、各自能做什么由
 modules/jcns_kinds.py 决定，预览（驱动器 / 骨骼约束）由 jcns_preview.py 负责。

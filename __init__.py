@@ -19,7 +19,7 @@ bl_info = {
     "author": "Dimcirui",
     "version": (0, 21, 0),
     "blender": (3, 6, 0),
-    "location": "View3D > Sidebar > JCNS Editor | File > Import/Export",
+    "location": "View3D > Sidebar > RE JCNS | File > Import/Export",
     "description": (
         "Import, edit, and export RE Engine JCNS joint constraint files "
         "(MH Wilds v102 and RE9 v35 rebuilt, every other JCNS version "
